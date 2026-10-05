@@ -1,6 +1,6 @@
 # Spec : OBSBOT Nacelle v1
 
-Date : 2026-10-05. Statut : **à valider par Majid**.
+Date : 2026-10-05. Statut : **validée par Majid**, puis amendée le même jour (A1 et A2, validés : voir § 12).
 
 ## 1. Objectif
 
@@ -15,7 +15,7 @@ HomeKit ne sait pas commander un pan, un tilt ou un zoom. Le pilotage passe donc
 - Vidéo en direct dans l'app, par WebRTC depuis go2rtc.
 - Joystick pan/tilt en vitesse, avec arrêt automatique.
 - Zoom absolu, de 0 à 100.
-- Mode vie privée : l'objectif est tourné vers le bas (tilt à -90°). La position précédente est mémorisée puis rétablie à la sortie.
+- Mode vie privée : l'objectif est tourné vers le bas (tilt à -70°, amendement A2). La position précédente est mémorisée puis rétablie à la sortie.
 - Prise en main : le suivi IA de la caméra est coupé à l'ouverture de l'écran de pilotage.
 - Accès uniquement par Tailscale, à la maison comme dehors.
 
@@ -90,9 +90,9 @@ Le protocole utilise des messages JSON, un par trame WebSocket texte, avec un ch
 
 | Module | Rôle | Dépendances |
 |---|---|---|
-| `UVCCamera` | Trouve la Tiny 2 (VID `0x3564`, PID `0xFEF8`). Envoie les requêtes UVC par `DeviceRequestTO`, **sans ouvrir la caméra en exclusivité**. Signale les branchements et débranchements (notifications IOKit). | IOKit |
+| `UVCCamera` | Trouve la Tiny 2 (VID `0x3564`, PID `0xFEF8`). Envoie les requêtes UVC par `DeviceRequestTO`, **sans ouvrir la caméra en exclusivité**. Borne les ordres absolus à la course réellement acceptée (amendement A2). Signale les branchements et débranchements (notifications IOKit). | IOKit |
 | `PTZController` | Toute la logique : vitesse, arrêt automatique, zoom, vie privée, prise en main, persistance. Il ne voit la caméra, l'horloge, le lanceur d'utilitaire et le stockage qu'à travers des protocoles. | `NacelleProtocol` |
-| `Server` | Le serveur WebSocket, sur `NWListener`. Il décode les messages, appelle le contrôleur et diffuse l'état. Il accepte 4 clients au plus ; s'il y en a plusieurs, la dernière commande l'emporte. | Network.framework |
+| `Server` | Le serveur WebSocket, sur `NWListener`, à l'écoute sur l'adresse Tailscale et sur 127.0.0.1 (amendement A1). Il décode les messages, appelle le contrôleur et diffuse l'état. Il accepte 4 clients au plus ; s'il y en a plusieurs, la dernière commande l'emporte. | Network.framework |
 | `Config` | Lit le fichier `config.json` décrit en § 6.7 | Foundation |
 
 ### 6.2 Mouvement
@@ -123,15 +123,16 @@ L'état réel du suivi IA ne se lit pas : le SDK renvoie toujours 0. La coupure 
   1. arrêt du mouvement ;
   2. lecture du pan, du tilt et du zoom ;
   3. enregistrement atomique dans `state.json` : `{privacy: true, saved: {pan, tilt, zoom}}` ;
-  4. PanTilt absolu `(pan, -90°)`.
+  4. PanTilt absolu `(pan, -70°)` (amendement A2 : la caméra ignore un ordre à -90°).
 - **Pendant** : `move` et `zoom` reçoivent `error`/`privacyActive`.
 - **Sortie** :
   1. PanTilt absolu vers la position mémorisée ;
   2. zoom mémorisé ;
   3. `state.json` repasse à `privacy: false`.
 - **Au démarrage de `ptzd` et à chaque rebranchement de la caméra**, si `state.json` indique `privacy: true` :
-  1. le tilt est renvoyé à -90° ;
+  1. le tilt est renvoyé à -70° ;
   2. `obsbot-ai-off` est lancé, car un redémarrage de la caméra peut avoir rallumé le suivi.
+- **Relecture** : après l'entrée, la sortie ou une réapplication, la position n'est relue qu'au bout de 2 s ; relue plus tôt, la caméra renvoie une valeur fausse.
 
 ### 6.6 Erreurs
 
@@ -153,7 +154,7 @@ Les chemins de travail se trouvent sous `~/Library/Application Support/ObsbotNac
 | `config.json` | Les réglages, jamais versionnés |
 | `state.json` | L'état de la vie privée |
 
-Les journaux vont dans `~/Library/Logs/obsbot-nacelle/` (sorties de launchd), en plus du journal système `os.Logger`.
+Les journaux vont dans `~/Library/Logs/obsbot-nacelle/` : `ptzd.log` (sorties de launchd, en plus du journal système `os.Logger`) et `obsbot-ai-off.log` (sortie très bavarde du SDK, tenue à part).
 
 Contenu de `config.json` :
 
@@ -194,7 +195,7 @@ Durée attendue : environ 4 s.
 
 ### 6.10 Sécurité
 
-- `ptzd` n'écoute que sur l'adresse Tailscale, jamais sur `0.0.0.0` : un appareil du Wi-Fi qui n'est pas dans le réseau Tailscale ne peut pas piloter.
+- `ptzd` n'écoute que sur l'adresse Tailscale et sur 127.0.0.1 (amendement A1), jamais sur `0.0.0.0` ni sur l'adresse du réseau local : un appareil du Wi-Fi qui n'est pas dans le réseau Tailscale ne peut pas piloter.
 - Il n'y a pas d'authentification en plus dans la v1 : le réseau Tailscale de Majid sert de frontière.
 - L'API go2rtc (port 1984) est déjà ouverte sans authentification sur le réseau local. C'est un état antérieur à ce projet, qui reste hors périmètre.
 
@@ -301,3 +302,12 @@ Si plusieurs conditions sont vraies, elles sont classées dans cet ordre : Mac i
 | Pas de modification de go2rtc | Il propose déjà l'adresse Tailscale en WebRTC, et sa stabilité est fragile |
 
 Résultats des tests de faisabilité : [docs/spike/2026-10-05-faisabilite.md](../../spike/2026-10-05-faisabilite.md).
+
+## 12. Amendements
+
+Validés par Majid le 2026-10-05, après les vérifications faites en écrivant le plan côté Mac.
+
+| Amendement | Changement | Raison |
+|---|---|---|
+| **A1** | `ptzd` écoute aussi sur 127.0.0.1 (§ 6.1, § 6.10) | Le Mac ne peut pas joindre un `NWListener` par sa propre adresse Tailscale (l'iPhone, lui, y arrive) : sans 127.0.0.1, le service installé ne se vérifierait que depuis l'iPhone. Aucune exposition nouvelle. |
+| **A2** | Vie privée à -70° au lieu de -90° ; ordres absolus bornés à pan ±130°, tilt de -80° à +70° (§ 2, § 6.1, § 6.5) | La caméra ignore en silence un ordre à -90° ou à +89°, pan compris, en renvoyant un succès : le mode vie privée tel que spécifié ne faisait rien. -70° est obéi exactement, et vérifié à l'image. Détails : section « Correctif » de [docs/spike/2026-10-05-faisabilite.md](../../spike/2026-10-05-faisabilite.md). |
