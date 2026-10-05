@@ -81,10 +81,26 @@ struct MotionDriverTests {
         try driver.move(pan: 1, tilt: 0, from: 1)
         camera.failNextWrite = .ioKit(-536870212)
         scheduler.advance(by: 0.31)
+        #expect(driver.isMoving)
         #expect(camera.relativeCommands == [right])
         #expect(log.lines.count == 1)
         scheduler.advance(by: 0.31)
         #expect(camera.relativeCommands == [right, .stop])
+        #expect(!driver.isMoving)
+    }
+
+    @Test("Un arrêt explicite refusé est retenté, et le mouvement reste signalé jusque-là")
+    func explicitStopRetry() throws {
+        var changes = 0
+        try driver.move(pan: 1, tilt: 0, from: 1)
+        driver.onChange = { changes += 1 }
+        camera.failNextWrite = .ioKit(-536870212)
+        #expect(throws: CameraError.ioKit(-536870212)) { try driver.move(pan: 0, tilt: 0, from: 1) }
+        #expect(driver.isMoving)
+        scheduler.advance(by: 0.31)
+        #expect(camera.relativeCommands == [right, .stop])
+        #expect(!driver.isMoving)
+        #expect(changes >= 1)
     }
 
     @Test("Position relue chaque seconde pendant le mouvement, puis à l'arrêt")
