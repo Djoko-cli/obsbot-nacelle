@@ -52,19 +52,24 @@ public final class MotionDriver {
         }
     }
 
-    /// Arrête le mouvement puis relit la position. Si l'arrêt échoue, la
-    /// commande en cours reste mémorisée : le prochain arrêt la renverra.
+    /// Arrête le mouvement puis relit la position. Un arrêt refusé par la caméra
+    /// est retenté toutes les 0,3 s ; le mouvement reste signalé tant qu'il n'a pas réussi.
     public func stop() throws {
         deadMan?.cancel()
         deadMan = nil
+        if lastSent != .stop {
+            do {
+                try camera.setPanTiltRelative(.stop)
+            } catch {
+                scheduleStopRetry()
+                throw error
+            }
+            lastSent = .stop
+        }
         poll?.cancel()
         poll = nil
         let wasMoving = isMoving
         isMoving = false
-        if lastSent != .stop {
-            try camera.setPanTiltRelative(.stop)
-            lastSent = .stop
-        }
         refreshPosition()
         if wasMoving {
             onChange?()
@@ -79,7 +84,6 @@ public final class MotionDriver {
             try stop()
         } catch {
             log("Arrêt à la déconnexion impossible : \(error). Nouvel essai dans 0,3 s.")
-            scheduleStopRetry()
         }
     }
 
@@ -112,7 +116,6 @@ public final class MotionDriver {
             try stop()
         } catch {
             log("Arrêt automatique impossible : \(error). Nouvel essai dans 0,3 s.")
-            scheduleStopRetry()
         }
     }
 
