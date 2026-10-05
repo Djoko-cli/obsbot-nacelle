@@ -10,6 +10,8 @@ final class FakeCamera: CameraDevice {
     var failNextWrite: CameraError?
     /// Nombre d'ordres absolus à « ignorer » : enregistrés, mais sans effet sur la position.
     var ignoreAbsoluteCommands = 0
+    /// Les relectures de position échouent tant que c'est vrai.
+    var failReads = false
     private(set) var relativeCommands: [PanTiltRelative] = []
     private(set) var absoluteCommands: [PanTiltPosition] = []
     private(set) var zoomCommands: [Int] = []
@@ -38,6 +40,9 @@ final class FakeCamera: CameraDevice {
 
     func readPanTilt() throws -> PanTiltPosition {
         guard isPresent else { throw CameraError.absent }
+        if failReads {
+            throw CameraError.ioKit(-536870212)
+        }
         return position
     }
 

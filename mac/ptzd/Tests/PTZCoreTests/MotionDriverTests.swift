@@ -129,4 +129,16 @@ struct MotionDriverTests {
         #expect(driver.position == nil)
         #expect(scheduler.pendingCount == 0)
     }
+
+    @Test("Relecture ratée : position inconnue, publiée, jamais une valeur périmée")
+    func failedReadForgetsPosition() {
+        var changes = 0
+        driver.onChange = { changes += 1 }
+        driver.refreshPosition()
+        #expect(driver.position == camera.position)
+        camera.failReads = true
+        driver.refreshPosition()
+        #expect(driver.position == nil)
+        #expect(changes == 2)
+    }
 }

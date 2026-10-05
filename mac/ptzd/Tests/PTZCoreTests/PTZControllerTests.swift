@@ -154,17 +154,104 @@ struct PTZControllerTests {
         #expect(log.lines.contains { $0.contains("ignoré") })
     }
 
-    @Test("Ordre toujours ignoré : deux renvois au plus, puis une erreur journalisée")
-    func resendsAreBounded() {
+    @Test("Hors vie privée, ordre de sortie toujours ignoré : deux renvois au plus, puis une erreur")
+    func exitResendsAreBounded() {
         let controller = makeController()
         controller.cameraPresenceChanged(true)
-        camera.ignoreAbsoluteCommands = 10
+        camera.position = PanTiltPosition(pan: 20, tilt: 5)
         _ = controller.handle(.privacy(on: true), from: 1)
-        for _ in 0..<5 {
-            scheduler.advance(by: PTZController.settleDelay)
+        scheduler.advance(by: PTZController.settleDelay)
+        let sent = camera.absoluteCommands.count
+        camera.ignoreAbsoluteCommands = 10
+        _ = controller.handle(.privacy(on: false), from: 1)
+        for _ in 0..<10 {
+            scheduler.advance(by: 30)
         }
-        #expect(camera.absoluteCommands.count == 1 + PTZController.maxResends)
-        #expect(log.lines.contains { $0.contains("non atteinte") })
+        #expect(camera.absoluteCommands.count == sent + 1 + PTZController.maxResends)
+        #expect(log.lines.filter { $0.contains("non atteinte") }.count == 1)
+        #expect(scheduler.pendingCount == 0)
+    }
+
+    @Test("Vie privée : la vérification ne s'arrête pas après maxResends et finit par atteindre le tilt")
+    func privacyNeverGivesUp() {
+        let controller = makeController()
+        controller.cameraPresenceChanged(true)
+        camera.ignoreAbsoluteCommands = 6
+        _ = controller.handle(.privacy(on: true), from: 1)
+        // Vérifications à 2 s, puis renvois suivis de 2, 5, 10, 30, 30, 30 s.
+        let checks: [Double] = [PTZController.settleDelay] + PTZController.privacyBackoff + [30, 30]
+        for (index, delay) in checks.enumerated() {
+            #expect(camera.absoluteCommands.count == 1 + index)
+            scheduler.advance(by: delay)
+        }
+        #expect(camera.absoluteCommands.count == 7)
+        #expect(camera.absoluteCommands.allSatisfy { $0.tilt == PrivacyKeeper.privacyTilt })
+        #expect(controller.snapshot.tilt == PrivacyKeeper.privacyTilt)
+        // Un premier raté, puis une ligne par palier (2, 5, 10, 30 s) : pas à chaque essai de 30 s.
+        #expect(log.lines.filter { $0.contains("ignoré") }.count == PTZController.privacyBackoff.count)
+        scheduler.advance(by: 300)
+        #expect(camera.absoluteCommands.count == 7)
+        #expect(scheduler.pendingCount == 0)
+    }
+
+    @Test("Vie privée et relecture impossible : renvoi quand même, jusqu'à relire le tilt")
+    func privacyUnreadablePositionRetries() {
+        let controller = makeController()
+        controller.cameraPresenceChanged(true)
+        _ = controller.handle(.privacy(on: true), from: 1)
+        camera.failReads = true
+        scheduler.advance(by: PTZController.settleDelay)
+        #expect(camera.absoluteCommands.count == 2)
+        camera.failReads = false
+        scheduler.advance(by: PTZController.privacyBackoff[0])
+        #expect(controller.snapshot.tilt == PrivacyKeeper.privacyTilt)
+        #expect(scheduler.pendingCount == 0)
+    }
+
+    @Test("Rebranchement en vie privée, ordres ignorés au démarrage : renvoyés jusqu'au tilt")
+    func replugIgnoredEnforceIsResent() {
+        store.state = PersistedState(privacy: true, saved: SavedPosition(pan: 12, tilt: 3, zoom: nil))
+        camera.isPresent = false
+        let controller = makeController()
+        camera.isPresent = true
+        camera.ignoreAbsoluteCommands = 1 + PTZController.maxResends
+        controller.cameraPresenceChanged(true)
+        scheduler.advance(by: PTZController.settleDelay)
+        for delay in PTZController.privacyBackoff {
+            scheduler.advance(by: delay)
+        }
+        #expect(camera.absoluteCommands.count == 2 + PTZController.maxResends)
+        #expect(controller.snapshot.tilt == PrivacyKeeper.privacyTilt)
+    }
+
+    @Test("Fin de la coupure du suivi IA en vie privée : ordre de vie privée renvoyé et revérifié")
+    func controlFinishReenforcesPrivacy() {
+        store.state = PersistedState(privacy: true, saved: SavedPosition(pan: 12, tilt: 3, zoom: nil))
+        let controller = makeController()
+        controller.cameraPresenceChanged(true)
+        #expect(camera.absoluteCommands.count == 1)
+        #expect(controller.snapshot.control == .taking)
+        scheduler.advance(by: PTZController.settleDelay)
+        // Le suivi IA a remonté l'objectif pendant la coupure.
+        camera.position = PanTiltPosition(pan: 12, tilt: 10)
+        runner.finish(.success)
+        #expect(controller.snapshot.control == .ready)
+        #expect(camera.absoluteCommands == Array(repeating: PanTiltPosition(pan: 12, tilt: PrivacyKeeper.privacyTilt), count: 2))
+        scheduler.advance(by: PTZController.settleDelay)
+        #expect(controller.snapshot.tilt == PrivacyKeeper.privacyTilt)
+        // Un échec de l'utilitaire réapplique aussi.
+        _ = controller.handle(.takeControl, from: 1)
+        runner.finish(.sdkError)
+        #expect(controller.snapshot.control == .failed)
+        #expect(camera.absoluteCommands.count == 3)
+    }
+
+    @Test("Fin de la coupure hors vie privée : aucun ordre absolu")
+    func controlFinishOutsidePrivacy() {
+        let controller = makeController()
+        _ = controller.handle(.takeControl, from: 1)
+        runner.finish(.success)
+        #expect(camera.absoluteCommands.isEmpty)
     }
 
     @Test("Un mouvement du joystick après la sortie annule la vérification")
