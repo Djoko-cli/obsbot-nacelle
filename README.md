@@ -9,9 +9,9 @@ La caméra est branchée en USB sur un Mac qui la diffuse déjà avec [go2rtc](h
 ## Statut
 
 - **Côté Mac** : `ptzd` et `obsbot-ai-off` s'installent avec `scripts/install-mac.sh` (voir plus bas).
-- **App iOS** : à venir.
+- **App iOS** : s'installe depuis Xcode sur l'iPhone (voir « App iOS » plus bas).
 
-Conception : [spec](docs/superpowers/specs/2026-10-05-nacelle-design.md) · [plan côté Mac](docs/superpowers/plans/2026-10-05-nacelle-mac.md) · [tests de faisabilité](docs/spike/2026-10-05-faisabilite.md).
+Conception : [spec](docs/superpowers/specs/2026-10-05-nacelle-design.md) · [plan côté Mac](docs/superpowers/plans/2026-10-05-nacelle-mac.md) · [plan de l'app iOS](docs/superpowers/plans/2026-10-05-nacelle-ios.md) · [tests de faisabilité](docs/spike/2026-10-05-faisabilite.md).
 
 ## Architecture
 
@@ -84,6 +84,41 @@ launchctl kickstart -k gui/$(id -u)/io.github.djoko-cli.obsbot-nacelle.ptzd
 
 Le Mac ne peut pas se joindre lui-même par son adresse Tailscale : en local, passer par 127.0.0.1.
 
+## App iOS
+
+Prérequis : Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), un identifiant Apple (un compte gratuit suffit), Tailscale sur l'iPhone, et le côté Mac installé.
+
+1. Indiquer l'équipe de signature dans un réglage local, non versionné. Son identifiant est le champ OU des certificats « Apple Development » du trousseau :
+
+   ```bash
+   security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject -nameopt multiline | grep organizationalUnitName
+   ```
+
+   ```bash
+   printf 'DEVELOPMENT_TEAM = %s\n' <identifiant> > ios/Config/Local.xcconfig
+   ```
+
+2. Générer le projet, puis compiler et installer sur l'iPhone branché ou appairé. `<UDID>` est son identifiant, donné par `xcrun devicectl list devices` :
+
+   ```bash
+   cd ios && xcodegen
+   ```
+
+   ```bash
+   xcodebuild build -project ios/Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS,id=<UDID>' -derivedDataPath ios/.build -allowProvisioningUpdates
+   ```
+
+   ```bash
+   xcrun devicectl device install app --device <UDID> ios/.build/Build/Products/Debug-iphoneos/Nacelle.app
+   ```
+
+3. Au premier lancement, iOS demande de faire confiance au développeur : Réglages › Général › VPN et gestion de l'appareil.
+4. Dans l'app, saisir le nom Tailscale du Mac (`tailscale status --self` sur le Mac). Les ports par défaut (1984 et 1985) et le flux `obsbot` conviennent.
+
+Avec un compte Apple gratuit, l'app expire au bout de 7 jours : refaire l'étape 2.
+
+Tests : `cd ios && xcodegen && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build`.
+
 ## Désinstaller
 
 ```bash
@@ -107,6 +142,7 @@ rm -r ~/Library/Application\ Support/ObsbotNacelle ~/Library/Logs/obsbot-nacelle
 | `mac/ai-off/` | L'utilitaire `obsbot-ai-off` (C++, demande le SDK en local) |
 | `mac/launchd/` | Modèle du plist de l'agent launchd |
 | `mac/tools/` | Client WebSocket de test |
+| `ios/` | L'app iOS : `project.yml` (xcodegen), sources et tests |
 | `scripts/install-mac.sh` | Installation sur le Mac |
 | `docs/` | Spec, plans et tests de faisabilité |
 | `spike/` | Sondes **jetables** des tests de faisabilité |
