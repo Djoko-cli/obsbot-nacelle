@@ -1,4 +1,5 @@
 import Foundation
+import NacelleProtocol
 import Testing
 @testable import Nacelle
 
@@ -57,6 +58,25 @@ struct AppModelTests {
         model.activate()
         model.settings = ConnectionSettings(host: "mac.exemple.ts.net", ptzdPort: 1999)
         #expect(transport.openedURLs.map(\.port) == [1985, 1999])
+        model.deactivate()
+    }
+
+    @Test("Inactif (Centre de contrôle, appel) : la nacelle s'arrête, la connexion reste ouverte")
+    func pauseStopsMovement() {
+        SettingsStore(defaults: defaults).save(complete)
+        let model = makeModel()
+        model.activate()
+        transport.emit(.opened)
+        model.ptz.setJoystick(JoystickVector(pan: 1, tilt: 0))
+        model.pause()
+        let sentAtPause = transport.sent.count
+        scheduler.advance(by: 1)
+        let sent = transport.sent.compactMap { try? NacelleCodec.decodeClient($0) }
+        #expect(sent.last == .move(pan: 0, tilt: 0))
+        #expect(transport.sent.count == sentAtPause)
+        #expect(transport.closeCount == 0)
+        #expect(model.isActive)
+        #expect(model.ptz.link == .connected)
         model.deactivate()
     }
 }

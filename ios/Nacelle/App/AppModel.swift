@@ -51,6 +51,12 @@ final class AppModel {
         video.start(url: webRTCURL)
     }
 
+    /// Inactif (Centre de contrôle, appel, alerte, sélecteur d'apps) : arrêt de la nacelle, sans
+    /// déconnecter. Le système peut annuler le glissé du joystick sans qu'aucun relâchement n'arrive.
+    func pause() {
+        ptz.setJoystick(.zero)
+    }
+
     /// Arrière-plan : arrêt de la nacelle, fermeture du WebSocket et de la vidéo.
     func deactivate() {
         isForeground = false
