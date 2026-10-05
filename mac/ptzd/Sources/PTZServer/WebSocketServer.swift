@@ -9,6 +9,10 @@ import PTZCore
 public final class WebSocketServer {
     public static let maxClients = 4
     public static let retryDelay: TimeInterval = 5
+    /// Marque une poignée de main refusée. Network n'envoie alors aucune réponse, garde la
+    /// connexion ouverte et la signale même prête (constaté avec le SDK de macOS 27) : on
+    /// retrouve la marque dans ses métadonnées pour la fermer nous-mêmes.
+    nonisolated static let rejectionMarker = (name: "X-Nacelle-Refus", value: "origin")
 
     /// Appelé quand l'écoute sur une adresse est prête, avec le port réellement
     /// ouvert (utile quand on demande le port 0).
@@ -48,9 +52,25 @@ public final class WebSocketServer {
     }
 
     private func listen(on host: String) {
-        let parameters = NWParameters.tcp
+        // Keepalive TCP : une connexion morte (iPhone suspendu, réseau coupé) est fermée
+        // après environ 25 s au lieu de garder une des 4 places indéfiniment.
+        let tcp = NWProtocolTCP.Options()
+        tcp.enableKeepalive = true
+        tcp.keepaliveIdle = 10
+        tcp.keepaliveInterval = 5
+        tcp.keepaliveCount = 3
+        let parameters = NWParameters(tls: nil, tcp: tcp)
         let webSocket = NWProtocolWebSocket.Options()
         webSocket.autoReplyPing = true
+        // Un navigateur envoie toujours Origin, nos clients (app iOS, nacelle-ws) jamais :
+        // une page web ouverte sur le Mac ou le tailnet ne peut donc pas piloter la caméra.
+        webSocket.setClientRequestHandler(.main) { [weak self] _, headers in
+            guard headers.contains(where: { $0.name.caseInsensitiveCompare("Origin") == .orderedSame }) else {
+                return NWProtocolWebSocket.Response(status: .accept, subprotocol: nil)
+            }
+            MainActor.assumeIsolated { self?.log("Connexion refusée : en-tête Origin (navigateur).") }
+            return NWProtocolWebSocket.Response(status: .reject, subprotocol: nil, additionalHeaders: [Self.rejectionMarker])
+        }
         parameters.defaultProtocolStack.applicationProtocols.insert(webSocket, at: 0)
         parameters.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port) ?? .any)
         parameters.allowLocalEndpointReuse = true
@@ -111,12 +131,21 @@ public final class WebSocketServer {
     private func connectionChanged(_ id: ClientID, _ state: NWConnection.State) {
         switch state {
         case .ready:
+            if wasRejected(id) {
+                drop(id)
+                return
+            }
             send(.state(controller.snapshot), to: id)
         case .failed, .cancelled:
             drop(id)
         default:
             break
         }
+    }
+
+    private func wasRejected(_ id: ClientID) -> Bool {
+        let metadata = connections[id]?.metadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
+        return metadata?.additionalServerHeaders?.contains { $0 == Self.rejectionMarker } ?? false
     }
 
     private func receive(on connection: NWConnection, id: ClientID) {
