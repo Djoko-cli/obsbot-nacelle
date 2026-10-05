@@ -5,13 +5,16 @@
 #include <cstdio>
 #include <dev/devs.hpp>
 #include <thread>
+#include <unistd.h>
 
 int main() {
     Devices::get().setDevChangedCallback([](std::string, bool, void *) {}, nullptr);
     Devices::get().setEnableMdnsScan(false);
 
     std::shared_ptr<Device> tiny2;
-    for (int attempt = 0; attempt < 50 && !tiny2; ++attempt) {
+    // 10 s au plus (amendement A3) : quand la vidéo démarre en même temps, l'initialisation
+    // de la caméra par le SDK est plus lente (constaté le 2026-10-05).
+    for (int attempt = 0; attempt < 100 && !tiny2; ++attempt) {
         for (auto &device : Devices::get().getDevList()) {
             if (device->productType() == ObsbotProdTiny2) {
                 tiny2 = device;
@@ -22,9 +25,12 @@ int main() {
         }
     }
     if (!tiny2) {
-        std::fprintf(stderr, "obsbot-ai-off : Tiny 2 introuvable après 5 s\n");
-        Devices::get().close();
-        return 1;
+        // Le SDK peut encore initialiser la caméra dans son propre fil : le refermer
+        // maintenant provoque un arrêt brutal (libc++abi). On quitte sans destructeurs ;
+        // le système libère l'accès USB.
+        std::fprintf(stderr, "obsbot-ai-off : Tiny 2 introuvable après 10 s\n");
+        std::fflush(stderr);
+        _exit(1);
     }
 
     int32_t result = tiny2->cameraSetAiModeU(Device::AiWorkModeNone, 0);
