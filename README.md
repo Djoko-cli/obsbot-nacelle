@@ -101,7 +101,7 @@ Prérequis : Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew ins
 2. Générer le projet, puis compiler et installer sur l'iPhone branché ou appairé. `<UDID>` est son identifiant, donné par `xcrun devicectl list devices` :
 
    ```bash
-   cd ios && xcodegen
+   (cd ios && xcodegen)
    ```
 
    ```bash
@@ -113,11 +113,11 @@ Prérequis : Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew ins
    ```
 
 3. Au premier lancement, iOS demande de faire confiance au développeur : Réglages › Général › VPN et gestion de l'appareil.
-4. Dans l'app, saisir le nom Tailscale du Mac (`tailscale status --self` sur le Mac). Les ports par défaut (1984 et 1985) et le flux `obsbot` conviennent.
+4. Dans l'app, saisir le nom Tailscale du Mac (champ `DNSName`, sans le point final, de `tailscale status --self --peers=false --json` sur le Mac). Les ports par défaut (1984 et 1985) et le flux `obsbot` conviennent.
 
 Avec un compte Apple gratuit, l'app expire au bout de 7 jours : refaire l'étape 2.
 
-Tests : `cd ios && xcodegen && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build`.
+Tests : `(cd ios && xcodegen && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build)`.
 
 ## Désinstaller
 
