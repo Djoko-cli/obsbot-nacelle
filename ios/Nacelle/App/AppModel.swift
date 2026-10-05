@@ -36,7 +36,7 @@ final class AppModel {
         let scheduler = MainScheduler()
         return AppModel(
             store: SettingsStore(),
-            ptz: PTZClient(transport: URLSessionWebSocketTransport(), scheduler: scheduler),
+            ptz: PTZClient(transport: URLSessionWebSocketTransport(scheduler: scheduler), scheduler: scheduler),
             video: VideoSession(scheduler: scheduler)
         )
     }
