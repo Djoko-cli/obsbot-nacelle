@@ -30,6 +30,7 @@ struct PrivacyKeeperTests {
         }
         #expect(!keeper.isActive)
         #expect(store.state == PersistedState(privacy: false, saved: nil))
+        #expect(store.saveCount == 2)
     }
 
     @Test("Sortie : position et zoom rétablis, état effacé")
@@ -51,6 +52,16 @@ struct PrivacyKeeperTests {
         #expect(throws: CameraError.ioKit(-536870212)) { try keeper.exit() }
         #expect(keeper.isActive)
         #expect(store.state.privacy)
+    }
+
+    @Test("Zoom refusé à la sortie : l'objectif reste tourné vers le bas")
+    func exitZoomFailure() throws {
+        let keeper = makeKeeper()
+        try keeper.enter(currentPosition: PanTiltPosition(pan: 30, tilt: -10), currentZoom: 50)
+        camera.failNextWrite = .ioKit(-536870212)
+        #expect(throws: CameraError.ioKit(-536870212)) { try keeper.exit() }
+        #expect(keeper.isActive)
+        #expect(camera.absoluteCommands == [PanTiltPosition(pan: 30, tilt: PrivacyKeeper.privacyTilt)])
     }
 
     @Test("Position inconnue : pan 0 à l'entrée, 0°/0° à la sortie, zoom inchangé")
