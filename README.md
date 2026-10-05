@@ -41,7 +41,7 @@ Prérequis :
 - le SDK OBSBOT, à demander sur [obsbot.com/sdk](https://www.obsbot.com/sdk), décompressé dans `vendor/obsbot-sdk/`. Il n'est pas versionné : sa licence n'en autorise pas la redistribution ;
 - OBSBOT Center fermé : ouvert, il fausse la relecture du tilt.
 
-Si macOS a mis la bibliothèque du SDK en quarantaine, l'autoriser d'abord :
+Si macOS a mis la bibliothèque du SDK en quarantaine, l'autoriser d'abord, depuis la racine du dépôt :
 
 ```bash
 xattr -d com.apple.quarantine vendor/obsbot-sdk/macos/arm64-release/libdev.dylib
