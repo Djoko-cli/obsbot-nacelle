@@ -82,3 +82,30 @@ Pendant les deux séries, go2rtc, coreaudiod et le producer vidéo ont gardé le
 - Le réglage « suivi IA coupé » survit-il à un débranchement ou à un redémarrage de la caméra ?
 - D'où vient le blocage de la relecture du tilt ? Est-il lié à OBSBOT Center ouvert pendant le test ?
 - Quelle est la latence de bout en bout, de l'iPhone à la nacelle, via Tailscale ?
+
+---
+
+# Second test : le SDK OBSBOT (libdev 2.1.0_8)
+
+Date : 2026-10-05, en fin de journée. OBSBOT Center **fermé**. Sonde jetable : [`spike/sdk-probe/sdk-probe.cpp`](../../spike/sdk-probe/sdk-probe.cpp). Le SDK lui-même reste hors du dépôt, faute de licence de redistribution.
+
+## Résultats
+
+| Vérification | Résultat |
+|---|---|
+| Connexion | La Tiny 2 est trouvée par `Devices::get()`. Un lancement complet (connexion, commande, fermeture) prend **environ 4 s**. |
+| `cameraSetAiModeU(AiWorkModeHuman)` | Le suivi s'allume : après un pan à 30° en UVC, la caméra **revient sur la personne**. |
+| `cameraSetAiModeU(AiWorkModeNone)` | Le suivi se coupe : le pan à 30° **tient**. |
+| `cameraGetCameraStatusU` → `tiny.ai_mode` | Renvoie **toujours 0**, même suivi allumé. On ne peut pas savoir par là si le suivi est actif. |
+| `gimbalGetAttitudeInfoR` | Angles exacts. Le `pitch` du SDK est de **signe opposé** au tilt UVC. |
+| Relecture UVC du tilt, OBSBOT Center fermé | **Exacte** (-47° relus pour 47,9° côté SDK). Le blocage à -57° du premier test venait sans doute d'OBSBOT Center, ouvert à côté. |
+| CoreAudio | Pendant toute la série : aucune erreur `locking failed` d'arkaudiod, aucune erreur de coreaudiod, et aucun PID n'a changé. |
+| Gatekeeper | `libdev.dylib` porte l'attribut `com.apple.quarantine` du téléchargement. **Le premier chargement a été refusé** (« library load disallowed by system policy »), les suivants sont passés. |
+
+## Conséquences pour la conception
+
+1. **Commandes de la nacelle et du zoom** : en UVC. C'est rapide et prouvé, et ça ne dépend pas du SDK.
+2. **Couper le suivi IA** : seul usage nécessaire du SDK. On ne peut pas lire l'état du suivi, donc le service le coupe à chaque prise en main, sans chercher à savoir s'il était actif.
+3. **Le SDK utilise AVFoundation et interroge CoreAudio.** Aucun problème n'est apparu pendant un usage court. Mais un usage permanent n'est pas prouvé, et coreaudiod s'est déjà bloqué sur cette machine. D'où le choix de lancer la bibliothèque **à la demande, dans un processus séparé et de courte durée**.
+4. Il faut retirer l'attribut de quarantaine de la bibliothèque avant de l'utiliser depuis launchd.
+5. Après la coupure du suivi, un pan à 30° s'est arrêté deux fois à 22°, puis a tenu. C'est à revoir, en ajoutant un court délai après la coupure.
