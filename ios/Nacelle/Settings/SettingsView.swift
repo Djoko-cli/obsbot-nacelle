@@ -5,6 +5,18 @@ struct SettingsView: View {
     @Binding var settings: ConnectionSettings
     @Environment(\.dismiss) private var dismiss
     @State private var draft = ConnectionSettings()
+    // Ports saisis en texte : un champ lié à un Int ne se met à jour qu'à la validation (Retour ou perte
+    // du focus), et le pavé numérique n'a pas de Retour ; « Enregistrer » perdrait la dernière saisie.
+    @State private var go2rtcPortText = ""
+    @State private var ptzdPortText = ""
+
+    /// Les réglages tels que saisis, ports compris.
+    private var edited: ConnectionSettings {
+        var settings = draft
+        settings.go2rtcPort = ConnectionSettings.port(from: go2rtcPortText)
+        settings.ptzdPort = ConnectionSettings.port(from: ptzdPortText)
+        return settings
+    }
 
     var body: some View {
         NavigationStack {
@@ -21,7 +33,7 @@ struct SettingsView: View {
                 }
                 Section("Vidéo (go2rtc)") {
                     LabeledContent("Port") {
-                        TextField("1984", value: $draft.go2rtcPort, format: .number.grouping(.never))
+                        TextField("1984", text: $go2rtcPortText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
@@ -34,7 +46,7 @@ struct SettingsView: View {
                 }
                 Section("Nacelle (ptzd)") {
                     LabeledContent("Port") {
-                        TextField("1985", value: $draft.ptzdPort, format: .number.grouping(.never))
+                        TextField("1985", text: $ptzdPortText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
@@ -45,15 +57,17 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Enregistrer") {
-                        settings = draft
+                        settings = edited
                         dismiss()
                     }
-                    .disabled(!draft.isComplete)
+                    .disabled(!edited.isComplete)
                 }
             }
         }
         .onAppear {
             draft = settings
+            go2rtcPortText = String(settings.go2rtcPort)
+            ptzdPortText = String(settings.ptzdPort)
         }
     }
 }
