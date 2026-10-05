@@ -23,6 +23,7 @@ final class PTZClient {
     /// Dernière erreur renvoyée par ptzd.
     private(set) var lastError: ErrorCode?
     /// Vrai quand une tentative de connexion a échoué, jusqu'à la prochaine réussite.
+    /// Remis à faux par `start(url:)` et `stop()` : le bandeau revient à « Connexion… ».
     private(set) var isUnreachable = false
 
     @ObservationIgnored private let transport: any WebSocketTransport
@@ -45,6 +46,7 @@ final class PTZClient {
     func start(url: URL) {
         self.url = url
         attempt = 0
+        isUnreachable = false
         retry?.cancel()
         retry = nil
         connect()
@@ -63,6 +65,7 @@ final class PTZClient {
         transport.close()
         link = .idle
         state = nil
+        isUnreachable = false
     }
 
     func setJoystick(_ vector: JoystickVector) {
