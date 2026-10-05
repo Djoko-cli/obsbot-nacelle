@@ -1,0 +1,136 @@
+import Foundation
+
+/// Mouvement en vitesse, avec arrêt automatique et relecture de la position (spec § 6.2).
+@MainActor
+public final class MotionDriver {
+    /// Délai sans message `move` au bout duquel le mouvement s'arrête.
+    public static let deadManDelay: TimeInterval = 0.3
+    /// Période de relecture de la position pendant un mouvement.
+    public static let pollInterval: TimeInterval = 1.0
+
+    public private(set) var isMoving = false
+    public private(set) var position: PanTiltPosition?
+    /// Appelé quand `isMoving` ou `position` change.
+    public var onChange: (() -> Void)?
+
+    private let camera: any CameraDevice
+    private let scheduler: any Scheduler
+    private let settings: MotionSettings
+    private let log: LogSink
+    private var lastSent = PanTiltRelative.stop
+    private var lastMover: ClientID?
+    private var deadMan: (any Cancellable)?
+    private var poll: (any Cancellable)?
+
+    public init(camera: any CameraDevice, scheduler: any Scheduler, settings: MotionSettings, log: @escaping LogSink) {
+        self.camera = camera
+        self.scheduler = scheduler
+        self.settings = settings
+        self.log = log
+    }
+
+    /// Applique une consigne de vitesse. `0,0` arrête tout de suite.
+    public func move(pan: Double, tilt: Double, from client: ClientID) throws {
+        lastMover = client
+        let command = SpeedCurve.command(pan: pan, tilt: tilt, settings: settings)
+        guard command != .stop else {
+            try stop()
+            return
+        }
+        if command != lastSent {
+            try camera.setPanTiltRelative(command)
+            lastSent = command
+        }
+        deadMan?.cancel()
+        deadMan = scheduler.schedule(after: Self.deadManDelay) { [weak self] in
+            self?.deadManFired()
+        }
+        if !isMoving {
+            isMoving = true
+            schedulePoll()
+            onChange?()
+        }
+    }
+
+    /// Arrête le mouvement puis relit la position. Si l'arrêt échoue, la
+    /// commande en cours reste mémorisée : le prochain arrêt la renverra.
+    public func stop() throws {
+        deadMan?.cancel()
+        deadMan = nil
+        poll?.cancel()
+        poll = nil
+        let wasMoving = isMoving
+        isMoving = false
+        if lastSent != .stop {
+            try camera.setPanTiltRelative(.stop)
+            lastSent = .stop
+        }
+        refreshPosition()
+        if wasMoving {
+            onChange?()
+        }
+    }
+
+    /// Arrête le mouvement si ce client était le dernier à piloter.
+    public func clientDisconnected(_ client: ClientID) {
+        guard client == lastMover else { return }
+        lastMover = nil
+        do {
+            try stop()
+        } catch {
+            log("Arrêt à la déconnexion impossible : \(error). Nouvel essai dans 0,3 s.")
+            scheduleStopRetry()
+        }
+    }
+
+    /// Relit la position ; publie si elle a changé.
+    public func refreshPosition() {
+        guard let read = try? camera.readPanTilt(), read != position else { return }
+        position = read
+        onChange?()
+    }
+
+    /// Oublie tout (caméra débranchée).
+    public func reset() {
+        deadMan?.cancel()
+        deadMan = nil
+        poll?.cancel()
+        poll = nil
+        lastSent = .stop
+        lastMover = nil
+        let changed = isMoving || position != nil
+        isMoving = false
+        position = nil
+        if changed {
+            onChange?()
+        }
+    }
+
+    private func deadManFired() {
+        deadMan = nil
+        do {
+            try stop()
+        } catch {
+            log("Arrêt automatique impossible : \(error). Nouvel essai dans 0,3 s.")
+            scheduleStopRetry()
+        }
+    }
+
+    private func scheduleStopRetry() {
+        deadMan = scheduler.schedule(after: Self.deadManDelay) { [weak self] in
+            self?.deadManFired()
+        }
+    }
+
+    private func schedulePoll() {
+        poll = scheduler.schedule(after: Self.pollInterval) { [weak self] in
+            self?.pollTick()
+        }
+    }
+
+    private func pollTick() {
+        guard isMoving else { return }
+        refreshPosition()
+        schedulePoll()
+    }
+}
