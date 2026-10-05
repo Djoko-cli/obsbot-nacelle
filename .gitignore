@@ -19,3 +19,8 @@ spike/**/*.sdp
 vendor/
 libdev_*.zip
 spike/sdk-probe/sdk-probe
+
+# App iOS : projet et Info.plist générés par xcodegen, équipe de signature locale
+ios/Nacelle.xcodeproj/
+ios/Nacelle/Info.plist
+ios/Config/Local.xcconfig

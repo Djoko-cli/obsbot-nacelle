@@ -1,0 +1,5 @@
+// Signature de l'app. L'équipe de développement est propre à chaque installation :
+// elle se règle dans Local.xcconfig, à côté de ce fichier, non versionné.
+// Contenu attendu de Local.xcconfig : DEVELOPMENT_TEAM = <identifiant de l'équipe>
+CODE_SIGN_STYLE = Automatic
+#include? "Local.xcconfig"

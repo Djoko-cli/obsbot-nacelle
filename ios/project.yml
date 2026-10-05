@@ -1,0 +1,69 @@
+# Projet Xcode de l'app Nacelle, généré par xcodegen (le .xcodeproj n'est pas versionné).
+# Générer : cd ios && xcodegen
+name: Nacelle
+options:
+  bundleIdPrefix: io.github.djoko-cli
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Signing.xcconfig
+  Release: Config/Signing.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+packages:
+  NacelleProtocol:
+    path: ../Packages/NacelleProtocol
+  WebRTC:
+    url: https://github.com/stasel/WebRTC
+    exactVersion: 154.0.0
+targets:
+  Nacelle:
+    type: application
+    platform: iOS
+    sources: [Nacelle]
+    dependencies:
+      - package: NacelleProtocol
+      - package: WebRTC
+    info:
+      path: Nacelle/Info.plist
+      properties:
+        CFBundleDisplayName: Nacelle
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSLocalNetworkUsageDescription: "À la maison, la vidéo de la caméra peut passer directement par le réseau local."
+        NSAppTransportSecurity:
+          NSExceptionDomains:
+            ts.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.djoko-cli.nacelle
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+  NacelleTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [NacelleTests]
+    dependencies:
+      - target: Nacelle
+      - package: NacelleProtocol
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Nacelle:
+    build:
+      targets:
+        Nacelle: all
+        NacelleTests: [test]
+    test:
+      targets: [NacelleTests]
