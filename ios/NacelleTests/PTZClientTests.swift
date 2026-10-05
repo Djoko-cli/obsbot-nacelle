@@ -102,6 +102,21 @@ struct PTZClientTests {
         #expect(transport.openedURLs.count == before + 1)
     }
 
+    @Test("Arrêt ou nouveau départ : « injoignable » est effacé jusqu'au prochain échec")
+    func unreachableResetOnStopAndStart() {
+        client.start(url: url)
+        transport.emit(.closed)
+        #expect(client.isUnreachable)
+        client.stop()
+        #expect(!client.isUnreachable)
+        client.start(url: url)
+        transport.emit(.closed)
+        #expect(client.isUnreachable)
+        client.start(url: url)
+        #expect(!client.isUnreachable)
+        #expect(client.link == .connecting)
+    }
+
     @Test("Coupure : le mouvement s'arrête et l'état est oublié")
     func closeStopsRepeating() throws {
         connect()
