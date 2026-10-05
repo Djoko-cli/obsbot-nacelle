@@ -7,8 +7,12 @@ struct JoystickView: View {
     var onRelease: () -> Void
 
     @State private var translation: CGSize = .zero
+    /// Des consignes ont été envoyées depuis le dernier relâchement.
     @State private var isTouching = false
     @State private var touchCount = 0
+    /// Doigt posé. Revient à faux à la fin du glissé et aussi quand le système l'annule (Centre de
+    /// contrôle, appel, alerte), cas où `onEnded` n'est pas appelé.
+    @GestureState private var isPressed = false
 
     private let diameter: CGFloat = 150
     private let knobDiameter: CGFloat = 64
@@ -33,6 +37,14 @@ struct JoystickView: View {
         .opacity(isEnabled ? 1 : 0.4)
         .gesture(drag)
         .sensoryFeedback(.impact(weight: .light), trigger: touchCount)
+        .onChange(of: isPressed) { _, pressed in
+            if !pressed {
+                release()
+            } else if isEnabled {
+                // Vibration au seul toucher, pas quand le joystick redevient actif sous un doigt déjà posé.
+                touchCount += 1
+            }
+        }
         .onChange(of: isEnabled) { _, enabled in
             if !enabled {
                 release()
@@ -43,12 +55,12 @@ struct JoystickView: View {
 
     private var drag: some Gesture {
         DragGesture(minimumDistance: 0)
+            .updating($isPressed) { _, pressed, _ in
+                pressed = true
+            }
             .onChanged { value in
                 guard isEnabled else { return }
-                if !isTouching {
-                    isTouching = true
-                    touchCount += 1
-                }
+                isTouching = true
                 translation = value.translation
                 onChange(JoystickMath.vector(translation: value.translation, radius: radius))
             }

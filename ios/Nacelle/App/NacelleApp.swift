@@ -12,9 +12,12 @@ struct NacelleApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             // Spec § 7.4 : on coupe tout en arrière-plan, on reconnecte au retour.
+            // Inactif : la nacelle s'arrête, la connexion reste ouverte.
             switch phase {
             case .active:
                 model.activate()
+            case .inactive:
+                model.pause()
             case .background:
                 model.deactivate()
             default:
