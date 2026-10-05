@@ -18,3 +18,4 @@ spike/**/*.sdp
 # SDK OBSBOT : propriétaire, jamais versionné (à placer dans vendor/obsbot-sdk/)
 vendor/
 libdev_*.zip
+spike/sdk-probe/sdk-probe
