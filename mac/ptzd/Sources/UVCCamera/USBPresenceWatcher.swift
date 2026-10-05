@@ -2,7 +2,8 @@ import Foundation
 import IOKit
 
 /// Suit l'arrivée et le départ d'un périphérique USB, par notifications IOKit
-/// sur la file principale.
+/// sur la file principale. Le port IOKit garde un pointeur non retenu vers cet
+/// objet et n'est jamais détruit : il doit vivre aussi longtemps que le processus.
 @MainActor
 final class USBPresenceWatcher {
     private let vendorID: Int
