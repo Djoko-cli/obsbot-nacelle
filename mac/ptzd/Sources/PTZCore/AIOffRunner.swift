@@ -24,6 +24,11 @@ public final class ProcessAIOffRunner: AIOffRunner {
     private let timeout: TimeInterval
     private let outputURL: URL?
     private let scheduler: any Scheduler
+    /// Dernier utilitaire lancé : retenu jusqu'au suivant, pour refuser un chevauchement.
+    private(set) var current: Process?
+
+    /// Délai entre SIGTERM et SIGKILL quand le délai maximal est dépassé.
+    static let killDelay: TimeInterval = 2
 
     public init(
         executableURL: URL,
@@ -40,10 +45,16 @@ public final class ProcessAIOffRunner: AIOffRunner {
     }
 
     public func run(completion: @escaping @MainActor @Sendable (AIOffResult) -> Void) {
+        // Un utilitaire expiré peut vivre encore jusqu'au SIGKILL : pas de second en parallèle.
+        if let previous = current, previous.isRunning {
+            completion(.launchFailed("obsbot-ai-off précédent encore en cours"))
+            return
+        }
         let process = Process()
         process.executableURL = executableURL
         process.arguments = arguments
-        if let output = appendingHandle() {
+        let output = appendingHandle()
+        if let output {
             process.standardOutput = output
             process.standardError = output
         }
@@ -54,9 +65,7 @@ public final class ProcessAIOffRunner: AIOffRunner {
             let exited = finished.terminationReason == .exit
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    guard !run.done else { return }
-                    run.done = true
-                    run.timeoutTask?.cancel()
+                    guard run.finish() else { return }
                     completion(Self.result(status: status, exited: exited))
                 }
             }
@@ -65,16 +74,30 @@ public final class ProcessAIOffRunner: AIOffRunner {
         do {
             try process.run()
         } catch {
-            run.done = true
+            try? output?.close()
+            run.finish()
             completion(.launchFailed(error.localizedDescription))
             return
         }
+        // Le fils a sa propre copie du descripteur : celle du parent fuirait à chaque exécution.
+        try? output?.close()
+        current = process
 
-        run.timeoutTask = scheduler.schedule(after: timeout) {
-            guard !run.done else { return }
-            run.done = true
-            run.process.terminate()
+        // Capture faible : tant que le processus tourne, son gestionnaire de fin retient `run`.
+        run.timeoutTask = scheduler.schedule(after: timeout) { [weak self, weak run] in
+            guard let run, run.finish() else { return }
+            self?.stop(run.process)
             completion(.timeout)
+        }
+    }
+
+    /// SIGTERM, puis SIGKILL si l'utilitaire vit encore 2 s plus tard.
+    private func stop(_ process: Process) {
+        process.terminate()
+        let pid = process.processIdentifier
+        scheduler.schedule(after: Self.killDelay) { [weak process] in
+            guard let process, process.isRunning else { return }
+            kill(pid, SIGKILL)
         }
     }
 
@@ -112,5 +135,18 @@ private final class Run {
 
     init(process: Process) {
         self.process = process
+    }
+
+    /// Marque l'exécution terminée, une seule fois, et rompt les cycles de rétention
+    /// (processus → gestionnaire de fin → run, run → minuterie → run).
+    /// Renvoie false si elle l'était déjà.
+    @discardableResult
+    func finish() -> Bool {
+        guard !done else { return false }
+        done = true
+        process.terminationHandler = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        return true
     }
 }
