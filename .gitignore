@@ -1,0 +1,16 @@
+.DS_Store
+
+# Xcode et SwiftPM
+build/
+DerivedData/
+.build/
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+
+# Sonde jetable : binaire et captures de test (jamais d'images de la caméra dans le dépôt)
+spike/**/uvc-probe
+spike/**/*.jpg
+spike/**/*.jpeg
+spike/**/*.png
+spike/**/*.sdp
