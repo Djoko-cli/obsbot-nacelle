@@ -11,7 +11,14 @@ LABEL="io.github.djoko-cli.obsbot-nacelle.ptzd"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LIB="$ROOT/vendor/obsbot-sdk/macos/arm64-release/libdev.dylib"
 LOAD=1
-[ "${1:-}" = "--no-load" ] && LOAD=0
+case "$#:${1:-}" in
+    0:) ;;
+    1:--no-load) LOAD=0 ;;
+    *)
+        echo "usage : scripts/install-mac.sh [--no-load]" >&2
+        exit 2
+        ;;
+esac
 
 if [ ! -f "$LIB" ]; then
     echo "SDK OBSBOT introuvable : $LIB" >&2
@@ -53,8 +60,27 @@ if [ "$LOAD" = 0 ]; then
     echo "Fichiers installés ; agent non chargé (--no-load)."
     exit 0
 fi
-launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
+DOMAIN="gui/$(id -u)"
+launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+# bootout rend la main avant que l'agent ait disparu ; un bootstrap trop tôt échoue
+# (erreur 5). On attend sa disparition, 10 s au plus.
+for _ in $(seq 1 20); do
+    launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 || break
+    sleep 0.5
+done
+# Puis jusqu'à 3 nouveaux essais, à 1 s d'intervalle.
+LOADED=0
+for ATTEMPT in 1 2 3 4; do
+    if launchctl bootstrap "$DOMAIN" "$PLIST"; then
+        LOADED=1
+        break
+    fi
+    [ "$ATTEMPT" -lt 4 ] && sleep 1
+done
+if [ "$LOADED" = 0 ]; then
+    echo "Chargement de l'agent impossible : launchctl bootstrap a échoué 4 fois." >&2
+    exit 1
+fi
 sleep 2
-launchctl print "gui/$(id -u)/$LABEL" | grep -E "^\s+(state|pid) =" || true
+launchctl print "$DOMAIN/$LABEL" | grep -E "^\s+(state|pid) =" || true
 echo "Journal : tail -f \"$LOGS/ptzd.log\""
