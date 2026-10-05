@@ -140,4 +140,44 @@ struct PTZControllerTests {
         #expect(!controller.snapshot.moving)
         #expect(camera.relativeCommands.last == .stop)
     }
+
+    @Test("Ordre de vie privée ignoré par la caméra : renvoyé après relecture")
+    func ignoredPrivacyCommandIsResent() {
+        let controller = makeController()
+        controller.cameraPresenceChanged(true)
+        camera.ignoreAbsoluteCommands = 1
+        _ = controller.handle(.privacy(on: true), from: 1)
+        scheduler.advance(by: PTZController.settleDelay)
+        #expect(camera.absoluteCommands.count == 2)
+        scheduler.advance(by: PTZController.settleDelay)
+        #expect(controller.snapshot.tilt == PrivacyKeeper.privacyTilt)
+        #expect(log.lines.contains { $0.contains("ignoré") })
+    }
+
+    @Test("Ordre toujours ignoré : deux renvois au plus, puis une erreur journalisée")
+    func resendsAreBounded() {
+        let controller = makeController()
+        controller.cameraPresenceChanged(true)
+        camera.ignoreAbsoluteCommands = 10
+        _ = controller.handle(.privacy(on: true), from: 1)
+        for _ in 0..<5 {
+            scheduler.advance(by: PTZController.settleDelay)
+        }
+        #expect(camera.absoluteCommands.count == 1 + PTZController.maxResends)
+        #expect(log.lines.contains { $0.contains("non atteinte") })
+    }
+
+    @Test("Un mouvement du joystick après la sortie annule la vérification")
+    func userMoveCancelsVerification() {
+        let controller = makeController()
+        controller.cameraPresenceChanged(true)
+        _ = controller.handle(.privacy(on: true), from: 1)
+        scheduler.advance(by: PTZController.settleDelay)
+        _ = controller.handle(.privacy(on: false), from: 1)
+        let sent = camera.absoluteCommands.count
+        camera.position = PanTiltPosition(pan: 40, tilt: 10)
+        _ = controller.handle(.move(pan: 1, tilt: 0), from: 1)
+        scheduler.advance(by: PTZController.settleDelay)
+        #expect(camera.absoluteCommands.count == sent)
+    }
 }

@@ -8,6 +8,10 @@ public final class PTZController {
     /// Délai avant de relire la position après un déplacement absolu : relue
     /// trop tôt, la caméra renvoie une valeur fausse (spec § 10, question 1).
     public static let settleDelay: TimeInterval = 2
+    /// Écart toléré entre l'ordre absolu et la position relue (la relecture peut différer d'1°).
+    public static let positionTolerance: Double = 3
+    /// Renvois au plus d'un ordre absolu ignoré par la caméra.
+    public static let maxResends = 2
 
     public private(set) var snapshot: StateSnapshot
     /// Appelé à chaque changement d'état, pour diffusion à tous les clients.
@@ -21,6 +25,7 @@ public final class PTZController {
     private let control: ControlTaker
     private let log: LogSink
     private var settle: (any Cancellable)?
+    private var verifyTarget = false
 
     public init(
         camera: any CameraDevice,
@@ -64,6 +69,7 @@ public final class PTZController {
             if let refusal = refusal() {
                 return refusal
             }
+            verifyTarget = false
             return attempt { try motion.move(pan: pan, tilt: tilt, from: client) }
         case let .zoom(value):
             if let refusal = refusal() {
@@ -118,13 +124,40 @@ public final class PTZController {
         publish()
     }
 
-    private func refreshAfterSettling() {
+    private func refreshAfterSettling(resendsLeft: Int = PTZController.maxResends) {
+        verifyTarget = true
         settle?.cancel()
         settle = scheduler.schedule(after: Self.settleDelay) { [weak self] in
             guard let self else { return }
             self.settle = nil
             self.motion.refreshPosition()
             self.zoom.refresh()
+            self.checkTargetReached(resendsLeft: resendsLeft)
+        }
+    }
+
+    /// La caméra ignore parfois un ordre absolu en renvoyant un succès : on compare la
+    /// position relue à la cible et on renvoie l'ordre, au plus maxResends fois.
+    private func checkTargetReached(resendsLeft: Int) {
+        guard verifyTarget, let target = privacy.lastTarget, let position = motion.position else { return }
+        let reached = abs(position.pan - target.pan) <= Self.positionTolerance
+            && abs(position.tilt - target.tilt) <= Self.positionTolerance
+        if reached {
+            verifyTarget = false
+            return
+        }
+        guard resendsLeft > 0 else {
+            verifyTarget = false
+            log("Position non atteinte après \(Self.maxResends) renvois : cible \(target), relue \(position).")
+            return
+        }
+        log("Ordre absolu ignoré par la caméra (cible \(target), relue \(position)) : nouvel envoi.")
+        do {
+            try privacy.resendLastTarget()
+            refreshAfterSettling(resendsLeft: resendsLeft - 1)
+        } catch {
+            verifyTarget = false
+            log("Nouvel envoi refusé : \(error)")
         }
     }
 
