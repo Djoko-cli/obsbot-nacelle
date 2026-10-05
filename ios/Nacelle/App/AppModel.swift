@@ -10,8 +10,9 @@ final class AppModel {
         didSet {
             guard settings != oldValue else { return }
             store.save(settings)
-            if isActive {
-                deactivate()
+            // Au premier plan, de nouveaux réglages (dont ceux du premier lancement) connectent tout de suite.
+            if isForeground {
+                disconnect()
                 activate()
             }
         }
@@ -19,7 +20,9 @@ final class AppModel {
 
     let ptz: PTZClient
     let video: VideoSession
+    /// Connecté (ou en train de se connecter) au contrôle et à la vidéo.
     private(set) var isActive = false
+    @ObservationIgnored private var isForeground = false
     @ObservationIgnored private let store: SettingsStore
 
     init(store: SettingsStore, ptz: PTZClient, video: VideoSession) {
@@ -41,6 +44,7 @@ final class AppModel {
     /// Premier plan : connexion au contrôle et à la vidéo (le contrôle envoie takeControl à l'ouverture).
     /// Sans effet si déjà actif : un retour .inactive → .active ne relance rien.
     func activate() {
+        isForeground = true
         guard !isActive, let ptzdURL = settings.ptzdURL, let webRTCURL = settings.webRTCURL else { return }
         isActive = true
         ptz.start(url: ptzdURL)
@@ -49,13 +53,20 @@ final class AppModel {
 
     /// Arrière-plan : arrêt de la nacelle, fermeture du WebSocket et de la vidéo.
     func deactivate() {
+        isForeground = false
+        disconnect()
+    }
+
+    private func disconnect() {
         isActive = false
         ptz.stop()
         video.stop()
     }
 
+    /// Rien tant que l'app n'est pas connectée (réglages incomplets : la feuille des réglages est ouverte).
     var bannerText: String? {
-        StatusBanner.text(for: BannerInputs(
+        guard isActive else { return nil }
+        return StatusBanner.text(for: BannerInputs(
             macUnreachable: ptz.isUnreachable,
             connecting: ptz.link != .connected || video.phase != .playing,
             state: ptz.state

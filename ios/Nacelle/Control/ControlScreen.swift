@@ -41,7 +41,10 @@ struct ControlScreen: View {
             }
             .padding(20)
         }
-        .sensoryFeedback(.success, trigger: privacyOn)
+        .sensoryFeedback(.success, trigger: model.ptz.state?.privacy) { old, new in
+            // Seulement entre deux états connus : pas à la coupure ni à la reconnexion.
+            old != nil && new != nil && old != new
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView(settings: $model.settings)
         }
