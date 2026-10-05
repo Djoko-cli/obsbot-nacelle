@@ -46,7 +46,7 @@ public final class PTZController {
         motion = MotionDriver(camera: camera, scheduler: scheduler, settings: settings, log: log)
         zoom = ZoomDriver(camera: camera, scheduler: scheduler, log: log)
         privacy = PrivacyKeeper(camera: camera, store: store, log: log)
-        control = ControlTaker(runner: aiOff, isObsbotCenterRunning: isObsbotCenterRunning, log: log)
+        control = ControlTaker(runner: aiOff, scheduler: scheduler, isObsbotCenterRunning: isObsbotCenterRunning, log: log)
         snapshot = StateSnapshot(
             camera: camera.isPresent ? .connected : .absent,
             control: .idle,

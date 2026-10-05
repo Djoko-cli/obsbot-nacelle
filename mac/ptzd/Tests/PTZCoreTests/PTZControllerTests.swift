@@ -242,6 +242,9 @@ struct PTZControllerTests {
         // Un échec de l'utilitaire réapplique aussi.
         _ = controller.handle(.takeControl, from: 1)
         runner.finish(.sdkError)
+        #expect(controller.snapshot.control == .taking)
+        scheduler.advance(by: ControlTaker.retryDelay)
+        runner.finish(.sdkError)
         #expect(controller.snapshot.control == .failed)
         #expect(camera.absoluteCommands.count == 3)
     }
