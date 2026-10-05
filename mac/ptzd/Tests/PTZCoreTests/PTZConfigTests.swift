@@ -26,6 +26,18 @@ struct PTZConfigTests {
         }
     }
 
+    @Test("listenAddress : 127.0.0.1 ou plage Tailscale 100.64.0.0/10 seulement")
+    func listenAddressRange() throws {
+        for refused in ["0.0.0.0", "192.168.1.10", "100.128.0.1", "100.63.255.255", "127.0.0.2"] {
+            #expect(throws: ConfigError.invalidListenAddress(refused)) {
+                try decode(#"{"listenAddress":"\#(refused)"}"#)
+            }
+        }
+        for accepted in ["127.0.0.1", "100.64.0.1", "100.127.255.254"] {
+            #expect(try decode(#"{"listenAddress":"\#(accepted)"}"#).listenAddress == accepted)
+        }
+    }
+
     @Test("Bornes des vitesses et des sens")
     func ranges() {
         #expect(throws: ConfigError.outOfRange("panMaxSpeed")) {

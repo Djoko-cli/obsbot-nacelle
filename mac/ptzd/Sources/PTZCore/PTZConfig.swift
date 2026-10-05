@@ -61,10 +61,11 @@ public struct PTZConfig: Codable, Equatable, Sendable {
         return config
     }
 
+    /// Adresse d'écoute : 127.0.0.1 ou une adresse Tailscale (plage CGNAT 100.64.0.0/10),
+    /// jamais 0.0.0.0 ni une adresse du réseau local (spec § 6.10).
     /// Bornes de la Tiny 2 : vitesse pan 1–80, tilt 1–120 (test de faisabilité).
     public func validate() throws {
-        var address = in_addr()
-        guard inet_pton(AF_INET, listenAddress, &address) == 1 else {
+        guard Self.isAllowedListenAddress(listenAddress) else {
             throw ConfigError.invalidListenAddress(listenAddress)
         }
         guard (1...65535).contains(port) else { throw ConfigError.outOfRange("port") }
@@ -72,6 +73,16 @@ public struct PTZConfig: Codable, Equatable, Sendable {
         guard (1...120).contains(tiltMaxSpeed) else { throw ConfigError.outOfRange("tiltMaxSpeed") }
         guard [1, -1].contains(panDirection) else { throw ConfigError.outOfRange("panDirection") }
         guard [1, -1].contains(tiltDirection) else { throw ConfigError.outOfRange("tiltDirection") }
+    }
+
+    static func isAllowedListenAddress(_ text: String) -> Bool {
+        var address = in_addr()
+        guard inet_pton(AF_INET, text, &address) == 1 else { return false }
+        let value = UInt32(bigEndian: address.s_addr)
+        let loopback: UInt32 = 0x7F00_0001
+        // 100.64.0.0/10 : 100 = 0x64, puis les deux bits de poids fort du deuxième octet à 01.
+        let tailscale = value & 0xFFC0_0000 == 0x6440_0000
+        return value == loopback || tailscale
     }
 
     public var motion: MotionSettings {
