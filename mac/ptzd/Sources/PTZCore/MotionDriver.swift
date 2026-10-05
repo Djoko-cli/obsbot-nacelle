@@ -87,9 +87,11 @@ public final class MotionDriver {
         }
     }
 
-    /// Relit la position ; publie si elle a changé.
+    /// Relit la position ; publie si elle a changé. Une relecture ratée la rend
+    /// inconnue (nil) : la vérification de la vie privée ne compare jamais une valeur périmée.
     public func refreshPosition() {
-        guard let read = try? camera.readPanTilt(), read != position else { return }
+        let read = try? camera.readPanTilt()
+        guard read != position else { return }
         position = read
         onChange?()
     }

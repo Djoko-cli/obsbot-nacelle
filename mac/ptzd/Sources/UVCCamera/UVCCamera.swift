@@ -7,8 +7,12 @@ import PTZCore
 public final class UVCCamera: CameraDevice {
     public static let tiny2VendorID: UInt16 = 0x3564
     public static let tiny2ProductID: UInt16 = 0xFEF8
+    /// Ouverture : 5 essais à 1 s d'intervalle, puis toutes les 5 s tant que la caméra reste branchée.
     static let openRetries = 5
     static let openRetryDelay: TimeInterval = 1
+    static let openSlowRetryDelay: TimeInterval = 5
+    /// Au palier de 5 s, un échec journalisé par minute au plus.
+    static let openSlowRetriesPerLog = 12
 
     /// Appelé quand la caméra devient utilisable ou cesse de l'être.
     public var onPresenceChange: ((Bool) -> Void)?
@@ -19,6 +23,7 @@ public final class UVCCamera: CameraDevice {
     private var device: OpaquePointer?
     private var watcher: USBPresenceWatcher?
     private var attached = false
+    private var openRetry: DispatchWorkItem?
 
     public init(
         vendorID: UInt16 = UVCCamera.tiny2VendorID,
@@ -68,8 +73,11 @@ public final class UVCCamera: CameraDevice {
 
     private func attachmentChanged(_ nowAttached: Bool) {
         attached = nowAttached
+        // Une seule série d'essais à la fois, même après un débranchement-rebranchement rapide.
+        openRetry?.cancel()
+        openRetry = nil
         if nowAttached {
-            open(retriesLeft: Self.openRetries)
+            open(attempt: 0)
         } else if device != nil {
             cuvc_close(device)
             device = nil
@@ -77,8 +85,10 @@ public final class UVCCamera: CameraDevice {
         }
     }
 
-    /// Juste après le branchement, la caméra peut ne pas répondre encore : on réessaie.
-    private func open(retriesLeft: Int) {
+    /// Juste après le branchement, la caméra peut ne pas répondre encore : on réessaie,
+    /// sans jamais abandonner tant qu'elle reste branchée (la vie privée en dépend).
+    private func open(attempt: Int) {
+        openRetry = nil
         guard attached, device == nil else { return }
         var error: Int32 = 0
         if let opened = cuvc_open(vendorID, productID, &error) {
@@ -86,13 +96,15 @@ public final class UVCCamera: CameraDevice {
             onPresenceChange?(true)
             return
         }
-        guard retriesLeft > 0 else {
-            log("Caméra branchée mais commandes UVC inaccessibles (code \(Self.hex(error))).")
-            return
+        let slow = attempt + 1 >= Self.openRetries
+        if slow, (attempt + 1 - Self.openRetries) % Self.openSlowRetriesPerLog == 0 {
+            log("Caméra branchée mais commandes UVC inaccessibles (code \(Self.hex(error))) : nouvel essai toutes les 5 s.")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.openRetryDelay) { [weak self] in
-            MainActor.assumeIsolated { self?.open(retriesLeft: retriesLeft - 1) }
+        let retry = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.open(attempt: attempt + 1) }
         }
+        openRetry = retry
+        DispatchQueue.main.asyncAfter(deadline: .now() + (slow ? Self.openSlowRetryDelay : Self.openRetryDelay), execute: retry)
     }
 
     private func set(_ selector: UInt8, _ payload: [UInt8]) throws {
