@@ -24,8 +24,11 @@ struct WebSocketServerTests {
 
     /// Démarre un serveur sur ces adresses (port 0 : choisi par le système) et
     /// renvoie le port ouvert sur chacune.
-    private func startServer(on hosts: [String] = ["127.0.0.1"]) async -> (WebSocketServer, [String: UInt16]) {
-        let server = WebSocketServer(hosts: hosts, port: 0, controller: controller, scheduler: DispatchScheduler(), log: { _ in })
+    private func startServer(
+        on hosts: [String] = ["127.0.0.1"],
+        log: @escaping LogSink = { _ in }
+    ) async -> (WebSocketServer, [String: UInt16]) {
+        let server = WebSocketServer(hosts: hosts, port: 0, controller: controller, scheduler: DispatchScheduler(), log: log)
         let ports = await withCheckedContinuation { continuation in
             var ready: [String: UInt16] = [:]
             server.onReady = { host, port in
@@ -39,9 +42,13 @@ struct WebSocketServerTests {
         return (server, ports)
     }
 
-    private func connect(_ host: String, _ port: UInt16) -> URLSessionWebSocketTask {
+    private func connect(_ host: String, _ port: UInt16, origin: String? = nil) -> URLSessionWebSocketTask {
         let authority = host.contains(":") ? "[\(host)]" : host
-        let task = URLSession.shared.webSocketTask(with: URL(string: "ws://\(authority):\(port)")!)
+        var request = URLRequest(url: URL(string: "ws://\(authority):\(port)")!)
+        if let origin {
+            request.setValue(origin, forHTTPHeaderField: "Origin")
+        }
+        let task = URLSession.shared.webSocketTask(with: request)
         task.resume()
         return task
     }
@@ -124,6 +131,33 @@ struct WebSocketServerTests {
         (tasks + [extra]).forEach { $0.cancel(with: .goingAway, reason: nil) }
         withExtendedLifetime(server) {}
     }
+
+    @Test("Poignée de main avec en-tête Origin (navigateur) : refusée, journalisée, place libérée")
+    func browserOriginRejected() async throws {
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) })
+        let port = ports["127.0.0.1"]!
+        let browser = connect("127.0.0.1", port, origin: "https://exemple.invalid")
+        await #expect(throws: (any Error).self) {
+            _ = try await browser.receive()
+        }
+        #expect(lines.values.contains("Connexion refusée : en-tête Origin (navigateur)."))
+        // La connexion refusée est fermée côté serveur : les 4 places restent libres
+        // pour les clients sans Origin (app iOS, nacelle-ws).
+        var clients: [URLSessionWebSocketTask] = []
+        for _ in 0..<WebSocketServer.maxClients {
+            let task = connect("127.0.0.1", port)
+            _ = try await next(task) { _ in true }
+            clients.append(task)
+        }
+        (clients + [browser]).forEach { $0.cancel(with: .goingAway, reason: nil) }
+        withExtendedLifetime(server) {}
+    }
+}
+
+@MainActor
+final class LineBox {
+    var values: [String] = []
 }
 
 @MainActor
