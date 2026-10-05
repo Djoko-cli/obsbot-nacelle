@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import os
 import PTZCore
@@ -59,9 +58,7 @@ struct PTZDaemon {
             ),
             store: JSONFileStateStore(url: supportDirectory.appending(path: "state.json"), log: { write($0) }),
             settings: config.motion,
-            isObsbotCenterRunning: {
-                !NSRunningApplication.runningApplications(withBundleIdentifier: "com.obsbot.OBSBOT_Center").isEmpty
-            },
+            isObsbotCenterRunning: { ObsbotCenterDetector.isRunning() },
             log: log
         )
         camera.onPresenceChange = { controller.cameraPresenceChanged($0) }
