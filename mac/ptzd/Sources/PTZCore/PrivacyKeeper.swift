@@ -44,10 +44,11 @@ public final class PrivacyKeeper {
     public func exit() throws {
         guard isActive else { return }
         let target = saved ?? SavedPosition(pan: 0, tilt: 0, zoom: nil)
-        try camera.setPanTiltAbsolute(panDegrees: target.pan, tiltDegrees: target.tilt)
+        // Zoom d'abord : si la caméra refuse, l'objectif est encore tourné vers le bas.
         if let zoom = target.zoom {
             try camera.setZoom(zoom)
         }
+        try camera.setPanTiltAbsolute(panDegrees: target.pan, tiltDegrees: target.tilt)
         persist(PersistedState(privacy: false, saved: nil))
         saved = nil
         isActive = false
