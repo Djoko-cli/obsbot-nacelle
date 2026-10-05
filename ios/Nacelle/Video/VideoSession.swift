@@ -64,6 +64,8 @@ final class VideoSession {
 
     private func connect() {
         guard let url else { return }
+        retry?.cancel()
+        retry = nil
         teardown()
         generation += 1
         let current = generation
