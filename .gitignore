@@ -9,7 +9,7 @@ DerivedData/
 xcuserdata/
 
 # Sonde jetable : binaire et captures de test (jamais d'images de la caméra dans le dépôt)
-spike/**/uvc-probe
+spike/uvc-probe/uvc-probe
 spike/**/*.jpg
 spike/**/*.jpeg
 spike/**/*.png
