@@ -180,4 +180,15 @@ struct PTZControllerTests {
         scheduler.advance(by: PTZController.settleDelay)
         #expect(camera.absoluteCommands.count == sent)
     }
+
+    @Test("En vie privée, un pan relu décalé ne déclenche pas de renvoi")
+    func privacyChecksTiltOnly() {
+        let controller = makeController()
+        controller.cameraPresenceChanged(true)
+        _ = controller.handle(.privacy(on: true), from: 1)
+        camera.position = PanTiltPosition(pan: camera.position.pan + 10, tilt: PrivacyKeeper.privacyTilt)
+        scheduler.advance(by: PTZController.settleDelay)
+        #expect(camera.absoluteCommands.count == 1)
+        #expect(!log.lines.contains { $0.contains("ignoré") })
+    }
 }
