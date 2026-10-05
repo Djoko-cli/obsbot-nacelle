@@ -118,6 +118,7 @@ public final class PTZController {
             log("Caméra débranchée.")
             settle?.cancel()
             settle = nil
+            verifyTarget = false
             motion.reset()
             zoom.reset()
         }
@@ -140,8 +141,10 @@ public final class PTZController {
     /// position relue à la cible et on renvoie l'ordre, au plus maxResends fois.
     private func checkTargetReached(resendsLeft: Int) {
         guard verifyTarget, let target = privacy.lastTarget, let position = motion.position else { return }
-        let reached = abs(position.pan - target.pan) <= Self.positionTolerance
-            && abs(position.tilt - target.tilt) <= Self.positionTolerance
+        // En vie privée, seul le tilt protège l'image ; à -70° la caméra relit d'ailleurs
+        // un pan décalé (constaté le 2026-10-05). Hors vie privée, les deux axes comptent.
+        let panReached = privacy.isActive || abs(position.pan - target.pan) <= Self.positionTolerance
+        let reached = panReached && abs(position.tilt - target.tilt) <= Self.positionTolerance
         if reached {
             verifyTarget = false
             return
