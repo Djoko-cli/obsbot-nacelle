@@ -27,9 +27,9 @@ Un second plan couvrira l'app iOS ; il s'appuiera sur `NacelleProtocol` et sur l
 - **Essais réseau en local :** le Mac ne peut pas joindre un `NWListener` par sa propre adresse Tailscale (constaté le 2026-10-05 ; l'iPhone, lui, y arrive). En local, toujours passer par 127.0.0.1.
 - **Installation réelle (tâche 14) :** uniquement après l'accord explicite de Majid, donné dans la conversation.
 
-## Amendements à la spec, proposés avec ce plan
+## Amendements à la spec
 
-La spec sera mise à jour quand Majid aura validé ces deux amendements, tous deux issus de vérifications faites en écrivant ce plan.
+Deux amendements, issus de vérifications faites en écrivant ce plan, **validés par Majid le 2026-10-05** et reportés dans la spec (§ 12).
 
 **A1 : écoute aussi sur 127.0.0.1.** La spec (§ 6.1 et § 6.10) prévoit une écoute sur la seule adresse Tailscale. Or le Mac ne peut pas joindre `ptzd` par cette adresse : le service installé ne pourrait être vérifié que depuis l'iPhone. `ptzd` écoute donc aussi sur 127.0.0.1, jamais sur 0.0.0.0 ni sur l'adresse du réseau local. Aucune exposition nouvelle : un programme local a de toute façon accès à l'USB.
 
@@ -4756,4 +4756,4 @@ Attendu : les mêmes PID qu'avant l'installation, et `0` erreur `locking failed`
 
 - [ ] **Étape 10 : Rendre compte à Majid**
 
-Lui indiquer : le service tourne ; à la première connexion de l'iPhone (plan de l'app iOS), macOS pourra demander d'autoriser `ptzd` à accepter des connexions entrantes, à accepter ; la question peut revenir après une réinstallation. Rappeler la désinstallation (README). Proposer de valider les amendements A1 et A2 pour mettre la spec à jour.
+Lui indiquer : le service tourne ; à la première connexion de l'iPhone (plan de l'app iOS), macOS pourra demander d'autoriser `ptzd` à accepter des connexions entrantes, à accepter ; la question peut revenir après une réinstallation. Rappeler la désinstallation (README).
