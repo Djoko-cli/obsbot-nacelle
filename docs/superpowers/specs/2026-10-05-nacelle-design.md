@@ -1,6 +1,6 @@
 # Spec : OBSBOT Nacelle v1
 
-Date : 2026-10-05. Statut : **validée par Majid**, puis amendée le même jour (A1 et A2, validés : voir § 12).
+Date : 2026-10-05. Statut : **validée par Majid**, puis amendée (A1, A2 et A3, validés : voir § 12).
 
 ## 1. Objectif
 
@@ -112,7 +112,7 @@ Le protocole utilise des messages JSON, un par trame WebSocket texte, avec un ch
 ### 6.4 Prise en main (`takeControl`)
 
 1. `control` passe à `taking`, puis `ptzd` lance `obsbot-ai-off`. Si l'utilitaire tourne déjà, le nouveau `takeControl` attend le même résultat au lieu d'en lancer un second.
-2. **Code de sortie 0** : `control` passe à `ready`. Tout autre code, ou plus de 15 s d'exécution, qui entraîne un SIGTERM : `control` passe à `failed`, et l'erreur est journalisée.
+2. **Code de sortie 0** : `control` passe à `ready`. Tout autre code, ou plus de 15 s d'exécution, qui entraîne un SIGTERM : un seul nouvel essai 3 s plus tard (amendement A3), `control` restant `taking` ; après un second échec, `control` passe à `failed`, et l'erreur est journalisée.
 3. Les commandes `move` et `zoom` sont acceptées dans tous les états de `control`. Tant que le suivi n'est pas coupé, il peut les contrer, et l'app l'indique.
 
 L'état réel du suivi IA ne se lit pas : le SDK renvoie toujours 0. La coupure est donc systématique, et rien n'essaie de « remettre comme avant ».
@@ -181,7 +181,7 @@ Contenu de `config.json` :
 
 C'est un petit programme C++ lié à `libdev`, qui :
 1. ouvre `Devices::get()` en désactivant la recherche mDNS ;
-2. attend la Tiny 2 pendant 5 s au plus ;
+2. attend la Tiny 2 pendant 10 s au plus (amendement A3) ; s'il ne la trouve pas, quitte sans refermer le SDK ;
 3. appelle `cameraSetAiModeU(AiWorkModeNone, 0)` ;
 4. appelle `Devices::get().close()`.
 
@@ -191,7 +191,7 @@ C'est un petit programme C++ lié à `libdev`, qui :
 | 1 | Caméra introuvable |
 | 2 | Le SDK a renvoyé une erreur |
 
-Durée attendue : environ 4 s.
+Durée attendue : environ 4 s, davantage quand la vidéo démarre au même moment.
 
 ### 6.10 Sécurité
 
@@ -311,3 +311,4 @@ Validés par Majid le 2026-10-05, après les vérifications faites en écrivant 
 |---|---|---|
 | **A1** | `ptzd` écoute aussi sur 127.0.0.1 (§ 6.1, § 6.10) | Le Mac ne peut pas joindre un `NWListener` par sa propre adresse Tailscale (l'iPhone, lui, y arrive) : sans 127.0.0.1, le service installé ne se vérifierait que depuis l'iPhone. Aucune exposition nouvelle. |
 | **A2** | Vie privée à -70° au lieu de -90° ; ordres absolus bornés à pan ±130°, tilt de -80° à +70° (§ 2, § 6.1, § 6.5) | La caméra ignore en silence un ordre à -90° ou à +89°, pan compris, en renvoyant un succès : le mode vie privée tel que spécifié ne faisait rien. -70° est obéi exactement, et vérifié à l'image. Détails : section « Correctif » de [docs/spike/2026-10-05-faisabilite.md](../../spike/2026-10-05-faisabilite.md). |
+| **A3** | `obsbot-ai-off` attend 10 s et quitte sans refermer le SDK s'il ne trouve pas la caméra ; un seul nouvel essai de prise en main 3 s après un échec (§ 6.4, § 6.9) | L'app ouvre la vidéo et la prise en main ensemble : une fois sur trois, l'initialisation du SDK a dépassé 5 s, puis `obsbot-ai-off` a planté en refermant le SDK encore occupé (constaté dans le simulateur le 2026-10-05). |
