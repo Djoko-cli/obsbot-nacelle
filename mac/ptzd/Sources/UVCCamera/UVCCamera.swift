@@ -34,8 +34,11 @@ public final class UVCCamera: CameraDevice {
         device != nil
     }
 
-    /// Ouvre la caméra si elle est branchée, puis suit ses branchements.
+    /// Ouvre la caméra si elle est branchée, puis suit ses branchements. Sans effet si
+    /// la surveillance tourne déjà. Une UVCCamera vit aussi longtemps que le processus :
+    /// la surveillance IOKit garde un pointeur non retenu vers elle et n'est jamais démontée.
     public func startWatching() {
+        guard watcher == nil else { return }
         let watcher = USBPresenceWatcher(vendorID: Int(vendorID), productID: Int(productID)) { [weak self] attached in
             self?.attachmentChanged(attached)
         }
