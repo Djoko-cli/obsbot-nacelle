@@ -53,11 +53,11 @@ USB : VID `0x3564`, PID `0xFEF8`. L'interface VideoControl porte le numéro 0.
 |---|---|
 | Tenue de position | Pan à 30° : l'image reste identique 3 s puis 8 s après. |
 | Relecture du pan | Exacte : 30°, puis -48° après un mouvement en vitesse. |
-| Relecture du tilt | **Pas fiable** : elle reste figée à -57° alors que la caméra va physiquement de -90° à +90°. |
+| Relecture du tilt | ~~Pas fiable~~ **Exacte** (corrigé le soir même, voir « Correctif ») : la valeur « figée » à -57° était la vraie position, car les ordres à -90° et +90° avaient été ignorés. |
 | Mode vitesse | Vitesse pan 40 pendant environ 1 s, soit à peu près 78° de course. La position tient après l'arrêt (sens 0). |
 | Convention de signe | Un pan en vitesse avec le sens +1 fait **baisser** l'angle absolu. Les deux conventions sont à étalonner. |
-| Tilt à -90° | Plus qu'un aplat gris flou : rien d'identifiable à l'image. |
-| Tilt à +90° | Plafond, aplat clair. |
+| Tilt à -90° | ~~Aplat gris~~ **Ordre ignoré** par la caméra : l'aplat gris était la vue à -57°, où le mouvement en vitesse précédent l'avait laissée. |
+| Tilt à +90° | ~~Plafond~~ **Ordre ignoré** lui aussi. |
 
 ### Santé du système
 
@@ -73,14 +73,14 @@ Pendant les deux séries, go2rtc, coreaudiod et le producer vidéo ont gardé le
 
 1. **Joystick.** Il pilote **en vitesse** (`0x0E`). Relâcher le joystick envoie l'arrêt, et le service arrête aussi le mouvement de lui-même s'il ne reçoit plus de commande.
 2. **Zoom.** Commande absolue `0x0B`, de 0 à 100.
-3. **Vie privée.** Tilt à -90° par commande absolue, avec mémorisation de la position précédente. **Ce mode ne coupe pas le micro** : HomeKit continue de recevoir le son.
-4. **Ne pas se fier à `GET_CUR` pour le tilt.** Le service garde sa propre idée de la position et ne relit la caméra que pour le pan.
+3. **Vie privée.** Tilt à ~~-90°~~ **-70°** par commande absolue (voir « Correctif »), avec mémorisation de la position précédente. **Ce mode ne coupe pas le micro** : HomeKit continue de recevoir le son.
+4. ~~Ne pas se fier à `GET_CUR` pour le tilt.~~ **La relecture `GET_CUR` est fiable** sur les deux axes ; ce sont les ordres hors course qui sont ignorés (voir « Correctif »).
 5. **Suivi IA.** S'il se réactive, par un geste ou un redémarrage, il annule toutes les commandes. Le couper exige les commandes propriétaires, via l'Extension Unit 2 (`aiSetWorkModeR` dans la bibliothèque OBSBOT). Le SDK officiel s'obtient sur demande : <https://www.obsbot.com/sdk>.
 
 ## Questions ouvertes
 
 - Le réglage « suivi IA coupé » survit-il à un débranchement ou à un redémarrage de la caméra ?
-- D'où vient le blocage de la relecture du tilt ? Est-il lié à OBSBOT Center ouvert pendant le test ?
+- ~~D'où vient le blocage de la relecture du tilt ?~~ Résolu : il n'y avait pas de blocage (voir « Correctif »).
 - Quelle est la latence de bout en bout, de l'iPhone à la nacelle, via Tailscale ?
 
 ---
@@ -98,7 +98,7 @@ Date : 2026-10-05, en fin de journée. OBSBOT Center **fermé**. Sonde jetable :
 | `cameraSetAiModeU(AiWorkModeNone)` | Le suivi se coupe : le pan à 30° **tient**. |
 | `cameraGetCameraStatusU` → `tiny.ai_mode` | Renvoie **toujours 0**, même suivi allumé. On ne peut pas savoir par là si le suivi est actif. |
 | `gimbalGetAttitudeInfoR` | Angles exacts. Le `pitch` du SDK est de **signe opposé** au tilt UVC. |
-| Relecture UVC du tilt, OBSBOT Center fermé | **Exacte** (-47° relus pour 47,9° côté SDK). Le blocage à -57° du premier test venait sans doute d'OBSBOT Center, ouvert à côté. |
+| Relecture UVC du tilt, OBSBOT Center fermé | **Exacte** (-47° relus pour 47,9° côté SDK). ~~Le blocage à -57° venait sans doute d'OBSBOT Center~~ : voir « Correctif ». |
 | CoreAudio | Pendant toute la série : aucune erreur `locking failed` d'arkaudiod, aucune erreur de coreaudiod, et aucun PID n'a changé. |
 | Gatekeeper | `libdev.dylib` porte l'attribut `com.apple.quarantine` du téléchargement. **Le premier chargement a été refusé** (« library load disallowed by system policy »), les suivants sont passés. |
 
@@ -109,3 +109,28 @@ Date : 2026-10-05, en fin de journée. OBSBOT Center **fermé**. Sonde jetable :
 3. **Le SDK utilise AVFoundation et interroge CoreAudio.** Aucun problème n'est apparu pendant un usage court. Mais un usage permanent n'est pas prouvé, et coreaudiod s'est déjà bloqué sur cette machine. D'où le choix de lancer la bibliothèque **à la demande, dans un processus séparé et de courte durée**.
 4. Il faut retirer l'attribut de quarantaine de la bibliothèque avant de l'utiliser depuis launchd.
 5. Après la coupure du suivi, un pan à 30° s'est arrêté deux fois à 22°, puis a tenu. C'est à revoir, en ajoutant un court délai après la coupure.
+
+---
+
+# Correctif : course réelle de la nacelle (mesures du soir)
+
+Date : 2026-10-05, vers 19 h 40. OBSBOT Center fermé. Ces mesures corrigent les deux tests précédents sur un point qui change la conception : **la caméra ignore en silence un ordre absolu hors de sa course réelle**, en renvoyant pourtant un succès, et l'ordre est ignoré en entier, pan compris.
+
+## Mesures
+
+| Mesure | Résultat |
+|---|---|
+| Une session SDK (`gimbalGetAttitudeInfoR`) déplace-t-elle la nacelle ? | Non |
+| `obsbot-ai-off` (coupure du suivi) déplace-t-il la nacelle, objectif vers le bas ? | Non, vérifié à l'image |
+| Pan en vitesse, 0,5 s | vitesse 20 → 19°, 40 → 38°, 60 → 59°, 80 → 79° : environ 2° par seconde et par unité |
+| Tilt en vitesse, 0,5 s | vitesse 60 → 29°, 90 → 44°, 120 → 57° |
+| Pan absolu | ±130° obéi |
+| Tilt absolu | -70° et +70° obéis ; -80° atteint (relu -84°) ; **-90° et +89° ignorés** |
+
+Le « blocage » du tilt à -57° du premier test était donc la vraie position : le mouvement en vitesse précédent (vitesse 60 pendant environ 1 s) l'y avait laissé, puis les ordres à -90° et à +90° ont été ignorés.
+
+## Conséquences pour la conception
+
+1. **Vie privée à -70°**, valeur obéie exactement. Vérifié à l'image : aplat gris, rien d'identifiable dans cette installation ; la vie privée tient pendant une prise en main et revient seule après un redémarrage du service.
+2. **Les ordres absolus sont bornés avant envoi** à la course acceptée : pan ±130°, tilt de -80° à +70°. Plus aucun ordre ne peut être ignoré en silence.
+3. La relecture `GET_CUR` est fiable : le service peut publier la position relue.
