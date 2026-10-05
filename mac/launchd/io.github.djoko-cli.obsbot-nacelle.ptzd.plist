@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Modèle : scripts/install-mac.sh remplace __SUPPORT__ et __LOGS__. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.github.djoko-cli.obsbot-nacelle.ptzd</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__SUPPORT__/bin/ptzd</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>StandardOutPath</key>
+    <string>__LOGS__/ptzd.log</string>
+    <key>StandardErrorPath</key>
+    <string>__LOGS__/ptzd.log</string>
+</dict>
+</plist>
