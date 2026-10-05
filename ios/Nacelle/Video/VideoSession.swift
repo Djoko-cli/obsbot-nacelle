@@ -81,7 +81,9 @@ final class VideoSession {
             let offer = try await peer.offer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil))
             try await peer.setLocalDescription(offer)
             await waitForGathering(generation: current)
-            guard current == generation, let sdp = peer.localDescription?.sdp else { return }
+            guard current == generation else { return }
+            // Sans offre locale, échec : nouvel essai, au lieu de rester à `connecting`.
+            guard let sdp = peer.localDescription?.sdp else { throw MissingLocalDescription() }
             let (data, response) = try await URLSession.shared.data(for: Signaling.request(url: url, offerSDP: sdp))
             let answer = try Signaling.answer(data: data, response: response)
             guard current == generation else { return }
@@ -128,6 +130,8 @@ final class VideoSession {
 
     /// Attend la fin de la collecte des candidats ICE, 2 s au plus.
     private func waitForGathering(generation current: Int) async {
+        // Une négociation périmée n'attend pas : elle écraserait la continuation de la génération courante.
+        guard current == generation else { return }
         if peer?.iceGatheringState == .complete { return }
         await withCheckedContinuation { continuation in
             gathering = continuation
@@ -180,6 +184,9 @@ final class VideoSession {
         observer = nil
     }
 }
+
+/// L'offre locale manque après `setLocalDescription`.
+private struct MissingLocalDescription: Error {}
 
 /// Rappels de WebRTC (sur son propre fil), traduits en événements simples.
 private final class PeerObserver: NSObject, RTCPeerConnectionDelegate, @unchecked Sendable {
