@@ -7,6 +7,8 @@ public final class PrivacyKeeper {
     public private(set) var isActive: Bool
     /// Appelé quand `isActive` change.
     public var onChange: (() -> Void)?
+    /// Dernier ordre absolu envoyé (entrée, sortie ou réapplication), pour vérifier qu'il a été suivi.
+    public private(set) var lastTarget: PanTiltPosition?
 
     private let camera: any CameraDevice
     private let store: any StateStore
@@ -34,6 +36,7 @@ public final class PrivacyKeeper {
             persist(PersistedState(privacy: false, saved: nil))
             throw error
         }
+        lastTarget = PanTiltPosition(pan: currentPosition?.pan ?? 0, tilt: Self.privacyTilt)
         saved = savedNow
         isActive = true
         onChange?()
@@ -49,6 +52,7 @@ public final class PrivacyKeeper {
             try camera.setZoom(zoom)
         }
         try camera.setPanTiltAbsolute(panDegrees: target.pan, tiltDegrees: target.tilt)
+        lastTarget = PanTiltPosition(pan: target.pan, tilt: target.tilt)
         persist(PersistedState(privacy: false, saved: nil))
         saved = nil
         isActive = false
@@ -59,6 +63,14 @@ public final class PrivacyKeeper {
     public func enforce() throws {
         guard isActive else { return }
         try camera.setPanTiltAbsolute(panDegrees: saved?.pan ?? 0, tiltDegrees: Self.privacyTilt)
+        lastTarget = PanTiltPosition(pan: saved?.pan ?? 0, tilt: Self.privacyTilt)
+    }
+
+    /// Renvoie le dernier ordre absolu : la caméra en ignore parfois un en renvoyant
+    /// pourtant un succès (constaté le 2026-10-05).
+    public func resendLastTarget() throws {
+        guard let target = lastTarget else { return }
+        try camera.setPanTiltAbsolute(panDegrees: target.pan, tiltDegrees: target.tilt)
     }
 
     /// Une erreur d'écriture n'empêche pas de protéger l'image : on la journalise.

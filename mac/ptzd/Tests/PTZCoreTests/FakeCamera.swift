@@ -8,6 +8,8 @@ final class FakeCamera: CameraDevice {
     var zoomValue = 33
     /// La prochaine écriture échoue avec cette erreur.
     var failNextWrite: CameraError?
+    /// Nombre d'ordres absolus à « ignorer » : enregistrés, mais sans effet sur la position.
+    var ignoreAbsoluteCommands = 0
     private(set) var relativeCommands: [PanTiltRelative] = []
     private(set) var absoluteCommands: [PanTiltPosition] = []
     private(set) var zoomCommands: [Int] = []
@@ -21,6 +23,10 @@ final class FakeCamera: CameraDevice {
         try checkWrite()
         let target = PanTiltPosition(pan: panDegrees, tilt: tiltDegrees)
         absoluteCommands.append(target)
+        if ignoreAbsoluteCommands > 0 {
+            ignoreAbsoluteCommands -= 1
+            return
+        }
         position = target
     }
 
