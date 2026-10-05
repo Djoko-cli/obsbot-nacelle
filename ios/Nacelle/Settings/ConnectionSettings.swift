@@ -16,15 +16,34 @@ struct ConnectionSettings: Codable, Equatable, Sendable {
         streamName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Un hôte, un nom de flux et deux ports valides.
+    /// Un hôte nu (ni schéma, ni port, ni chemin, ni espace), un nom de flux, deux ports valides,
+    /// et les deux adresses qui en découlent.
     var isComplete: Bool {
+        hasValidFields && makeWebRTCURL() != nil && makePtzdURL() != nil
+    }
+
+    private var hasValidFields: Bool {
         !trimmedHost.isEmpty && !trimmedStream.isEmpty
+            && !trimmedHost.contains { $0 == "/" || $0 == ":" || $0.isWhitespace }
             && (1...65535).contains(go2rtcPort) && (1...65535).contains(ptzdPort)
+    }
+
+    /// Port tapé dans un champ texte ; 0 (donc réglages incomplets) si ce n'est pas un nombre.
+    static func port(from text: String) -> Int {
+        Int(text.trimmingCharacters(in: .whitespaces)) ?? 0
     }
 
     /// `http://<hôte>:<port go2rtc>/api/webrtc?src=<flux>`
     var webRTCURL: URL? {
-        guard isComplete else { return nil }
+        isComplete ? makeWebRTCURL() : nil
+    }
+
+    /// `ws://<hôte>:<port ptzd>`
+    var ptzdURL: URL? {
+        isComplete ? makePtzdURL() : nil
+    }
+
+    private func makeWebRTCURL() -> URL? {
         var components = URLComponents()
         components.scheme = "http"
         components.host = trimmedHost
@@ -34,9 +53,7 @@ struct ConnectionSettings: Codable, Equatable, Sendable {
         return components.url
     }
 
-    /// `ws://<hôte>:<port ptzd>`
-    var ptzdURL: URL? {
-        guard isComplete else { return nil }
+    private func makePtzdURL() -> URL? {
         var components = URLComponents()
         components.scheme = "ws"
         components.host = trimmedHost
