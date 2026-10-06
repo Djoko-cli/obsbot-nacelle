@@ -23,7 +23,7 @@ let package = Package(
         ),
         .target(
             name: "PTZServer",
-            dependencies: ["PTZCore", .product(name: "NacelleProtocol", package: "NacelleProtocol")]
+            dependencies: ["PTZCore", "PTZAuth", .product(name: "NacelleProtocol", package: "NacelleProtocol")]
         ),
         .executableTarget(name: "ptzd", dependencies: ["PTZCore", "UVCCamera", "PTZServer", "PTZAuth"]),
         .testTarget(name: "PTZCoreTests", dependencies: ["PTZCore"]),
@@ -34,7 +34,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PTZServerTests",
-            dependencies: ["PTZServer", "PTZCore", .product(name: "NacelleProtocol", package: "NacelleProtocol")]
+            dependencies: ["PTZServer", "PTZCore", "PTZAuth", .product(name: "NacelleProtocol", package: "NacelleProtocol")]
         ),
     ]
 )

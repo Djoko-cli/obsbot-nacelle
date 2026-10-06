@@ -1,17 +1,19 @@
 import Foundation
 import NacelleProtocol
 import Network
+import PTZAuth
 import PTZCore
 
 /// Serveur WebSocket de ptzd : quelques adresses précises (jamais 0.0.0.0),
-/// 4 clients au plus en tout (spec § 6.1 et § 6.10). Une place n'est jamais gardée par
-/// une connexion morte : délai de poignée de main, connexion en attente, ping toutes les 10 s.
+/// 4 clients au plus en tout (spec § 6.1 et § 6.10). Chaque connexion s'authentifie, sauf sur
+/// 127.0.0.1 (spec accès local § 6.3). Une place n'est jamais gardée par une connexion morte ou
+/// anonyme : 10 s pour s'authentifier, connexion en attente, ping toutes les 10 s.
 @MainActor
 public final class WebSocketServer {
     public static let maxClients = 4
     public static let retryDelay: TimeInterval = 5
-    /// Une connexion acceptée qui n'est pas prête après ce délai libère sa place.
-    public static let handshakeTimeout: TimeInterval = 10
+    /// Une connexion acceptée qui n'est pas authentifiée après ce délai libère sa place.
+    public static let authTimeout: TimeInterval = 10
     /// Intervalle des pings envoyés à chaque client prêt.
     public static let pingInterval: TimeInterval = 10
     /// Un client sans pong depuis ce délai libère sa place.
@@ -28,21 +30,28 @@ public final class WebSocketServer {
     private let hosts: [String]
     private let port: UInt16
     private let controller: PTZController
+    private let authority: DeviceAuthority
     private let scheduler: any Scheduler
     private let log: LogSink
+    private let trustLoopback: Bool
     private var listeners: [String: NWListener] = [:]
     private var clients: [ClientID: Client] = [:]
     private var nextID: ClientID = 1
 
-    /// Une place occupée : la connexion et ses minuteries, toutes annulées par `drop`.
+    /// Une place occupée : la connexion, son authentification et ses minuteries, toutes annulées par `drop`.
     private struct Client {
         let connection: NWConnection
-        var handshake: (any Cancellable)?
+        /// Arrivée par une écoute en boucle locale (127.0.0.1, ::1) : authentifiée d'office.
+        let trusted: Bool
+        var authenticated = false
+        /// Défi en cours ; consommé par le premier `auth`.
+        var nonce: Data?
+        var deadline: (any Cancellable)?
         var ping: (any Cancellable)?
         var pongDeadline: (any Cancellable)?
 
         func cancelTimers() {
-            handshake?.cancel()
+            deadline?.cancel()
             ping?.cancel()
             pongDeadline?.cancel()
         }
@@ -54,7 +63,16 @@ public final class WebSocketServer {
     }
 
     /// Les adresses en double ne sont écoutées qu'une fois (config.json peut déjà contenir 127.0.0.1).
-    public init(hosts: [String], port: UInt16, controller: PTZController, scheduler: any Scheduler, log: @escaping LogSink) {
+    /// `trustLoopback` à faux (tests) impose l'authentification aussi sur 127.0.0.1.
+    public init(
+        hosts: [String],
+        port: UInt16,
+        controller: PTZController,
+        authority: DeviceAuthority,
+        scheduler: any Scheduler,
+        log: @escaping LogSink,
+        trustLoopback: Bool = true
+    ) {
         self.hosts = hosts.reduce(into: []) { unique, host in
             if !unique.contains(host) {
                 unique.append(host)
@@ -62,8 +80,10 @@ public final class WebSocketServer {
         }
         self.port = port
         self.controller = controller
+        self.authority = authority
         self.scheduler = scheduler
         self.log = log
+        self.trustLoopback = trustLoopback
         controller.onStateChange = { [weak self] snapshot in
             self?.broadcast(.state(snapshot))
         }
@@ -110,8 +130,9 @@ public final class WebSocketServer {
         listener.stateUpdateHandler = { [weak self] state in
             MainActor.assumeIsolated { self?.listenerChanged(host, state) }
         }
+        let trusted = trustLoopback && Self.isLoopback(host)
         listener.newConnectionHandler = { [weak self] connection in
-            MainActor.assumeIsolated { self?.accept(connection) }
+            MainActor.assumeIsolated { self?.accept(connection, trusted: trusted) }
         }
         listeners[host] = listener
         listener.start(queue: .main)
@@ -138,7 +159,12 @@ public final class WebSocketServer {
         }
     }
 
-    private func accept(_ connection: NWConnection) {
+    /// Écoute en boucle locale : seuls les programmes du Mac y arrivent.
+    nonisolated static func isLoopback(_ host: String) -> Bool {
+        host == "127.0.0.1" || host == "::1"
+    }
+
+    private func accept(_ connection: NWConnection, trusted: Bool) {
         guard clients.count < Self.maxClients else {
             log("Connexion refusée : déjà \(Self.maxClients) clients.")
             connection.cancel()
@@ -146,9 +172,9 @@ public final class WebSocketServer {
         }
         let id = nextID
         nextID += 1
-        var client = Client(connection: connection)
-        client.handshake = scheduler.schedule(after: Self.handshakeTimeout) { [weak self] in
-            self?.release(id, reason: "poignée de main non terminée en \(Int(Self.handshakeTimeout)) s")
+        var client = Client(connection: connection, trusted: trusted)
+        client.deadline = scheduler.schedule(after: Self.authTimeout) { [weak self] in
+            self?.release(id, reason: "pas authentifié en \(Int(Self.authTimeout)) s")
         }
         clients[id] = client
         connection.stateUpdateHandler = { [weak self] state in
@@ -161,15 +187,20 @@ public final class WebSocketServer {
     func connectionChanged(_ id: ClientID, _ state: NWConnection.State) {
         switch state {
         case .ready:
-            clients[id]?.handshake?.cancel()
-            clients[id]?.handshake = nil
+            guard let client = clients[id] else { return }
             if wasRejected(id) {
                 drop(id)
                 return
             }
-            send(.state(controller.snapshot), to: id)
             armPongDeadline(id)
             schedulePing(id)
+            if client.trusted {
+                authenticate(id)
+            } else {
+                let nonce = DeviceAuthority.makeNonce()
+                clients[id]?.nonce = nonce
+                send(.challenge(nonce: nonce), to: id)
+            }
         case let .waiting(error):
             // Chemin réseau perdu (Wi-Fi/4G, Tailscale coupé) : une connexion entrante
             // n'atteint alors pas toujours .failed et garderait sa place.
@@ -215,9 +246,83 @@ public final class WebSocketServer {
             send(.error(code: .badMessage, message: "Message illisible."), to: id)
             return
         }
-        if let failure = controller.handle(message, from: id) {
-            send(.error(code: failure.code, message: failure.message), to: id)
+        guard let client = clients[id] else { return }
+        switch message {
+        case let .pair(code, publicKey, name):
+            guard !client.authenticated else {
+                send(.error(code: .badMessage, message: "Déjà authentifié."), to: id)
+                return
+            }
+            pair(id, code: code, publicKey: publicKey, name: name)
+        case let .auth(deviceID, signature):
+            guard !client.authenticated else { return }
+            verify(id, deviceID: deviceID, signature: signature)
+        default:
+            guard client.authenticated else {
+                send(.error(code: .notAuthenticated, message: "Authentification d'abord."), to: id)
+                return
+            }
+            if let failure = controller.handle(message, from: id) {
+                send(.error(code: failure.code, message: failure.message), to: id)
+            }
         }
+    }
+
+    /// Code d'appairage : un code faux laisse la connexion ouverte pour un nouvel essai.
+    private func pair(_ id: ClientID, code: String, publicKey: Data, name: String) {
+        switch authority.pair(code: code, publicKey: publicKey, name: name) {
+        case let .paired(deviceID):
+            log("Appareil appairé : \(deviceID.prefix(8)) (\(name)).")
+            send(.paired(deviceID: deviceID), to: id)
+        case .badCode:
+            log("Client \(id) : code d'appairage faux (\(endpoint(id))).")
+            send(.error(code: .badCode, message: "Code d'appairage faux."), to: id)
+        case .closed:
+            send(.error(code: .pairingClosed, message: "Aucun appairage en cours : lancer ptzd pair sur le Mac."), to: id)
+        case .invalidKey:
+            send(.error(code: .badMessage, message: "Clé publique illisible."), to: id)
+        }
+    }
+
+    /// Réponse au défi. Le défi ne sert qu'une fois ; un échec ferme la connexion.
+    private func verify(_ id: ClientID, deviceID: String, signature: Data) {
+        guard let nonce = clients[id]?.nonce else { return }
+        clients[id]?.nonce = nil
+        switch authority.check(deviceID: deviceID, signature: signature, nonce: nonce) {
+        case let .accepted(device):
+            log("Client \(id) authentifié : \(device.name) (\(deviceID.prefix(8))).")
+            authenticate(id)
+        case .unknownDevice:
+            refuse(id, .unpaired, "Appareil inconnu : l'appairer avec ptzd pair.", reason: "appareil inconnu \(deviceID.prefix(8))")
+        case .badSignature:
+            refuse(id, .authFailed, "Signature refusée.", reason: "signature refusée pour \(deviceID.prefix(8))")
+        case .registryUnreadable:
+            log("devices.json illisible : aucun appareil accepté.")
+            refuse(id, .unpaired, "Liste des appareils illisible sur le Mac.", reason: "devices.json illisible")
+        }
+    }
+
+    private func authenticate(_ id: ClientID) {
+        clients[id]?.authenticated = true
+        clients[id]?.deadline?.cancel()
+        clients[id]?.deadline = nil
+        send(.authenticated, to: id)
+        send(.state(controller.snapshot), to: id)
+    }
+
+    /// Envoie l'erreur, puis libère la place une fois l'envoi parti.
+    private func refuse(_ id: ClientID, _ code: ErrorCode, _ message: String, reason: String) {
+        guard let connection = clients[id]?.connection, let text = try? NacelleCodec.encode(ServerMessage.error(code: code, message: message)) else { return }
+        log("Client \(id) refusé : \(reason) (\(endpoint(id))).")
+        let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
+        let context = NWConnection.ContentContext(identifier: "nacelle", metadata: [metadata])
+        connection.send(content: Data(text.utf8), contentContext: context, isComplete: true, completion: .contentProcessed { [weak self] _ in
+            MainActor.assumeIsolated { self?.drop(id) }
+        })
+    }
+
+    private func endpoint(_ id: ClientID) -> String {
+        clients[id].map { "\($0.connection.endpoint)" } ?? "?"
     }
 
     private func schedulePing(_ id: ClientID) {
@@ -264,8 +369,9 @@ public final class WebSocketServer {
         controller.clientDisconnected(id)
     }
 
+    /// Aux seuls clients authentifiés.
     private func broadcast(_ message: ServerMessage) {
-        for id in clients.keys {
+        for (id, client) in clients where client.authenticated {
             send(message, to: id)
         }
     }
