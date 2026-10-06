@@ -25,7 +25,8 @@ struct AppModelTests {
                 pairingRecord: PairingRecord(defaults: defaults),
                 scheduler: scheduler
             ),
-            video: VideoSession(scheduler: scheduler)
+            video: VideoSession(scheduler: scheduler),
+            scheduler: scheduler
         )
     }
 
@@ -50,14 +51,15 @@ struct AppModelTests {
     func addressRemembered() throws {
         let model = makeModel()
         model.activate()
-        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.168.0.10&p=1985"))
+        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.168.0.10&p=1990"))
         model.pair(with: link)
         let transport = try #require(transports.last)
         transport.remoteAddress = "192.0.2.30"
         transport.emit(.message(try NacelleCodec.encode(ServerMessage.challenge(nonce: Data(count: 32)))))
         transport.emit(.message(try NacelleCodec.encode(ServerMessage.paired(deviceID: "x", lanKey: Data(count: 32)))))
         #expect(model.settings.host == "192.0.2.30")
-        #expect(SettingsStore(defaults: defaults).load().host == "192.0.2.30")
+        #expect(model.settings.ptzdPort == 1990)
+        #expect(SettingsStore(defaults: defaults).load() == ConnectionSettings(host: "192.0.2.30", ptzdPort: 1990))
         #expect(transport.closeCount == 0)
         #expect(transports.all.count == 1)
         model.deactivate()
@@ -75,7 +77,7 @@ struct AppModelTests {
         let transport = try #require(transports.last)
         transport.emit(.message(try NacelleCodec.encode(ServerMessage.challenge(nonce: Data(count: 32)))))
         transport.emit(.message(try NacelleCodec.encode(ServerMessage.error(code: .pairingClosed, message: "x"))))
-        #expect(model.pairingStatus == "QR code refusé : relance ptzd pair")
+        #expect(model.pairingStatus == "QR code refusé : relancez l'appairage sur le Mac")
         #expect(model.needsPairing)
         model.pair(with: link)
         let second = try #require(transports.last)
@@ -141,9 +143,47 @@ struct AppModelTests {
         return transport
     }
 
-    private func send(privacy: Bool, on transport: FakeTransport) throws {
-        let snapshot = StateSnapshot(camera: .connected, control: .ready, privacy: privacy, pan: 0, tilt: 0, zoom: 0, moving: false)
+    private func send(privacy: Bool, aiTracking: AITracking = .unknown, on transport: FakeTransport) throws {
+        let snapshot = StateSnapshot(camera: .connected, control: .ready, privacy: privacy, pan: 0, tilt: 0, zoom: 0, moving: false, aiTracking: aiTracking)
         transport.emit(.message(try NacelleCodec.encode(ServerMessage.state(snapshot))))
+    }
+
+    @Test("QR refusé alors que l'iPhone est appairé : avis 5 s dans le bandeau, puis le bandeau normal")
+    func refusedQRNotice() throws {
+        SettingsStore(defaults: defaults).save(complete)
+        let model = makeModel()
+        model.activate()
+        _ = try connect(privacy: false)
+        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.168.0.10&p=1985"))
+        model.pair(with: link)
+        let qr = try #require(transports.all.last { $0.opened.contains { if case .tls = $0 { true } else { false } } })
+        qr.emit(.message(try NacelleCodec.encode(ServerMessage.challenge(nonce: Data(count: 32)))))
+        qr.emit(.message(try NacelleCodec.encode(ServerMessage.error(code: .pairingClosed, message: "x"))))
+        #expect(model.bannerText == "QR code refusé : relancez l'appairage sur le Mac")
+        #expect(!model.needsPairing)
+        scheduler.advance(by: AppModel.noticeDuration)
+        #expect(model.bannerText != "QR code refusé : relancez l'appairage sur le Mac")
+        model.deactivate()
+    }
+
+    @Test("Suivi IA : bouton selon le dernier ordre, grisé en vie privée ; il envoie l'ordre inverse")
+    func aiTrackingButton() throws {
+        SettingsStore(defaults: defaults).save(complete)
+        let model = makeModel()
+        model.activate()
+        #expect(!model.aiToggleEnabled)
+        let transport = try connect(privacy: false)
+        #expect(model.aiToggleEnabled)
+        #expect(!model.aiTrackingOn)
+        model.toggleAITracking()
+        try send(privacy: false, aiTracking: .on, on: transport)
+        #expect(model.aiTrackingOn)
+        model.toggleAITracking()
+        let sent = transport.sent.compactMap { try? NacelleCodec.decodeClient($0) }
+        #expect(sent.filter { if case .aiTracking = $0 { true } else { false } } == [.aiTracking(on: true), .aiTracking(on: false)])
+        try send(privacy: true, aiTracking: .off, on: transport)
+        #expect(!model.aiToggleEnabled)
+        model.deactivate()
     }
 
     @Test("Son : coupé au premier lancement ; le choix est retenu et joué une fois l'état de ptzd connu")

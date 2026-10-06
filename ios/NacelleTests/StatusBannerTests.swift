@@ -21,9 +21,10 @@ struct StatusBannerTests {
         func text(_ issue: PTZClient.AuthIssue, unreachable: Bool = false) -> String? {
             StatusBanner.text(for: BannerInputs(macUnreachable: unreachable, authIssue: issue, connecting: true, state: state(camera: .absent)))
         }
-        #expect(text(.unpaired) == "iPhone non appairé : scanne le QR code de ptzd pair")
-        #expect(text(.badCode) == "QR code refusé : relance ptzd pair")
+        #expect(text(.unpaired) == "iPhone non appairé : scannez le QR code affiché sur le Mac")
+        #expect(text(.badCode) == "QR code refusé : relancez l'appairage sur le Mac")
         #expect(text(.rejected) == "Accès refusé par le Mac")
+        #expect(text(.blocked) == "Expulsé par le Mac : réessayez plus tard")
         #expect(text(.unpaired, unreachable: true) == "Mac injoignable : Tailscale est-il actif ?")
     }
 

@@ -24,6 +24,7 @@ struct ControlScreen: View {
                     Spacer(minLength: 12)
                     HStack(spacing: 10) {
                         soundButton
+                        aiButton
                         privacyButton
                     }
                 }
@@ -97,6 +98,21 @@ struct ControlScreen: View {
             return "Son coupé"
         }
         return model.soundWanted ? "Couper le son" : "Activer le son"
+    }
+
+    private var aiButton: some View {
+        Button {
+            model.toggleAITracking()
+        } label: {
+            Image(systemName: model.aiTrackingOn ? "person.crop.square.fill" : "person.crop.square")
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .foregroundStyle(.white)
+        .disabled(!model.aiToggleEnabled)
+        .opacity(model.aiToggleEnabled ? 1 : 0.4)
+        .accessibilityLabel(model.aiTrackingOn ? "Couper le suivi IA" : "Allumer le suivi IA")
     }
 
     private var privacyButton: some View {

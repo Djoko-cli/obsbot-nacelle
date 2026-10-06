@@ -53,7 +53,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Appairage")
                 } footer: {
-                    Text("Sur le Mac, lance ptzd pair dans le Terminal pour afficher un QR code, valable 5 min.")
+                    Text("Sur le Mac, ouvrez PTZBot › Appairer un iPhone… pour afficher un QR code, valable 5 min.")
                 }
             }
             .navigationTitle("Réglages")
