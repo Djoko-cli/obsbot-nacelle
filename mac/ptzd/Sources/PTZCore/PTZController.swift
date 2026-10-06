@@ -95,7 +95,7 @@ public final class PTZController {
                 try privacy.exit()
                 refreshAfterSettling()
             }
-        case .pair, .auth, .webrtcOffer:
+        case .pair, .openPairing, .auth, .webrtcOffer:
             // Messages de session : le serveur les traite et ne les transmet jamais.
             return (.badMessage, "Message de session inattendu.")
         }

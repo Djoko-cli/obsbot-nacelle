@@ -343,9 +343,9 @@ struct WebSocketServerTests {
         let nonce = try await challenge(task)
         let publicKey = key.publicKey.x963Representation
 
-        try await send(.pair(code: wrong, publicKey: publicKey, name: "iPhone"), on: task)
+        try await send(.pair(pairingID: wrong, publicKey: publicKey, name: "iPhone", proof: Data()), on: task)
         #expect(try await next(task) { _ in true } == .error(code: .badCode, message: "Code d'appairage faux."))
-        try await send(.pair(code: code, publicKey: publicKey, name: "iPhone"), on: task)
+        try await send(.pair(pairingID: code, publicKey: publicKey, name: "iPhone", proof: Data()), on: task)
         guard case let .paired(pairedID, lanKey) = try await next(task, where: { _ in true }) else {
             Issue.record("paired attendu")
             return
@@ -365,7 +365,7 @@ struct WebSocketServerTests {
         let task = connect("127.0.0.1", ports["127.0.0.1"]!)
         defer { task.cancel(with: .goingAway, reason: nil) }
         _ = try await challenge(task)
-        try await send(.pair(code: "123456", publicKey: key.publicKey.x963Representation, name: "iPhone"), on: task)
+        try await send(.pair(pairingID: "123456", publicKey: key.publicKey.x963Representation, name: "iPhone", proof: Data()), on: task)
         #expect(try await next(task) { _ in true } == .error(code: .pairingClosed, message: "Aucun appairage en cours : lancer ptzd pair sur le Mac."))
         withExtendedLifetime(server) {}
     }
@@ -477,7 +477,7 @@ struct WebSocketServerTests {
         defer { client.close() }
         try await client.open()
         _ = try await client.receive()
-        try client.send(.pair(code: "123456", publicKey: key.publicKey.x963Representation, name: "iPhone"))
+        try client.send(.pair(pairingID: "123456", publicKey: key.publicKey.x963Representation, name: "iPhone", proof: Data()))
         #expect(try await client.receive() == .error(code: .pairingClosed, message: "Appairage par Tailscale seulement."))
         withExtendedLifetime(server) {}
     }
@@ -495,7 +495,7 @@ struct WebSocketServerTests {
         let task = connect("127.0.0.1", ports["127.0.0.1"]!)
         defer { task.cancel(with: .goingAway, reason: nil) }
         _ = try await challenge(task)
-        try await send(.pair(code: code, publicKey: key.publicKey.x963Representation, name: "iPhone"), on: task)
+        try await send(.pair(pairingID: code, publicKey: key.publicKey.x963Representation, name: "iPhone", proof: Data()), on: task)
         guard case let .paired(_, lanKey) = try await next(task, where: { _ in true }) else {
             Issue.record("paired attendu")
             return

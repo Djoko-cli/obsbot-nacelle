@@ -23,6 +23,23 @@ struct NacelleAuthTests {
         #expect(NacelleAuth.deviceID(publicKeyX963: P256.Signing.PrivateKey().publicKey.x963Representation) != deviceID)
     }
 
+    @Test("Preuve d'appairage : vecteur de référence (HMAC-SHA256 calculé indépendamment)")
+    func pairingProofVector() {
+        let proof = NacelleAuth.pairingProof(secret: Data(0..<32), nonce: Data(repeating: 7, count: 32), publicKeyX963: Data([4, 1, 2, 3]))
+        #expect(proof.map { String(format: "%02x", $0) }.joined() == "0bce16e8c37b0ea2fa995642a3216cd945ae6ce5ef5bc8391b74855b9574b17b")
+    }
+
+    @Test("Preuve d'appairage : juste acceptée ; autre secret, défi ou clé refusés")
+    func pairingProofVerify() {
+        let secret = Data(0..<32), nonce = Data(repeating: 7, count: 32), key = Data([4, 1, 2, 3])
+        let proof = NacelleAuth.pairingProof(secret: secret, nonce: nonce, publicKeyX963: key)
+        #expect(NacelleAuth.verifyPairingProof(proof, secret: secret, nonce: nonce, publicKeyX963: key))
+        #expect(!NacelleAuth.verifyPairingProof(proof, secret: Data(repeating: 1, count: 32), nonce: nonce, publicKeyX963: key))
+        #expect(!NacelleAuth.verifyPairingProof(proof, secret: secret, nonce: Data(repeating: 8, count: 32), publicKeyX963: key))
+        #expect(!NacelleAuth.verifyPairingProof(proof, secret: secret, nonce: nonce, publicKeyX963: Data([4, 1, 2, 4])))
+        #expect(!NacelleAuth.verifyPairingProof(Data([1, 2]), secret: secret, nonce: nonce, publicKeyX963: key))
+    }
+
     @Test("Charge utile signée")
     func payload() {
         let text = String(decoding: NacelleAuth.signedPayload(nonce: Data([1, 2, 3]), deviceID: "abc"), as: UTF8.self)

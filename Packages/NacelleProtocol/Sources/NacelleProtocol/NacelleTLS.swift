@@ -12,6 +12,11 @@ public enum NacelleTLS {
     /// Longueur du secret remis à l'appairage, en octets.
     public static let keyLength = 32
 
+    /// Identité TLS d'un appairage en cours : `pair-<pairingID>` (spec découverte et QR § 7.1).
+    public static func pairingIdentity(_ pairingID: String) -> String {
+        "pair-\(pairingID)"
+    }
+
     /// Un secret neuf.
     public static func makeKey() -> Data {
         var generator = SystemRandomNumberGenerator()
