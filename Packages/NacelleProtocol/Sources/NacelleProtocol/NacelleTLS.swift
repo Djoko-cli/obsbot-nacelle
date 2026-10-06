@@ -26,20 +26,24 @@ public enum NacelleTLS {
     }
 
     /// Côté ptzd. Les clés de `identities` sont figées dans l'écoute : relancer l'écoute pour en ajouter.
-    /// `keyFor` est relu à chaque poignée de main : un appareil retiré est refusé tout de suite.
+    /// `keyFor` est relu à chaque poignée de main : un appareil retiré, ou dont la clé a changé depuis
+    /// (réappairé sans relance de l'écoute), est refusé tout de suite.
     public static func server(identities: [String], keyFor: @escaping @Sendable (String) -> Data?) -> NWProtocolTLS.Options {
         let (tls, options) = base()
         // Une clé factice garde les suites PSK actives quand aucun appareil n'est appairé.
         sec_protocol_options_add_pre_shared_key(options, dispatchData(makeKey()), dispatchData(Data("aucun-appareil".utf8)))
+        var pinned: [String: Data] = [:]
         for identity in identities {
             if let key = keyFor(identity) {
+                pinned[identity] = key
                 sec_protocol_options_add_pre_shared_key(options, dispatchData(key), dispatchData(Data(identity.utf8)))
             }
         }
-        sec_protocol_options_set_pre_shared_key_selection_block(options, { _, identityData, complete in
+        sec_protocol_options_set_pre_shared_key_selection_block(options, { [pinned] _, identityData, complete in
             guard let identityData,
                   let identity = String(bytes: identityData as DispatchData, encoding: .utf8),
-                  keyFor(identity) != nil else {
+                  let key = pinned[identity],
+                  keyFor(identity) == key else {
                 complete(nil)
                 return
             }

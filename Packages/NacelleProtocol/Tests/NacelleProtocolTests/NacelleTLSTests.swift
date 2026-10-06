@@ -21,6 +21,10 @@ struct NacelleTLSTests {
         func remove(_ identity: String) {
             lock.withLock { _ = keys.removeValue(forKey: identity) }
         }
+
+        func set(_ identity: String, _ key: Data) {
+            lock.withLock { keys[identity] = key }
+        }
     }
 
     final class Box<Value>: @unchecked Sendable {
@@ -135,5 +139,18 @@ struct NacelleTLSTests {
         #expect(await roundTrip(port: port, identity: Self.alice, key: key))
         keys.remove(Self.alice)
         #expect(await !roundTrip(port: port, identity: Self.alice, key: key))
+    }
+
+    @Test("Clé remplacée sans relancer l'écoute (réappairage) : l'ancienne et la nouvelle sont refusées")
+    func replacedKey() async throws {
+        let old = NacelleTLS.makeKey()
+        let keys = Keys([Self.alice: old])
+        let (listener, port) = try await startEchoServer(keys)
+        defer { listener.cancel() }
+        #expect(await roundTrip(port: port, identity: Self.alice, key: old))
+        let new = NacelleTLS.makeKey()
+        keys.set(Self.alice, new)
+        #expect(await !roundTrip(port: port, identity: Self.alice, key: old))
+        #expect(await !roundTrip(port: port, identity: Self.alice, key: new))
     }
 }
