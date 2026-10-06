@@ -132,6 +132,8 @@ Retirer un iPhone : `ptzd devices` donne le début de son identifiant, puis `ptz
 
 Avec un compte Apple gratuit, l'app expire au bout de 7 jours : refaire l'étape 2.
 
+Icône (facultative) : déposer un catalogue `ios/Local/Assets.xcassets` contenant un jeu d'icônes `AppIcon` (une image 1024 × 1024), et ajouter `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon` à `ios/Config/Local.xcconfig`. Le dossier `ios/Local/` n'est pas versionné : sans lui, l'app se compile avec l'icône par défaut.
+
 Tests : `(cd ios && xcodegen && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build)`.
 
 ## go2rtc

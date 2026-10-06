@@ -24,7 +24,11 @@ targets:
   Nacelle:
     type: application
     platform: iOS
-    sources: [Nacelle]
+    sources:
+      - Nacelle
+      # Ressources locales non versionnées (icône), facultatives : voir README.
+      - path: Local
+        optional: true
     dependencies:
       - package: NacelleProtocol
       - package: WebRTC
