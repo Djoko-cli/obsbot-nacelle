@@ -7,8 +7,10 @@ import Security
 /// TLS 1.3 n'accepte pas les clés pré-partagées ; sans couper la reprise de session, une mauvaise clé ou un
 /// appareil retiré pourrait reprendre une session ; sans clé du tout, le serveur n'offre aucune suite PSK.
 public enum NacelleTLS {
-    /// Échange ECDHE en plus de la clé : confidentialité persistante.
-    static let cipherSuite = tls_ciphersuite_t(rawValue: TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256)!
+    /// Échange ECDHE en plus de la clé : confidentialité persistante. La constante est vue en `UInt32`
+    /// (`SSLCipherSuite`) par certaines compilations (Release de l'app Mac) et en `UInt16` par d'autres :
+    /// la conversion vaut pour les deux (0xCCAC).
+    static let cipherSuite = tls_ciphersuite_t(rawValue: UInt16(TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256))!
     /// Longueur du secret remis à l'appairage, en octets.
     public static let keyLength = 32
 
