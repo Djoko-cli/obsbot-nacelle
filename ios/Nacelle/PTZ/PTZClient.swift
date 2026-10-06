@@ -17,7 +17,9 @@ final class PTZClient {
         case waitingToRetry
     }
 
-    /// Ce qui empêche l'authentification ; aucune reconnexion tant que l'utilisateur n'agit pas.
+    /// Ce qui empêche l'authentification. Un verdict de ptzd par Tailscale (`unpaired`, `rejected`,
+    /// `badCode`) arrête les reconnexions jusqu'à ce que l'utilisateur agisse. `needsTailscale` et les
+    /// verdicts reçus d'un service du réseau local les laissent continuer ; effacés à chaque nouvelle tentative.
     enum AuthIssue: Equatable {
         /// Pas de clé, ou ptzd ne connaît pas cet iPhone.
         case unpaired
@@ -48,6 +50,8 @@ final class PTZClient {
     static let retryDelays: [TimeInterval] = [1, 2, 4, 8]
     /// Temps laissé à Bonjour pour trouver ptzd sur le réseau local, à chaque tentative.
     static let discoveryWindow: TimeInterval = 3
+    /// Temps laissé à chaque connexion pour s'authentifier, comme ptzd côté serveur.
+    static let authTimeout: TimeInterval = 10
 
     private(set) var link: Link = .idle
     /// Dernier état reçu de ptzd ; nil hors connexion.
@@ -79,6 +83,8 @@ final class PTZClient {
     /// Verdict d'un service du réseau local pour la tentative en cours : affiché si la tentative
     /// échoue sans autre verdict, sans arrêter les reconnexions.
     @ObservationIgnored private var localIssue: AuthIssue?
+    /// `authIssue` vient d'un verdict qui arrête les reconnexions (`giveUp`) : conservé d'une tentative à l'autre.
+    @ObservationIgnored private var authIssueBlocks = false
     @ObservationIgnored private var discovery: (any Cancellable)?
     @ObservationIgnored private var retry: (any Cancellable)?
     @ObservationIgnored private var repeater: (any Cancellable)?
@@ -100,6 +106,10 @@ final class PTZClient {
         let isLocal: Bool
         /// Défi reçu, en attente de réponse.
         var nonce: Data?
+        /// `auth` envoyé : seule une telle connexion peut recevoir un `authenticated` valable.
+        var authSent = false
+        /// Échéance d'authentification.
+        var deadline: (any Cancellable)?
 
         init(id: Int, transport: any WebSocketTransport, isLocal: Bool) {
             self.id = id
@@ -192,6 +202,7 @@ final class PTZClient {
     func pair(code: String) {
         pendingCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
         authIssue = nil
+        authIssueBlocks = false
         restart()
     }
 
@@ -250,6 +261,9 @@ final class PTZClient {
         tailscaleOpened = false
         foundLocal = false
         localIssue = nil
+        if !authIssueBlocks {
+            authIssue = nil
+        }
         open(.url(url))
         browser.start()
         discovery = scheduler.schedule(after: Self.discoveryWindow) { [weak self] in
@@ -285,6 +299,11 @@ final class PTZClient {
             guard let self, let candidate else { return }
             self.handle(event, from: candidate)
         }
+        candidate.deadline = scheduler.schedule(after: Self.authTimeout) { [weak self, weak candidate] in
+            guard let self, let candidate else { return }
+            self.close(candidate)
+            self.failAttemptIfOver()
+        }
         candidate.transport.open(endpoint)
     }
 
@@ -293,6 +312,7 @@ final class PTZClient {
         discovery = nil
         browser.stop()
         for candidate in candidates {
+            candidate.deadline?.cancel()
             candidate.transport.onEvent = nil
             candidate.transport.close()
         }
@@ -302,6 +322,7 @@ final class PTZClient {
     }
 
     private func close(_ candidate: Candidate) {
+        candidate.deadline?.cancel()
         candidate.transport.onEvent = nil
         candidate.transport.close()
         candidates.removeAll { $0 === candidate }
@@ -325,6 +346,7 @@ final class PTZClient {
                 handleHandshake(message, from: candidate)
             }
         case .closed:
+            candidate.deadline?.cancel()
             candidates.removeAll { $0 === candidate }
             if pairingCandidate === candidate {
                 pairingCandidate = nil
@@ -359,6 +381,12 @@ final class PTZClient {
                 authenticate(waiting)
             }
         case .authenticated:
+            // Un `authenticated` sans `auth` envoyé n'est pas une réponse : connexion fermée.
+            guard candidate.authSent else {
+                close(candidate)
+                failAttemptIfOver()
+                return
+            }
             becomeActive(candidate)
         case let .error(code, _):
             handleHandshakeError(code, from: candidate)
@@ -423,6 +451,7 @@ final class PTZClient {
     private func authenticate(_ candidate: Candidate) {
         guard let nonce = candidate.nonce, let key = keys.load(), let signature = try? key.signChallenge(nonce) else { return }
         candidate.nonce = nil
+        candidate.authSent = true
         send(.auth(deviceID: key.deviceID, signature: signature), on: candidate)
     }
 
@@ -431,6 +460,8 @@ final class PTZClient {
             close(candidate)
             return
         }
+        candidate.deadline?.cancel()
+        candidate.deadline = nil
         active = candidate
         for other in candidates where other !== candidate {
             close(other)
@@ -442,6 +473,7 @@ final class PTZClient {
         attempt = 0
         isUnreachable = false
         authIssue = nil
+        authIssueBlocks = false
         setPaired(true)
         send(.takeControl)
         let waiting = waitingForLink
@@ -467,6 +499,7 @@ final class PTZClient {
     /// Plus de reconnexion : l'utilisateur doit appairer l'iPhone (spec accès local § 8.5).
     private func giveUp(_ issue: AuthIssue) {
         authIssue = issue
+        authIssueBlocks = true
         retry?.cancel()
         retry = nil
         closeAll()

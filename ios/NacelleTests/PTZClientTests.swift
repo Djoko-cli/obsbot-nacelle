@@ -310,6 +310,73 @@ struct PTZClientTests {
         #expect(client.authIssue == nil)
     }
 
+    @Test("« authenticated » d'une connexion qui n'a pas envoyé auth : fermée, Tailscale peut encore gagner")
+    func unsolicitedAuthenticated() throws {
+        client.start(url: url)
+        browser.find(service)
+        let local = try #require(transports.to(.service(service)))
+        try emit(.authenticated, on: local)
+        #expect(local.closeCount >= 1)
+        #expect(client.link == .connecting)
+        try emit(.challenge(nonce: nonce), on: tailscale)
+        try emit(.authenticated, on: tailscale)
+        #expect(client.link == .connected)
+        #expect(tailscale.closeCount == 0)
+        #expect(commands(local).isEmpty)
+    }
+
+    @Test("Service local muet : fermé après 10 s, la tentative échoue et une nouvelle est planifiée")
+    func silentLocalService() throws {
+        client.start(url: url)
+        browser.find(service)
+        let local = try #require(transports.to(.service(service)))
+        tailscale.emit(.closed)
+        local.emit(.opened)
+        try emit(.challenge(nonce: nonce), on: local)
+        scheduler.advance(by: PTZClient.authTimeout - 0.01)
+        #expect(local.closeCount == 0)
+        #expect(client.link == .connecting)
+        scheduler.advance(by: 0.01)
+        #expect(local.closeCount >= 1)
+        #expect(client.link == .waitingToRetry)
+        let before = transports.all.count
+        scheduler.advance(by: 1)
+        #expect(transports.all.count == before + 1)
+    }
+
+    @Test("Le délai d'authentification est annulé quand la connexion gagne")
+    func deadlineCancelledOnSuccess() throws {
+        try connect()
+        scheduler.advance(by: PTZClient.authTimeout * 2)
+        #expect(client.link == .connected)
+        #expect(tailscale.closeCount == 0)
+    }
+
+    @Test("Problème d'une tentative précédente : effacé au début de la suivante, sauf s'il arrête les reconnexions")
+    func authIssueClearedPerAttempt() throws {
+        client.start(url: url)
+        client.pair(code: "042917")
+        browser.find(service)
+        let local = try #require(transports.to(.service(service)))
+        tailscale.emit(.closed)
+        local.emit(.closed)
+        scheduler.advance(by: PTZClient.discoveryWindow)
+        #expect(client.authIssue == .needsTailscale)
+        scheduler.advance(by: 1)
+        #expect(client.link == .connecting)
+        #expect(client.authIssue == nil)
+    }
+
+    @Test("Problème qui arrête les reconnexions : conservé quand l'app relance une tentative")
+    func blockingIssueKept() throws {
+        client.start(url: url)
+        try emit(.challenge(nonce: nonce), on: tailscale)
+        try emit(.error(code: .authFailed, message: "x"), on: tailscale)
+        #expect(client.authIssue == .rejected)
+        client.start(url: url)
+        #expect(client.authIssue == .rejected)
+    }
+
     // MARK: - Reconnexion
 
     @Test("Échec des deux chemins : Mac injoignable, nouvel essai après 1, 2, 4 puis 8 s")
@@ -488,6 +555,8 @@ struct PTZClientTests {
         await settle()
         scheduler.advance(by: PTZClient.negotiationTimeout)
         await #expect(throws: PTZClient.NegotiationError.notConnected) { try await waiting.value }
+        // Le délai d'authentification (10 s) a aussi fermé la connexion muette : nouvelle tentative.
+        scheduler.advance(by: 1)
 
         try emit(.challenge(nonce: nonce), on: tailscale)
         try emit(.authenticated, on: tailscale)
