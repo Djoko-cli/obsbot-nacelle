@@ -47,9 +47,12 @@ struct WebSocketServerTests {
         )
         let ports = await withCheckedContinuation { continuation in
             var ready: [String: UInt16] = [:]
+            var resumed = false
+            // Une écoute relancée (appairage) rappelle onReady : l'attente ne reprend qu'une fois.
             server.onReady = { host, port in
                 ready[host] = port
-                if ready.count == hosts.count {
+                if !resumed, ready.count == hosts.count {
+                    resumed = true
                     continuation.resume(returning: ready)
                 }
             }
@@ -333,40 +336,63 @@ struct WebSocketServerTests {
         #expect(lines.values.contains("Client 1 libéré : pas authentifié en 10 s (127.0.0.1)."))
     }
 
-    @Test("Appairage : code faux (connexion gardée), puis bon code, puis auth sur le même défi")
-    func pairing() async throws {
-        let code = try authority.pairing.open()
-        let wrong = code == "000000" ? "000001" : "000000"
-        let (server, ports) = await startServer(trustLoopback: false)
-        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
-        defer { task.cancel(with: .goingAway, reason: nil) }
-        let nonce = try await challenge(task)
-        let publicKey = key.publicKey.x963Representation
-
-        try await send(.pair(pairingID: wrong, publicKey: publicKey, name: "iPhone", proof: Data()), on: task)
-        #expect(try await next(task) { _ in true } == .error(code: .badCode, message: "Code d'appairage faux."))
-        try await send(.pair(pairingID: code, publicKey: publicKey, name: "iPhone", proof: Data()), on: task)
-        guard case let .paired(pairedID, lanKey) = try await next(task, where: { _ in true }) else {
-            Issue.record("paired attendu")
-            return
+    /// Ouvre un appairage depuis 127.0.0.1 de confiance (comme `ptzd pair`) et renvoie l'invitation.
+    private func openPairing(port: UInt16) async throws -> (URLSessionWebSocketTask, PairingInvitation?) {
+        let task = connect("127.0.0.1", port)
+        try await send(.openPairing, on: task)
+        let reply = try await next(task) { message in
+            if case .pairingOpened = message { true } else { false }
         }
-        #expect(pairedID == deviceID)
-        #expect(lanKey.count == NacelleTLS.keyLength)
-        #expect(authority.lanKey(for: deviceID) == lanKey)
-        try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: task)
-        #expect(try await next(task) { _ in true } == .authenticated)
-        #expect(try authority.devices.device(id: deviceID)?.name == "iPhone")
+        guard case let .pairingOpened(invitation) = reply else { return (task, nil) }
+        return (task, invitation)
+    }
+
+    /// Preuve du QR code pour la clé de test sur ce défi.
+    private func proof(secret: Data, nonce: Data) -> Data {
+        NacelleAuth.pairingProof(secret: secret, nonce: nonce, publicKeyX963: key.publicKey.x963Representation)
+    }
+
+    @Test("openPairing depuis 127.0.0.1 de confiance : invitation (identifiant, secret, 5 min, adresses locales), journalisée")
+    func openPairingFromMac() async throws {
+        let lines = LineBox()
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], log: { lines.values.append($0) }, localHosts: ["::1"])
+        let (task, invitation) = try await openPairing(port: ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        let opened = try #require(invitation)
+        #expect(authority.pairing.current?.pairingID == opened.pairingID)
+        #expect(authority.pairing.current?.secret == opened.secret)
+        #expect(opened.hosts == ["::1"])
+        #expect(abs(opened.expiresAt.timeIntervalSinceNow - PairingWindow.lifetime) < 5)
+        #expect(lines.values.contains("Appairage ouvert (\(opened.pairingID)), valable 5 min."))
         withExtendedLifetime(server) {}
     }
 
-    @Test("Appairage sans code en cours : pairingClosed")
-    func pairingClosed() async throws {
+    @Test("openPairing sans la confiance de 127.0.0.1 : notLocal, aucun appairage ouvert")
+    func openPairingRefused() async throws {
         let (server, ports) = await startServer(trustLoopback: false)
         let task = connect("127.0.0.1", ports["127.0.0.1"]!)
         defer { task.cancel(with: .goingAway, reason: nil) }
         _ = try await challenge(task)
-        try await send(.pair(pairingID: "123456", publicKey: key.publicKey.x963Representation, name: "iPhone", proof: Data()), on: task)
-        #expect(try await next(task) { _ in true } == .error(code: .pairingClosed, message: "Aucun appairage en cours : lancer ptzd pair sur le Mac."))
+        try await send(.openPairing, on: task)
+        #expect(try await next(task) { _ in true } == .error(code: .notLocal, message: "Ouverture d'appairage depuis le Mac seulement."))
+        #expect(authority.pairing.current == nil)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Appairage hors du réseau local (Tailscale) : notLocal, même avec la bonne preuve")
+    func pairOnlyOnLocalNetwork() async throws {
+        let opened = authority.pairing.open()
+        let (server, ports) = await startServer(trustLoopback: false)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        let nonce = try await challenge(task)
+        let pair = ClientMessage.pair(
+            pairingID: opened.pairingID, publicKey: key.publicKey.x963Representation, name: "iPhone",
+            proof: proof(secret: opened.secret, nonce: nonce)
+        )
+        try await send(pair, on: task)
+        #expect(try await next(task) { _ in true } == .error(code: .notLocal, message: "Appairage par QR code sur le réseau local seulement."))
+        #expect(authority.pairing.current?.pairingID == opened.pairingID)
         withExtendedLifetime(server) {}
     }
 
@@ -467,43 +493,95 @@ struct WebSocketServerTests {
         withExtendedLifetime(server) {}
     }
 
-    @Test("Réseau local : appairage refusé, même pour un appareil appairé")
-    func noPairingOnLocalNetwork() async throws {
-        let lanKey = NacelleTLS.makeKey()
-        try pairTestDevice(lanKey: lanKey)
-        _ = try authority.pairing.open()
-        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
-        let client = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: lanKey)
-        defer { client.close() }
-        try await client.open()
-        _ = try await client.receive()
-        try client.send(.pair(pairingID: "123456", publicKey: key.publicKey.x963Representation, name: "iPhone", proof: Data()))
-        #expect(try await client.receive() == .error(code: .pairingClosed, message: "Appairage par Tailscale seulement."))
-        withExtendedLifetime(server) {}
-    }
-
-    @Test("Appairage par Tailscale : l'écoute locale est relancée et accepte le nouveau secret")
-    func rebuildAfterPairing() async throws {
-        let code = try authority.pairing.open()
-        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
+    @Test("QR code sur le réseau local : preuve fausse (connexion gardée), bonne preuve, auth sur le même défi, écoute relancée")
+    func qrPairing() async throws {
+        let opened = authority.pairing.open()
+        let lines = LineBox()
+        let (server, ports) = await startServer(
+            on: ["127.0.0.1", "::1"], log: { lines.values.append($0) }, trustLoopback: false, localHosts: ["::1"]
+        )
         let rebuilt = PortBox()
         server.onReady = { host, port in
             if host == "::1" {
                 rebuilt.port = port
             }
         }
-        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
-        defer { task.cancel(with: .goingAway, reason: nil) }
-        _ = try await challenge(task)
-        try await send(.pair(pairingID: code, publicKey: key.publicKey.x963Representation, name: "iPhone", proof: Data()), on: task)
-        guard case let .paired(_, lanKey) = try await next(task, where: { _ in true }) else {
+        let client = TLSClient(host: "::1", port: ports["::1"]!, identity: NacelleTLS.pairingIdentity(opened.pairingID), key: opened.secret)
+        defer { client.close() }
+        try await client.open()
+        guard case let .challenge(nonce) = try await client.receive() else {
+            Issue.record("défi attendu")
+            return
+        }
+        let publicKey = key.publicKey.x963Representation
+
+        try client.send(.pair(pairingID: opened.pairingID, publicKey: publicKey, name: "iPhone\n", proof: proof(secret: NacelleTLS.makeKey(), nonce: nonce)))
+        #expect(try await client.receive() == .error(code: .badCode, message: "QR code refusé."))
+        #expect(lines.values.contains("Appairage \(opened.pairingID) : preuve fausse (::1)."))
+        try client.send(.pair(pairingID: opened.pairingID, publicKey: publicKey, name: "iPhone\n", proof: proof(secret: opened.secret, nonce: nonce)))
+        guard case let .paired(pairedID, lanKey) = try await client.receive() else {
             Issue.record("paired attendu")
             return
         }
+        #expect(pairedID == deviceID)
+        #expect(lanKey.count == NacelleTLS.keyLength)
+        #expect(authority.lanKey(for: deviceID) == lanKey)
+        #expect(authority.pairing.current == nil)
+        #expect(lines.values.contains("Appareil appairé : \(deviceID.prefix(8)) (iPhone)."))
+        try client.send(.auth(deviceID: deviceID, signature: try signature(for: nonce)))
+        #expect(try await client.receive() == .authenticated)
+
         try await waitUntil { rebuilt.port != nil }
-        let (client, reply) = try await authenticateOverTLS(port: rebuilt.port!, lanKey: lanKey)
-        defer { client.close() }
+        let (again, reply) = try await authenticateOverTLS(port: rebuilt.port!, lanKey: lanKey)
+        defer { again.close() }
         #expect(reply == .authenticated)
+        let reused = TLSClient(host: "::1", port: rebuilt.port!, identity: NacelleTLS.pairingIdentity(opened.pairingID), key: opened.secret)
+        defer { reused.close() }
+        await #expect(throws: TLSClientError.noChannel) { try await reused.open() }
+    }
+
+    @Test("Réseau local, appairage déjà utilisé ou inconnu : pairingClosed")
+    func pairingClosedOnLocalNetwork() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
+        let client = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: lanKey)
+        defer { client.close() }
+        try await client.open()
+        _ = try await client.receive()
+        try client.send(.pair(pairingID: "1a2b3c4d", publicKey: key.publicKey.x963Representation, name: "iPhone", proof: Data(count: 32)))
+        #expect(try await client.receive() == .error(code: .pairingClosed, message: "QR code expiré ou déjà utilisé : relancer ptzd pair."))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Appairage ouvert : expiré au bout de 5 min, journalisé, écoute locale relancée")
+    func pairingExpiry() async throws {
+        let scheduler = FakeScheduler()
+        let lines = LineBox()
+        let (server, ports) = await startServer(
+            on: ["127.0.0.1", "::1"], scheduler: scheduler, log: { lines.values.append($0) }, localHosts: ["::1"]
+        )
+        let (task, invitation) = try await openPairing(port: ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        let opened = try #require(invitation)
+        let rebuilt = PortBox()
+        server.onReady = { host, port in
+            if host == "::1" {
+                rebuilt.port = port
+            }
+        }
+        scheduler.advance(by: PairingWindow.lifetime - 1)
+        #expect(authority.pairing.current?.pairingID == opened.pairingID)
+        scheduler.advance(by: 1)
+        #expect(authority.pairing.current == nil)
+        #expect(lines.values.contains("Appairage \(opened.pairingID) expiré."))
+        try await waitUntil { rebuilt.port != nil }
+    }
+
+    @Test("Journal : nom d'appareil sans caractère de contrôle, 40 caractères au plus")
+    func logName() {
+        #expect(WebSocketServer.logName("iPhone\n\u{1B}[2Jde test") == "iPhone[2Jde test")
+        #expect(WebSocketServer.logName(String(repeating: "a", count: 60)) == String(repeating: "a", count: 40))
     }
 
     @Test("Appareil retiré : refusé dès la poignée de main TLS suivante")

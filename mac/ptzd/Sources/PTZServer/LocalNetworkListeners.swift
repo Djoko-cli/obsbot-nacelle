@@ -12,7 +12,8 @@ import PTZCore
 final class LocalNetworkListeners {
     /// Filet de sécurité : un changement d'adresse DHCP ne déclenche pas toujours le moniteur de chemin.
     static let reconcileInterval: TimeInterval = 30
-    static let serviceName = "Nacelle"
+    /// « PTZBot sur <nom de l'ordinateur> », pour distinguer plusieurs Mac (spec découverte et QR § 7.3).
+    static let serviceName = "PTZBot sur \(Host.current().localizedName ?? "Mac")"
     static let serviceType = "_nacelle._tcp"
 
     private struct Bound {
@@ -60,6 +61,11 @@ final class LocalNetworkListeners {
     }
 
     /// Relance toutes les écoutes (nouveaux réglages TLS) : chacune se relie après `.cancelled`.
+    /// Adresses IPv4 écoutées, l'Ethernet d'abord.
+    var addresses: [String] {
+        bound.sorted { ($0.value.isWired ? 0 : 1, $0.key) < ($1.value.isWired ? 0 : 1, $1.key) }.map(\.value.address)
+    }
+
     func rebuild() {
         let names = Array(bound.keys)
         guard !names.isEmpty else { return }

@@ -1,28 +1,17 @@
 import Foundation
 
-/// `ptzd pair`, `ptzd devices` et `ptzd revoke` (spec accès local § 6.4), lancés à la main
-/// dans le Terminal pendant que le service tourne : ils ne passent que par les fichiers.
+/// `ptzd devices` et `ptzd revoke` (spec accès local § 6.4), lancés à la main dans le Terminal pendant
+/// que le service tourne : ils ne passent que par `devices.json`. `ptzd pair` parle au service (`PairCommand`).
 public enum AuthCommand {
-    public static let names: Set<String> = ["pair", "devices", "revoke"]
+    public static let names: Set<String> = ["devices", "revoke"]
     public static let usage = """
-    usage : ptzd pair                          affiche un code d'appairage, valable 5 min
-            ptzd devices                       liste les appareils appairés
+    usage : ptzd devices                       liste les appareils appairés
             ptzd revoke <début d'identifiant>  retire un appareil (4 caractères au moins)
     """
 
     /// Code de sortie et texte à afficher.
     public static func run(_ arguments: [String], authority: DeviceAuthority) -> (status: Int32, output: String) {
         switch (arguments.first, arguments.count) {
-        case ("pair", 1):
-            do {
-                let code = try authority.pairing.open()
-                return (0, """
-                Code d'appairage : \(code)
-                Dans l'app : Réglages › Appairage, avant 5 min. Un seul usage, 3 essais.
-                """)
-            } catch {
-                return (1, "Impossible d'ouvrir l'appairage : \(error)")
-            }
         case ("devices", 1):
             do {
                 let devices = try authority.devices.all()

@@ -21,24 +21,22 @@ public enum PairResult: Equatable, Sendable {
     case invalidKey
 }
 
-/// Décide qui entre : appareils appairés et code d'appairage (spec accès local § 6.3 et § 6.4).
+/// Décide qui entre : appareils appairés et appairage par QR code en cours (spec accès local § 6.3,
+/// spec découverte et QR § 7.1).
 public struct DeviceAuthority: Sendable {
     public let devices: PairedDevices
-    public let pairing: PairingCode
+    public let pairing: PairingWindow
     private let now: @Sendable () -> Date
 
-    public init(devices: PairedDevices, pairing: PairingCode, now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(devices: PairedDevices, pairing: PairingWindow, now: @escaping @Sendable () -> Date = { Date() }) {
         self.devices = devices
         self.pairing = pairing
         self.now = now
     }
 
-    /// Les deux fichiers dans le dossier de travail de ptzd.
+    /// `devices.json` dans le dossier de travail de ptzd ; l'appairage en cours vit en mémoire.
     public init(directory: URL) {
-        self.init(
-            devices: PairedDevices(url: directory.appending(path: "devices.json")),
-            pairing: PairingCode(url: directory.appending(path: "pairing.json"))
-        )
+        self.init(devices: PairedDevices(url: directory.appending(path: "devices.json")), pairing: PairingWindow())
     }
 
     /// Un défi neuf.
@@ -59,9 +57,10 @@ public struct DeviceAuthority: Sendable {
         return valid ? .accepted(device) : .badSignature
     }
 
-    public func pair(code: String, publicKey: Data, name: String) -> PairResult {
+    /// Appairage par QR code : la preuve porte sur le défi `nonce` de la connexion.
+    public func pair(pairingID: String, publicKey: Data, name: String, proof: Data, nonce: Data) -> PairResult {
         guard (try? P256.Signing.PublicKey(x963Representation: publicKey)) != nil else { return .invalidKey }
-        switch pairing.attempt(code) {
+        switch pairing.attempt(pairingID: pairingID, proof: proof, nonce: nonce, publicKeyX963: publicKey) {
         case .closed:
             return .closed
         case .wrong:
@@ -98,6 +97,23 @@ public struct DeviceAuthority: Sendable {
     /// Le secret d'un appareil encore appairé, relu dans `devices.json`.
     public func lanKey(for deviceID: String) -> Data? {
         (try? devices.device(id: deviceID))?.flatMap(\.lanKey)
+    }
+
+    /// Identités TLS du réseau local : les appareils, et l'appairage en cours ; erreur si `devices.json` est illisible.
+    public func tlsIdentities() throws -> [String] {
+        var identities = Array(try readLANKeys().keys)
+        if let current = pairing.current {
+            identities.append(NacelleTLS.pairingIdentity(current.pairingID))
+        }
+        return identities
+    }
+
+    /// Clé TLS d'une identité : le secret du QR pour l'appairage en cours, sinon celui de l'appareil.
+    public func tlsKey(for identity: String) -> Data? {
+        if let current = pairing.current, identity == NacelleTLS.pairingIdentity(current.pairingID) {
+            return current.secret
+        }
+        return lanKey(for: identity)
     }
 }
 

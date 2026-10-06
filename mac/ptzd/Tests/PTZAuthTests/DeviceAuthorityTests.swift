@@ -22,15 +22,20 @@ struct DeviceAuthorityTests {
         try key.signature(for: NacelleAuth.signedPayload(nonce: nonce, deviceID: deviceID ?? self.deviceID)).derRepresentation
     }
 
-    func pairDevice(name: String = "iPhone de test") throws {
-        let code = try authority.pairing.open()
-        #expect(authority.pair(code: code, publicKey: publicKey, name: name).deviceID == deviceID)
+    /// Appairage par QR code complet : ouverture, preuve sur un défi, enregistrement.
+    @discardableResult
+    func pairDevice(name: String = "iPhone de test") -> PairResult {
+        let opened = authority.pairing.open()
+        let nonce = DeviceAuthority.makeNonce()
+        let proof = NacelleAuth.pairingProof(secret: opened.secret, nonce: nonce, publicKeyX963: publicKey)
+        let result = authority.pair(pairingID: opened.pairingID, publicKey: publicKey, name: name, proof: proof, nonce: nonce)
+        #expect(result.deviceID == deviceID)
+        return result
     }
 
     @Test("Secret du réseau local : 32 octets, gardé avec l'appareil, oublié au retrait")
     func lanKey() throws {
-        let code = try authority.pairing.open()
-        guard case let .paired(_, lanKey) = authority.pair(code: code, publicKey: publicKey, name: "iPhone") else {
+        guard case let .paired(_, lanKey) = pairDevice(name: "iPhone") else {
             Issue.record("appairage attendu")
             return
         }
@@ -66,7 +71,7 @@ struct DeviceAuthorityTests {
 
     @Test("Appairage puis authentification")
     func pairThenAuth() throws {
-        try pairDevice()
+        pairDevice()
         let nonce = DeviceAuthority.makeNonce()
         guard case let .accepted(device) = authority.check(deviceID: deviceID, signature: try signature(nonce), nonce: nonce) else {
             Issue.record("refusé")
@@ -81,7 +86,7 @@ struct DeviceAuthorityTests {
     func refusals() throws {
         let nonce = DeviceAuthority.makeNonce()
         #expect(authority.check(deviceID: deviceID, signature: try signature(nonce), nonce: nonce) == .unknownDevice)
-        try pairDevice()
+        pairDevice()
         let replayed = try signature(DeviceAuthority.makeNonce())
         #expect(authority.check(deviceID: deviceID, signature: replayed, nonce: nonce) == .badSignature)
     }
@@ -93,27 +98,44 @@ struct DeviceAuthorityTests {
         #expect(authority.check(deviceID: deviceID, signature: try signature(nonce), nonce: nonce) == .registryUnreadable)
     }
 
-    @Test("Appairage : code faux, fermé, clé invalide")
+    @Test("Appairage : aucun en cours, preuve fausse, autre identifiant, clé invalide")
     func pairFailures() throws {
-        #expect(authority.pair(code: "123456", publicKey: publicKey, name: "x") == .closed)
-        let code = try authority.pairing.open()
-        let wrong = code == "000000" ? "000001" : "000000"
-        #expect(authority.pair(code: wrong, publicKey: publicKey, name: "x") == .badCode)
-        #expect(authority.pair(code: code, publicKey: Data([4, 1, 2]), name: "x") == .invalidKey)
-        #expect(authority.pair(code: code, publicKey: publicKey, name: "x").deviceID == deviceID)
+        let nonce = DeviceAuthority.makeNonce()
+        #expect(authority.pair(pairingID: "00000000", publicKey: publicKey, name: "x", proof: Data(), nonce: nonce) == .closed)
+        let opened = authority.pairing.open()
+        let proof = NacelleAuth.pairingProof(secret: opened.secret, nonce: nonce, publicKeyX963: publicKey)
+        let other = NacelleAuth.pairingProof(secret: NacelleTLS.makeKey(), nonce: nonce, publicKeyX963: publicKey)
+        #expect(authority.pair(pairingID: opened.pairingID, publicKey: publicKey, name: "x", proof: other, nonce: nonce) == .badCode)
+        #expect(authority.pair(pairingID: "ffffffff", publicKey: publicKey, name: "x", proof: proof, nonce: nonce) == .closed)
+        #expect(authority.pair(pairingID: opened.pairingID, publicKey: Data([4, 1, 2]), name: "x", proof: proof, nonce: nonce) == .invalidKey)
+        #expect(authority.pair(pairingID: opened.pairingID, publicKey: publicKey, name: "x", proof: proof, nonce: nonce).deviceID == deviceID)
+    }
+
+    @Test("Identités TLS : les appareils, plus l'appairage en cours ; clé de chacune")
+    func tlsIdentities() throws {
+        pairDevice()
+        #expect(try authority.tlsIdentities() == [deviceID])
+        let opened = authority.pairing.open()
+        let identity = NacelleTLS.pairingIdentity(opened.pairingID)
+        #expect(Set(try authority.tlsIdentities()) == [deviceID, identity])
+        #expect(authority.tlsKey(for: identity) == opened.secret)
+        #expect(authority.tlsKey(for: deviceID) == authority.lanKey(for: deviceID))
+        authority.pairing.close()
+        #expect(authority.tlsKey(for: identity) == nil)
+        #expect(try authority.tlsIdentities() == [deviceID])
     }
 
     @Test("Nom nettoyé : espaces retirés, 40 caractères au plus, « appareil » si vide")
     func names() throws {
-        try pairDevice(name: "   ")
+        pairDevice(name: "   ")
         #expect(try authority.devices.device(id: deviceID)?.name == "appareil")
-        try pairDevice(name: "  " + String(repeating: "a", count: 60))
+        pairDevice(name: "  " + String(repeating: "a", count: 60))
         #expect(try authority.devices.device(id: deviceID)?.name == String(repeating: "a", count: 40))
     }
 
     @Test("revoke par début d'identifiant ; trop court, inconnu ou ambigu : erreur")
     func revoke() throws {
-        try pairDevice()
+        pairDevice()
         #expect(throws: PairedDevicesError.noMatch("abc")) { try authority.devices.remove(prefix: "abc") }
         #expect(throws: PairedDevicesError.noMatch("zzzz")) { try authority.devices.remove(prefix: "zzzz") }
         let removed = try authority.devices.remove(prefix: String(deviceID.prefix(6)).uppercased())
