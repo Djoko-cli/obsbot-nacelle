@@ -43,10 +43,10 @@ public final class PairingWindow: Sendable {
     }
 
     /// L'appairage en cours et non expiré, ou nil.
-    public var current: (pairingID: String, secret: Data)? {
+    public var current: (pairingID: String, secret: Data, expiresAt: Date)? {
         state.withLock { open in
             guard let open, now() < open.expiresAt else { return nil }
-            return (open.pairingID, open.secret)
+            return (open.pairingID, open.secret, open.expiresAt)
         }
     }
 

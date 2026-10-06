@@ -21,7 +21,7 @@ public enum PairCommand {
             return (1, "ptzd refuse l'appairage : \(message)")
         case let .opened(invitation):
             guard !invitation.hosts.isEmpty else {
-                return (1, "Aucune adresse sur le réseau local : relier le Mac au Wi-Fi ou à l'Ethernet, puis relancer ptzd pair.")
+                return (1, "Aucune adresse sur le réseau local : reliez le Mac au Wi-Fi ou à l'Ethernet, puis relancez ptzd pair.")
             }
             let url = PairingLink(invitation).url.absoluteString
             guard let modules = QRCodeText.modules(for: url) else {
@@ -32,7 +32,7 @@ public enum PairCommand {
             return (0, """
             \(QRCodeText.render(modules))
 
-            Dans PTZBot, touche « Scanner le QR code » et vise ce code.
+            Dans PTZBot sur l'iPhone, touchez « Scanner le QR code » et visez ce code.
             \(url)
             Valable jusqu'à \(time.string(from: invitation.expiresAt)), une seule fois. Ne l'affiche que le temps du scan.
             """)
