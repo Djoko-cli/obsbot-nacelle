@@ -584,6 +584,37 @@ struct WebSocketServerTests {
         try await waitUntil { rebuilt.port != nil }
     }
 
+    @Test("ptzd pair : QR code et URL de l'appairage ouvert par 127.0.0.1")
+    func pairCommand() async throws {
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], localHosts: ["::1"])
+        let result = await PairCommand.run(port: Int(ports["127.0.0.1"]!))
+        let current = try #require(authority.pairing.current)
+        let link = PairingLink(pairingID: current.pairingID, secret: current.secret, hosts: ["::1"], port: 0)
+        #expect(result.status == 0)
+        #expect(result.output.contains("\u{1B}[30;107m"))
+        #expect(result.output.contains(link.url.absoluteString))
+        #expect(result.output.contains("Dans PTZBot, touche « Scanner le QR code » et vise ce code."))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("ptzd pair : refus du service affiché, sans adresse locale, ou service absent : code 1")
+    func pairCommandFailures() async throws {
+        let (untrusted, refusing) = await startServer(trustLoopback: false)
+        let refused = await PairCommand.run(port: Int(refusing["127.0.0.1"]!))
+        #expect(refused.status == 1)
+        #expect(refused.output == "ptzd refuse l'appairage : Ouverture d'appairage depuis le Mac seulement.")
+        withExtendedLifetime(untrusted) {}
+
+        let (lonely, ports) = await startServer()
+        let noAddress = await PairCommand.run(port: Int(ports["127.0.0.1"]!))
+        #expect(noAddress.status == 1)
+        #expect(noAddress.output == "Aucune adresse sur le réseau local : relier le Mac au Wi-Fi ou à l'Ethernet, puis relancer ptzd pair.")
+        withExtendedLifetime(lonely) {}
+
+        let absent = await PairCommand.run(port: 1, timeout: 2)
+        #expect(absent == (1, "ptzd ne répond pas : le service est-il lancé ?"))
+    }
+
     @Test("Journal : nom d'appareil sans caractère de contrôle, 40 caractères au plus")
     func logName() {
         #expect(WebSocketServer.logName("iPhone\n\u{1B}[2Jde test") == "iPhone[2Jde test")
