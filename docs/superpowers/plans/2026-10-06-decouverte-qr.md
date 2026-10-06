@@ -4725,7 +4725,7 @@ Majid ouvre PTZBot (nouveau nom sur l'écran d'accueil) : l'écran de pilotage s
 
 - [ ] **Étape 4 : Nouvel appairage par QR code (Majid)**
 
-1. Majid touche Réglages › **Oublier cet appairage** : l'écran « Recherche du Mac à proximité… » apparaît et liste « PTZBot sur <nom du Mac> ».
+1. Majid ouvre Réglages : le champ « Adresse du Mac (repli) » contient sans doute l'ancien nom Tailscale. Il le **vide** et touche **Enregistrer** (sinon l'essai en 4G passerait par l'écoute Tailscale et ne prouverait pas la route du NAS). Puis Réglages › **Oublier cet appairage** : la feuille se ferme, l'écran « Recherche du Mac à proximité… » apparaît et liste « PTZBot sur <nom du Mac> ».
 2. Retirer l'ancienne entrée de l'iPhone :
 
 ```bash
@@ -4743,7 +4743,7 @@ Majid ouvre PTZBot (nouveau nom sur l'écran d'accueil) : l'écran de pilotage s
 ~/Library/Application\ Support/ObsbotNacelle/bin/ptzd devices; grep -E "Appairage|appairé|authentifié" ~/Library/Logs/obsbot-nacelle/ptzd.log | tail -4 | sed -E 's/([0-9]{1,3}\.){3}[0-9]{1,3}/<ip>/g'
 ```
 
-Attendu : une seule ligne pour l'iPhone ; « Appairage ouvert (…) », « Appareil appairé : … », « Client N authentifié : … ». Dans PTZBot, Réglages › Adresse du Mac (repli) contient l'adresse locale du Mac si le champ était vide.
+Attendu : une seule ligne pour l'iPhone ; « Appairage ouvert (…) », « Écoutes locales relancées. » suivi d'une ligne « Écoute locale sur … » par interface, « Appareil appairé : … », « Client N authentifié : … ». Une ligne « trop de connexions anonymes » est possible et normale : l'app essaie en même temps chaque adresse du QR et Bonjour depuis la même adresse, et `ptzd` n'en admet que 2 en attente par adresse. Dans PTZBot, Réglages › Adresse du Mac (repli) contient l'**adresse IPv4 locale** du Mac.
 
 - [ ] **Étape 5 : Essais (Majid ; la caméra bouge)**
 
@@ -4758,4 +4758,5 @@ Noter le résultat de chaque point dans le rapport :
 curl -s http://127.0.0.1:1984/api/streams | python3 -m json.tool | grep -i -E 'remote|addr'
 ```
 
-6. Pendant les essais : `tail -f ~/Library/Logs/obsbot-nacelle/ptzd.log`. À la fin, les PID de go2rtc et de coreaudiod sont inchangés (`pgrep -x go2rtc`, `pgrep -x coreaudiod`).
+6. **Facultatif, retrait** : `ptzd revoke <début>` de l'iPhone ; PTZBot affiche « Mac injoignable » ; « Oublier cet appairage », puis un nouveau `ptzd pair` et un scan rétablissent tout.
+7. Pendant les essais : `tail -f ~/Library/Logs/obsbot-nacelle/ptzd.log`. À la fin, les PID de go2rtc et de coreaudiod sont inchangés (`pgrep -x go2rtc`, `pgrep -x coreaudiod`).
