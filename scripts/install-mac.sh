@@ -1,7 +1,8 @@
 #!/bin/bash
-# Installe ptzd et obsbot-ai sur ce Mac, puis charge l'agent launchd (spec § 6.8).
+# Installe ptzd, obsbot-ai et l'app PTZBot pour Mac sur ce Mac, puis charge l'agent launchd et lance
+# l'app (spec § 6.8, spec app Mac § 8.6).
 # Usage : scripts/install-mac.sh [--no-load]
-#   --no-load : installe les fichiers sans charger l'agent.
+#   --no-load : installe les fichiers sans charger l'agent ni lancer l'app.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,6 +11,8 @@ LOGS="$HOME/Library/Logs/obsbot-nacelle"
 LABEL="io.github.djoko-cli.obsbot-nacelle.ptzd"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LIB="$ROOT/vendor/obsbot-sdk/macos/arm64-release/libdev.dylib"
+APP="$HOME/Applications/PTZBot.app"
+APP_ID="io.github.djoko-cli.ptzbot"
 LOAD=1
 case "$#:${1:-}" in
     0:) ;;
@@ -32,6 +35,11 @@ if xattr -p com.apple.quarantine "$LIB" >/dev/null 2>&1; then
     exit 1
 fi
 
+if ! command -v xcodegen >/dev/null; then
+    echo "xcodegen introuvable : brew install xcodegen" >&2
+    exit 1
+fi
+
 echo "Compilation de ptzd…"
 (cd "$ROOT/mac/ptzd" && swift build -c release)
 echo "Compilation de obsbot-ai…"
@@ -43,6 +51,15 @@ install -m 755 "$ROOT/mac/ai/build/bin/obsbot-ai" "$SUPPORT/bin/obsbot-ai"
 # L'ancien utilitaire (coupure seule) ne sert plus.
 rm -f "$SUPPORT/bin/obsbot-ai-off"
 install -m 644 "$LIB" "$SUPPORT/lib/libdev.dylib"
+
+echo "Compilation de PTZBot pour Mac…"
+(cd "$ROOT/mac/app" && xcodegen -q && xcodebuild build -project PTZBot.xcodeproj -scheme PTZBot \
+    -configuration Release -destination 'platform=macOS,arch=arm64' -derivedDataPath .build -quiet)
+# L'app en cours est fermée avant d'être remplacée.
+osascript -e "tell application id \"$APP_ID\" to quit" >/dev/null 2>&1 || true
+mkdir -p "$HOME/Applications"
+rm -rf "$APP"
+cp -R "$ROOT/mac/app/.build/Build/Products/Release/PTZBot.app" "$APP"
 
 if [ ! -f "$SUPPORT/config.json" ]; then
     ADDRESS="$(tailscale ip -4 2>/dev/null | head -n 1 || true)"
@@ -85,4 +102,6 @@ if [ "$LOADED" = 0 ]; then
 fi
 sleep 2
 launchctl print "$DOMAIN/$LABEL" | grep -E "^\s+(state|pid) =" || true
+open "$APP"
+echo "PTZBot est dans la barre des menus."
 echo "Journal : tail -f \"$LOGS/ptzd.log\""
