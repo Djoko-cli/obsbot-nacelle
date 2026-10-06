@@ -86,13 +86,20 @@ public final class PanelModel {
         guard let session = pairing else { return }
         session.cancel()
         pairing = nil
-        if case .showing = session.phase {
+        switch session.phase {
+        case .waiting, .showing, .noAddress:
             send(.closePairing)
+        case .paired, .expired:
+            break
         }
     }
 
-    private var knownDevices: Set<String> {
-        Set(admin?.devices.map(\.deviceID) ?? [])
+    private var knownDevices: [String: Date] {
+        var result: [String: Date] = [:]
+        for device in admin?.devices ?? [] {
+            result[device.deviceID] = device.pairedAt
+        }
+        return result
     }
 
     private func send(_ message: ClientMessage) {

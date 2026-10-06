@@ -134,4 +134,36 @@ struct PanelModelTests {
         try receive(.pairingOpened(PairingInvitation(pairingID: "1a2b3c4d", secret: Data(repeating: 5, count: 32), expiresAt: Date(), hosts: [], port: 1985)))
         #expect(model.pairing?.phase == .noAddress)
     }
+
+    @Test("Fermer pendant l'attente de l'invitation : closePairing envoyé")
+    func closingWhileWaiting() throws {
+        try connect()
+        model.openPairing()
+        #expect(model.pairing?.phase == .waiting)
+        model.closePairing()
+        #expect(sent.last == .closePairing)
+        #expect(model.pairing == nil)
+    }
+
+    @Test("Fermer avec invitation sans adresse : closePairing envoyé")
+    func closingNoAddress() throws {
+        try connect()
+        model.openPairing()
+        try receive(.pairingOpened(PairingInvitation(pairingID: "1a2b3c4d", secret: Data(repeating: 5, count: 32), expiresAt: Date(), hosts: [], port: 1985)))
+        #expect(model.pairing?.phase == .noAddress)
+        model.closePairing()
+        #expect(sent.last == .closePairing)
+        #expect(model.pairing == nil)
+    }
+
+    @Test("Reappairage d'un appareil connu avec pairedAt différent : « appairé »")
+    func rePairingKnownDevice() throws {
+        try connect(devices: [device])
+        model.openPairing()
+        let invitation = PairingInvitation(pairingID: "1a2b3c4d", secret: Data(repeating: 5, count: 32), expiresAt: Date(timeIntervalSince1970: 1_791_301_300), hosts: ["192.168.0.10"], port: 1985)
+        try receive(.pairingOpened(invitation))
+        let rePairedDevice = AdminDevice(deviceID: device.deviceID, name: device.name, pairedAt: Date(timeIntervalSince1970: 1_791_400_000), blockedUntil: nil)
+        try receive(.adminState(AdminState(devices: [rePairedDevice], clients: [], pairing: nil)))
+        #expect(model.pairing?.phase == .paired(name: device.name, shortID: String(device.deviceID.prefix(8))))
+    }
 }
