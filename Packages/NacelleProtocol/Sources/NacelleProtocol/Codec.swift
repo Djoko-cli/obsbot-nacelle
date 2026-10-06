@@ -65,6 +65,18 @@ extension ClientMessage: Codable {
             )
         case "webrtcOffer":
             self = .webrtcOffer(id: try container.decode(Int.self, forKey: .id), sdp: try container.decode(String.self, forKey: .sdp))
+        case "aiTracking":
+            self = .aiTracking(on: try container.decode(Bool.self, forKey: .on))
+        case "adminWatch":
+            self = .adminWatch
+        case "revoke":
+            self = .revoke(deviceID: try container.decode(String.self, forKey: .deviceID))
+        case "kick":
+            self = .kick(deviceID: try container.decode(String.self, forKey: .deviceID))
+        case "unblock":
+            self = .unblock(deviceID: try container.decode(String.self, forKey: .deviceID))
+        case "closePairing":
+            self = .closePairing
         default:
             throw NacelleProtocolError.unknownType(type)
         }
@@ -101,6 +113,22 @@ extension ClientMessage: Codable {
             try container.encode("webrtcOffer", forKey: .type)
             try container.encode(id, forKey: .id)
             try container.encode(sdp, forKey: .sdp)
+        case let .aiTracking(on):
+            try container.encode("aiTracking", forKey: .type)
+            try container.encode(on, forKey: .on)
+        case .adminWatch:
+            try container.encode("adminWatch", forKey: .type)
+        case let .revoke(deviceID):
+            try container.encode("revoke", forKey: .type)
+            try container.encode(deviceID, forKey: .deviceID)
+        case let .kick(deviceID):
+            try container.encode("kick", forKey: .type)
+            try container.encode(deviceID, forKey: .deviceID)
+        case let .unblock(deviceID):
+            try container.encode("unblock", forKey: .type)
+            try container.encode(deviceID, forKey: .deviceID)
+        case .closePairing:
+            try container.encode("closePairing", forKey: .type)
         }
     }
 
@@ -111,7 +139,7 @@ extension ClientMessage: Codable {
 
 extension StateSnapshot: Codable {
     private enum CodingKeys: String, CodingKey {
-        case camera, control, privacy, pan, tilt, zoom, moving
+        case camera, control, privacy, pan, tilt, zoom, moving, aiTracking
     }
 
     public init(from decoder: any Decoder) throws {
@@ -123,7 +151,9 @@ extension StateSnapshot: Codable {
             pan: try container.decodeIfPresent(Double.self, forKey: .pan),
             tilt: try container.decodeIfPresent(Double.self, forKey: .tilt),
             zoom: try container.decodeIfPresent(Int.self, forKey: .zoom),
-            moving: try container.decode(Bool.self, forKey: .moving)
+            moving: try container.decode(Bool.self, forKey: .moving),
+            // Un ptzd d'avant le suivi IA n'envoie pas ce champ.
+            aiTracking: try container.decodeIfPresent(AITracking.self, forKey: .aiTracking) ?? .unknown
         )
     }
 
@@ -137,12 +167,13 @@ extension StateSnapshot: Codable {
         try container.encode(tilt, forKey: .tilt)
         try container.encode(zoom, forKey: .zoom)
         try container.encode(moving, forKey: .moving)
+        try container.encode(aiTracking, forKey: .aiTracking)
     }
 }
 
 extension ServerMessage: Codable {
     private enum CodingKeys: String, CodingKey {
-        case type, code, message, nonce, deviceID, id, sdp, lanKey, invitation
+        case type, code, message, nonce, deviceID, id, sdp, lanKey, invitation, state
     }
 
     public init(from decoder: any Decoder) throws {
@@ -168,6 +199,8 @@ extension ServerMessage: Codable {
             self = .webrtcAnswer(id: try container.decode(Int.self, forKey: .id), sdp: try container.decode(String.self, forKey: .sdp))
         case "webrtcError":
             self = .webrtcError(id: try container.decode(Int.self, forKey: .id), message: try container.decode(String.self, forKey: .message))
+        case "adminState":
+            self = .adminState(try container.decode(AdminState.self, forKey: .state))
         default:
             throw NacelleProtocolError.unknownType(type)
         }
@@ -203,6 +236,9 @@ extension ServerMessage: Codable {
             try container.encode("webrtcError", forKey: .type)
             try container.encode(id, forKey: .id)
             try container.encode(message, forKey: .message)
+        case let .adminState(state):
+            try container.encode("adminState", forKey: .type)
+            try container.encode(state, forKey: .state)
         }
     }
 }

@@ -95,9 +95,12 @@ public final class PTZController {
                 try privacy.exit()
                 refreshAfterSettling()
             }
-        case .pair, .openPairing, .auth, .webrtcOffer:
-            // Messages de session : le serveur les traite et ne les transmet jamais.
+        case .pair, .openPairing, .auth, .webrtcOffer, .adminWatch, .revoke, .kick, .unblock, .closePairing:
+            // Messages de session et d'administration : le serveur les traite et ne les transmet jamais.
             return (.badMessage, "Message de session inattendu.")
+        case .aiTracking:
+            // Transition (plan app Mac, tâche 1) : la tâche 3 branche le suivi IA.
+            return (.badMessage, "Suivi IA pas encore pris en charge.")
         }
     }
 

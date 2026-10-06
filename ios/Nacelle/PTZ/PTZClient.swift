@@ -555,7 +555,7 @@ final class PTZClient {
             negotiations.removeValue(forKey: id)?.resume(returning: sdp)
         case let .webrtcError(id, message):
             negotiations.removeValue(forKey: id)?.resume(throwing: NegotiationError.relay(message))
-        case .challenge, .authenticated, .paired, .pairingOpened:
+        case .challenge, .authenticated, .paired, .pairingOpened, .adminState:
             break
         }
     }

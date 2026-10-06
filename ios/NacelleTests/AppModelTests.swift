@@ -50,7 +50,7 @@ struct AppModelTests {
     func addressRemembered() throws {
         let model = makeModel()
         model.activate()
-        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.0.2.30&p=1985"))
+        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.168.0.10&p=1985"))
         model.pair(with: link)
         let transport = try #require(transports.last)
         transport.remoteAddress = "192.0.2.30"
@@ -69,7 +69,7 @@ struct AppModelTests {
         model.activate()
         #expect(model.needsPairing)
         #expect(model.pairingStatus == nil)
-        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.0.2.30&p=1985"))
+        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.168.0.10&p=1985"))
         model.pair(with: link)
         #expect(model.pairingStatus == "Appairage…")
         let transport = try #require(transports.last)
@@ -91,7 +91,7 @@ struct AppModelTests {
         SettingsStore(defaults: defaults).save(complete)
         let model = makeModel()
         model.activate()
-        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.0.2.30&p=1985"))
+        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.168.0.10&p=1985"))
         model.pair(with: link)
         let transport = try #require(transports.last)
         transport.remoteAddress = "192.0.2.30"
