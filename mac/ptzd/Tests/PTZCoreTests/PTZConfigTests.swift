@@ -63,7 +63,7 @@ struct PTZConfigTests {
 
     @Test("go2rtcAPI : boucle locale en http avec un port, sans chemin ; flux non vide")
     func go2rtcValidation() {
-        for refused in ["http://192.168.1.10:1984", "https://127.0.0.1:1984", "http://127.0.0.1", "http://127.0.0.1:1984/api", "pas une url"] {
+        for refused in ["http://192.0.2.10:1984", "https://127.0.0.1:1984", "http://127.0.0.1", "http://127.0.0.1:1984/api", "pas une url"] {
             #expect(throws: ConfigError.invalidGo2rtcAPI(refused)) {
                 try decode(#"{"listenAddress":"127.0.0.1","go2rtcAPI":"\#(refused)"}"#)
             }
@@ -71,6 +71,12 @@ struct PTZConfigTests {
         #expect(throws: ConfigError.outOfRange("streamName")) {
             try decode(#"{"listenAddress":"127.0.0.1","streamName":" "}"#)
         }
+    }
+
+    @Test("Réseau local : actif par défaut, coupé par localNetwork false")
+    func localNetwork() throws {
+        #expect(try decode(#"{"listenAddress":"127.0.0.1"}"#).localNetwork)
+        #expect(try !decode(#"{"listenAddress":"127.0.0.1","localNetwork":false}"#).localNetwork)
     }
 
     @Test("Chemin de obsbot-ai-off : relatif au dossier de travail, ou absolu")

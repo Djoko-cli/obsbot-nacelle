@@ -20,9 +20,11 @@ public struct PTZConfig: Codable, Equatable, Sendable {
     public var go2rtcAPI: String
     /// Flux go2rtc relayé.
     public var streamName: String
+    /// Écoute et annonce Bonjour sur le réseau local (spec accès local § 6.1).
+    public var localNetwork: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case listenAddress, port, panMaxSpeed, tiltMaxSpeed, panDirection, tiltDirection, aiOffPath, go2rtcAPI, streamName
+        case listenAddress, port, panMaxSpeed, tiltMaxSpeed, panDirection, tiltDirection, aiOffPath, go2rtcAPI, streamName, localNetwork
     }
 
     public init(
@@ -34,7 +36,8 @@ public struct PTZConfig: Codable, Equatable, Sendable {
         tiltDirection: Int = 1,
         aiOffPath: String = "bin/obsbot-ai-off",
         go2rtcAPI: String = "http://127.0.0.1:1984",
-        streamName: String = "obsbot"
+        streamName: String = "obsbot",
+        localNetwork: Bool = true
     ) {
         self.listenAddress = listenAddress
         self.port = port
@@ -45,6 +48,7 @@ public struct PTZConfig: Codable, Equatable, Sendable {
         self.aiOffPath = aiOffPath
         self.go2rtcAPI = go2rtcAPI
         self.streamName = streamName
+        self.localNetwork = localNetwork
     }
 
     public init(from decoder: any Decoder) throws {
@@ -61,7 +65,8 @@ public struct PTZConfig: Codable, Equatable, Sendable {
             tiltDirection: try c.decodeIfPresent(Int.self, forKey: .tiltDirection) ?? 1,
             aiOffPath: try c.decodeIfPresent(String.self, forKey: .aiOffPath) ?? "bin/obsbot-ai-off",
             go2rtcAPI: try c.decodeIfPresent(String.self, forKey: .go2rtcAPI) ?? "http://127.0.0.1:1984",
-            streamName: try c.decodeIfPresent(String.self, forKey: .streamName) ?? "obsbot"
+            streamName: try c.decodeIfPresent(String.self, forKey: .streamName) ?? "obsbot",
+            localNetwork: try c.decodeIfPresent(Bool.self, forKey: .localNetwork) ?? true
         )
     }
 
@@ -73,7 +78,8 @@ public struct PTZConfig: Codable, Equatable, Sendable {
     }
 
     /// Adresse d'écoute : 127.0.0.1 ou une adresse Tailscale (plage CGNAT 100.64.0.0/10),
-    /// jamais 0.0.0.0 ni une adresse du réseau local (spec § 6.10).
+    /// jamais 0.0.0.0 ni une adresse du réseau local : le réseau local passe par `localNetwork`
+    /// (spec accès local § 6.1).
     /// Bornes de la Tiny 2 : vitesse pan 1–80, tilt 1–120 (test de faisabilité).
     public func validate() throws {
         guard Self.isAllowedListenAddress(listenAddress) else {
