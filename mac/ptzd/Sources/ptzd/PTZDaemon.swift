@@ -51,6 +51,18 @@ struct PTZDaemon {
             log("config.json absent ou invalide : \(error)")
             exit(78)
         }
+        if arguments.first == "pair" {
+            guard arguments.count == 1 else {
+                print("usage : ptzd pair    affiche le QR code d'un appairage valable 5 min")
+                exit(2)
+            }
+            Task {
+                let result = await PairCommand.run(port: config.port)
+                print(result.output)
+                exit(result.status)
+            }
+            dispatchMain()
+        }
 
         let scheduler = DispatchScheduler()
         let camera = UVCCamera(log: log)
