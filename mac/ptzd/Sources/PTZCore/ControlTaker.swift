@@ -13,6 +13,8 @@ public final class ControlTaker {
     public private(set) var state: ControlState = .idle
     /// Dernier ordre réussi ; `unknown` au départ et après `forget()`.
     public private(set) var tracking: AITracking = .unknown
+    /// La caméra peut être en suivi maintenant ou une fois l'ordre en cours terminé.
+    public var mayBeTracking: Bool { tracking != .off || explicitOrder }
     /// Appelé quand `state` ou `tracking` change.
     public var onChange: (() -> Void)?
 
