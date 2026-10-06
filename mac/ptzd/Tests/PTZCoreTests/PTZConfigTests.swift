@@ -51,6 +51,28 @@ struct PTZConfigTests {
         }
     }
 
+    @Test("go2rtc : API locale et flux par défaut, ou donnés")
+    func go2rtc() throws {
+        let defaults = try decode(#"{"listenAddress":"127.0.0.1"}"#)
+        #expect(defaults.go2rtcAPI == "http://127.0.0.1:1984")
+        #expect(defaults.streamName == "obsbot")
+        let custom = try decode(#"{"listenAddress":"127.0.0.1","go2rtcAPI":"http://localhost:2984","streamName":"cam"}"#)
+        #expect(custom.go2rtcAPI == "http://localhost:2984")
+        #expect(custom.streamName == "cam")
+    }
+
+    @Test("go2rtcAPI : boucle locale en http avec un port, sans chemin ; flux non vide")
+    func go2rtcValidation() {
+        for refused in ["http://192.168.1.10:1984", "https://127.0.0.1:1984", "http://127.0.0.1", "http://127.0.0.1:1984/api", "pas une url"] {
+            #expect(throws: ConfigError.invalidGo2rtcAPI(refused)) {
+                try decode(#"{"listenAddress":"127.0.0.1","go2rtcAPI":"\#(refused)"}"#)
+            }
+        }
+        #expect(throws: ConfigError.outOfRange("streamName")) {
+            try decode(#"{"listenAddress":"127.0.0.1","streamName":" "}"#)
+        }
+    }
+
     @Test("Chemin de obsbot-ai-off : relatif au dossier de travail, ou absolu")
     func aiOffURL() {
         let base = URL(fileURLWithPath: "/tmp/ObsbotNacelle")

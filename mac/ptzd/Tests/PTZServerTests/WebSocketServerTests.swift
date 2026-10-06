@@ -37,10 +37,11 @@ struct WebSocketServerTests {
         on hosts: [String] = ["127.0.0.1"],
         scheduler: any Scheduler = DispatchScheduler(),
         log: @escaping LogSink = { _ in },
-        trustLoopback: Bool = true
+        trustLoopback: Bool = true,
+        relay: any WebRTCRelay = FakeRelay { "v=0 réponse à \($0)" }
     ) async -> (WebSocketServer, [String: UInt16]) {
         let server = WebSocketServer(
-            hosts: hosts, port: 0, controller: controller, authority: authority,
+            hosts: hosts, port: 0, controller: controller, authority: authority, relay: relay,
             scheduler: scheduler, log: log, trustLoopback: trustLoopback
         )
         let ports = await withCheckedContinuation { continuation in
@@ -172,7 +173,7 @@ struct WebSocketServerTests {
     func duplicateHosts() async throws {
         let server = WebSocketServer(
             hosts: ["127.0.0.1", "127.0.0.1"], port: 0, controller: controller, authority: authority,
-            scheduler: DispatchScheduler(), log: { _ in }
+            relay: FakeRelay { $0 }, scheduler: DispatchScheduler(), log: { _ in }
         )
         var readyCount = 0
         server.onReady = { _, _ in readyCount += 1 }
@@ -346,6 +347,70 @@ struct WebSocketServerTests {
         withExtendedLifetime(server) {}
     }
 
+    @Test("Offre WebRTC relayée : réponse avec le même identifiant")
+    func relayAnswer() async throws {
+        let (server, ports) = await startServer()
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await next(task) { if case .state = $0 { true } else { false } }
+
+        try await send(.webrtcOffer(id: 7, sdp: "offre"), on: task)
+        #expect(try await next(task) { if case .webrtcAnswer = $0 { true } else { false } } == .webrtcAnswer(id: 7, sdp: "v=0 réponse à offre"))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("go2rtc en échec : webrtcError avec le même identifiant, journalisé")
+    func relayError() async throws {
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) }, relay: FakeRelay { _ in throw RelayError.badResponse(status: 500) })
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await next(task) { if case .state = $0 { true } else { false } }
+
+        try await send(.webrtcOffer(id: 2, sdp: "offre"), on: task)
+        #expect(try await next(task) { if case .webrtcError = $0 { true } else { false } } == .webrtcError(id: 2, message: "go2rtc ne répond pas."))
+        #expect(lines.values.contains { $0.hasPrefix("Relais vidéo du client 1 en échec") })
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Offre avant l'authentification : refusée, go2rtc pas appelé")
+    func relayRequiresAuth() async throws {
+        let calls = CallCounter()
+        let (server, ports) = await startServer(trustLoopback: false, relay: FakeRelay { calls.increment(); return $0 })
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await challenge(task)
+
+        try await send(.webrtcOffer(id: 1, sdp: "offre"), on: task)
+        #expect(try await next(task) { _ in true } == .error(code: .notAuthenticated, message: "Authentification d'abord."))
+        #expect(calls.value == 0)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Une nouvelle offre remplace la précédente : seule la dernière reçoit sa réponse")
+    func newOfferReplaces() async throws {
+        let relay = FakeRelay { offer in
+            if offer == "lente" {
+                try await Task.sleep(for: .seconds(1))
+            }
+            return "v=0 \(offer)"
+        }
+        let (server, ports) = await startServer(relay: relay)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await next(task) { if case .state = $0 { true } else { false } }
+
+        try await send(.webrtcOffer(id: 1, sdp: "lente"), on: task)
+        try await send(.webrtcOffer(id: 2, sdp: "rapide"), on: task)
+        #expect(try await next(task) { if case .webrtcAnswer = $0 { true } else { false } } == .webrtcAnswer(id: 2, sdp: "v=0 rapide"))
+        try await Task.sleep(for: .milliseconds(1500))
+        try await task.send(.string("pas du json"))
+        // Après 1,5 s, le message suivant est l'erreur de lecture : la réponse à l'offre 1 n'est jamais partie.
+        let following = try await next(task) { if case .state = $0 { false } else { true } }
+        #expect(following == .error(code: .badMessage, message: "Message illisible."))
+        withExtendedLifetime(server) {}
+    }
+
     @Test("L'état n'est diffusé qu'aux clients authentifiés")
     func broadcastOnlyToAuthenticated() async throws {
         try pairTestDevice()
@@ -443,6 +508,33 @@ struct WebSocketServerTests {
 @MainActor
 final class LineBox {
     var values: [String] = []
+}
+
+/// Relais WebRTC de test : la réponse est calculée à partir de l'offre.
+struct FakeRelay: WebRTCRelay {
+    let handler: @Sendable (String) async throws -> String
+
+    init(_ handler: @escaping @Sendable (String) async throws -> String) {
+        self.handler = handler
+    }
+
+    func answer(offer: String) async throws -> String {
+        try await handler(offer)
+    }
+}
+
+/// Compteur partagé avec un relais de test.
+final class CallCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.withLock { count }
+    }
+
+    func increment() {
+        lock.withLock { count += 1 }
+    }
 }
 
 @MainActor
