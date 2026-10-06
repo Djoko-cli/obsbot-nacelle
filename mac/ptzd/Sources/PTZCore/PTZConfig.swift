@@ -70,13 +70,20 @@ public struct PTZConfig: Codable, Equatable, Sendable {
             tiltMaxSpeed: try c.decodeIfPresent(Int.self, forKey: .tiltMaxSpeed) ?? 60,
             panDirection: try c.decodeIfPresent(Int.self, forKey: .panDirection) ?? 1,
             tiltDirection: try c.decodeIfPresent(Int.self, forKey: .tiltDirection) ?? 1,
-            // L'ancienne clé `aiOffPath` reste lue si la nouvelle manque.
+            // L'ancienne clé `aiOffPath` reste lue si la nouvelle manque, sauf si elle désigne
+            // l'ancien `obsbot-ai-off` : il coupe toujours le suivi, il ne sait pas l'allumer.
             aiPath: try c.decodeIfPresent(String.self, forKey: .aiPath)
-                ?? legacy.decodeIfPresent(String.self, forKey: .aiOffPath) ?? "bin/obsbot-ai",
+                ?? Self.legacyAIPath(legacy.decodeIfPresent(String.self, forKey: .aiOffPath)) ?? "bin/obsbot-ai",
             go2rtcAPI: try c.decodeIfPresent(String.self, forKey: .go2rtcAPI) ?? "http://127.0.0.1:1984",
             streamName: try c.decodeIfPresent(String.self, forKey: .streamName) ?? "obsbot",
             localNetwork: try c.decodeIfPresent(Bool.self, forKey: .localNetwork) ?? true
         )
+    }
+
+    /// La valeur de l'ancienne clé `aiOffPath`, ou `nil` si elle nomme `obsbot-ai-off` (supprimé à l'installation).
+    private static func legacyAIPath(_ value: String?) -> String? {
+        guard let value, URL(fileURLWithPath: value).lastPathComponent != "obsbot-ai-off" else { return nil }
+        return value
     }
 
     /// Lit et valide config.json.
