@@ -1,6 +1,6 @@
 # Spec : OBSBOT Nacelle v1
 
-Date : 2026-10-05. Statut : **validée par Majid**, puis amendée (A1, A2 et A3, validés : voir § 12).
+Date : 2026-10-05. Statut : **validée par Majid**, puis amendée (A1 à A5, validés : voir § 12).
 
 ## 1. Objectif
 
@@ -21,7 +21,7 @@ HomeKit ne sait pas commander un pan, un tilt ou un zoom. Le pilotage passe donc
 
 **Hors v1**
 
-- Le son dans l'app. Le flux est en AAC, que WebRTC ne transporte pas.
+- Le son dans l'app. Le flux est en AAC, que WebRTC ne transporte pas. *(Intégré à la v1 par l'amendement A5.)*
 - La coupure du micro en mode vie privée. **HomeKit continue de recevoir le son.**
 - Les presets, le rallumage du suivi IA, les widgets, Siri et la gestion de plusieurs caméras.
 - Toute modification de go2rtc ou de sa configuration.
@@ -216,7 +216,7 @@ Durée attendue : environ 4 s, davantage quand la vidéo démarre au même momen
 | `VideoSession` | Une `RTCPeerConnection` avec un récepteur vidéo seul, sans serveur ICE. Elle attend la fin de la collecte des candidats (2 s au plus), puis envoie `POST http://<hôte>:<port>/api/webrtc?src=<flux>` avec `Content-Type: application/sdp`. Elle attend une réponse `201` contenant le SDP. Ses états : `connecting`, `playing`, `lost`. Les nouveaux essais sont espacés de 1, 2, 4, puis 8 s au plus. L'image s'affiche dans `RTCMTLVideoView`, sans être rognée. |
 | `PTZClient` | `URLSessionWebSocketTask` vers `ws://<hôte>:<port ptzd>`. Il envoie `takeControl` à chaque connexion. Tant que le joystick est hors du centre, il renvoie le dernier `move` 10 fois par seconde. Il publie le dernier `state` reçu et se reconnecte en espaçant les essais. |
 | `Joystick` | Transforme le geste en vecteur de -1 à 1, borné au cercle, avec une zone morte de 0,1. Au relâchement, le joystick revient au centre et envoie `0,0` une fois. |
-| `ControlScreen` | La vidéo en plein écran, avec le joystick en bas à gauche, le curseur de zoom vertical à droite, le bouton vie privée en haut à droite et le bandeau d'état en haut. Fonctionne en portrait comme en paysage. |
+| `ControlScreen` | La vidéo en plein écran, avec le joystick en bas à gauche, le curseur de zoom vertical à droite, le bouton vie privée en haut à droite, le bouton son à sa gauche (amendement A5) et le bandeau d'état en haut. Fonctionne en portrait comme en paysage. |
 
 ### 7.3 Bandeau d'état
 
@@ -281,7 +281,7 @@ Si plusieurs conditions sont vraies, elles sont classées dans cet ordre : Mac i
 ## 9. Limites connues
 
 - Réinstallation de l'app tous les 7 jours.
-- Pas de son dans l'app, et le micro reste actif en mode vie privée, y compris pour HomeKit.
+- Le micro reste actif en mode vie privée, y compris pour HomeKit ; l'app, elle, coupe le son en vie privée (amendement A5).
 - L'état du suivi IA ne se lit pas, et un geste de la main peut le rallumer pendant une session.
 - OBSBOT Center doit rester fermé.
 - Le SDK doit être présent en local pour compiler et installer `obsbot-ai-off`.
@@ -315,3 +315,4 @@ Validés par Majid le 2026-10-05, après les vérifications faites en écrivant 
 | **A2** | Vie privée à -70° au lieu de -90° ; ordres absolus bornés à pan ±130°, tilt de -80° à +70° (§ 2, § 6.1, § 6.5) | La caméra ignore en silence un ordre à -90° ou à +89°, pan compris, en renvoyant un succès : le mode vie privée tel que spécifié ne faisait rien. -70° est obéi exactement, et vérifié à l'image. Détails : section « Correctif » de [docs/spike/2026-10-05-faisabilite.md](../../spike/2026-10-05-faisabilite.md). |
 | **A3** | `obsbot-ai-off` attend 10 s et quitte sans refermer le SDK s'il ne trouve pas la caméra ; un seul nouvel essai de prise en main 3 s après un échec (§ 6.4, § 6.9) | L'app ouvre la vidéo et la prise en main ensemble : une fois sur trois, l'initialisation du SDK a dépassé 5 s, puis `obsbot-ai-off` a planté en refermant le SDK encore occupé (constaté dans le simulateur le 2026-10-05). |
 | **A4** | Accès par le réseau local, appairage obligatoire, vidéo de l'app négociée par `ptzd`, go2rtc fermé au réseau local sauf RTSP avec mot de passe (§ 2, § 6.10, § 7) | Majid veut se passer de Tailscale à la maison (2026-10-06). La frontière n'est plus le réseau Tailscale mais l'appairage de l'iPhone. Détails : [2026-10-06-acces-local-design.md](2026-10-06-acces-local-design.md). |
+| **A5** | Son dans l'app : piste Opus reçue (go2rtc convertit l'AAC du micro à la demande, `ffmpeg: bin:` en chemin complet), périphérique audio en sortie seule, bouton son coupé au premier lancement puis retenu, joué en mode silencieux, coupé en vie privée et tant que l'état de `ptzd` est inconnu (§ 2, § 7.2, § 9) | Demandé par Majid le 2026-10-06. Le micro de l'iPhone n'est jamais demandé ; HomeKit garde son AAC. La vie privée ne coupe que la lecture dans l'app : la capture continue pour HomeKit. |
