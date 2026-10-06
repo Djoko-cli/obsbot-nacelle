@@ -1,5 +1,6 @@
 import Foundation
 import NacelleProtocol
+import Network
 import PTZCore
 import Testing
 @testable import PTZServer
@@ -26,9 +27,10 @@ struct WebSocketServerTests {
     /// renvoie le port ouvert sur chacune.
     private func startServer(
         on hosts: [String] = ["127.0.0.1"],
+        scheduler: any Scheduler = DispatchScheduler(),
         log: @escaping LogSink = { _ in }
     ) async -> (WebSocketServer, [String: UInt16]) {
-        let server = WebSocketServer(hosts: hosts, port: 0, controller: controller, scheduler: DispatchScheduler(), log: log)
+        let server = WebSocketServer(hosts: hosts, port: 0, controller: controller, scheduler: scheduler, log: log)
         let ports = await withCheckedContinuation { continuation in
             var ready: [String: UInt16] = [:]
             server.onReady = { host, port in
@@ -51,6 +53,31 @@ struct WebSocketServerTests {
         let task = URLSession.shared.webSocketTask(with: request)
         task.resume()
         return task
+    }
+
+    /// Client WebSocket qui ne répond pas aux pings (`autoReplyPing = false`), ou simple
+    /// connexion TCP qui n'envoie jamais de poignée de main (`webSocket: false`).
+    private func rawClient(_ port: UInt16, webSocket: Bool) -> NWConnection {
+        let parameters = NWParameters.tcp
+        if webSocket {
+            let options = NWProtocolWebSocket.Options()
+            options.autoReplyPing = false
+            parameters.defaultProtocolStack.applicationProtocols.insert(options, at: 0)
+        }
+        let endpoint: NWEndpoint = webSocket
+            ? .url(URL(string: "ws://127.0.0.1:\(port)")!)
+            : .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!)
+        let connection = NWConnection(to: endpoint, using: parameters)
+        connection.start(queue: .main)
+        return connection
+    }
+
+    /// Attend (5 s au plus) que la condition devienne vraie.
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<250 where !condition() {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(condition())
     }
 
     /// Lit les messages jusqu'au premier qui satisfait la condition.
@@ -152,6 +179,95 @@ struct WebSocketServerTests {
         }
         (clients + [browser]).forEach { $0.cancel(with: .goingAway, reason: nil) }
         withExtendedLifetime(server) {}
+    }
+
+    @Test("Connexion jamais prête : place libérée 10 s après l'acceptation, avec une ligne de journal")
+    func handshakeTimeout() async throws {
+        let scheduler = FakeScheduler()
+        let lines = LineBox()
+        let (server, ports) = await startServer(scheduler: scheduler, log: { lines.values.append($0) })
+        let client = rawClient(ports["127.0.0.1"]!, webSocket: false)
+        defer { client.cancel() }
+        try await waitUntil { server.clientCount == 1 }
+
+        scheduler.advance(by: WebSocketServer.handshakeTimeout - 0.1)
+        #expect(server.clientCount == 1)
+        scheduler.advance(by: 0.1)
+        #expect(server.clientCount == 0)
+        #expect(lines.values.contains("Client 1 libéré : poignée de main non terminée en 10 s."))
+    }
+
+    @Test("Client qui ne répond pas aux pings : place libérée 25 s après le dernier pong")
+    func missingPong() async throws {
+        let scheduler = FakeScheduler()
+        let lines = LineBox()
+        let (server, ports) = await startServer(scheduler: scheduler, log: { lines.values.append($0) })
+        let client = rawClient(ports["127.0.0.1"]!, webSocket: true)
+        defer { client.cancel() }
+        // Prêt : le délai de poignée de main est annulé, restent le ping et l'échéance du pong.
+        try await waitUntil { server.clientCount == 1 && scheduler.pendingCount == 2 }
+
+        scheduler.advance(by: WebSocketServer.pingInterval)
+        try await Task.sleep(for: .milliseconds(300))
+        scheduler.advance(by: WebSocketServer.pingInterval)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(server.clientCount == 1)
+        scheduler.advance(by: WebSocketServer.pongTimeout - 2 * WebSocketServer.pingInterval)
+        #expect(server.clientCount == 0)
+        #expect(lines.values.contains("Client 1 libéré : pas de pong depuis 25 s."))
+        #expect(scheduler.pendingCount == 0)
+    }
+
+    @Test("Client qui répond aux pings (URLSessionWebSocketTask) : gardé au-delà de 25 s")
+    func pongKeepsClient() async throws {
+        let scheduler = FakeScheduler()
+        let lines = LineBox()
+        let (server, ports) = await startServer(scheduler: scheduler, log: { lines.values.append($0) })
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await next(task) { _ in true }
+        try await waitUntil { scheduler.pendingCount == 2 }
+
+        // URLSessionWebSocketTask ne répond aux pings que si une réception est en attente :
+        // comme l'app iOS et nacelle-ws, on lit en continu.
+        let reader = Task { while true { _ = try await task.receive() } }
+        defer { reader.cancel() }
+        for _ in 0..<4 {
+            scheduler.advance(by: WebSocketServer.pingInterval)
+            try await Task.sleep(for: .milliseconds(300))
+        }
+        #expect(server.clientCount == 1)
+        #expect(!lines.values.contains { $0.contains("libéré") })
+    }
+
+    @Test("Connexion en attente (chemin réseau perdu) : place libérée, avec une ligne de journal")
+    func waitingReleases() async throws {
+        let scheduler = FakeScheduler()
+        let lines = LineBox()
+        let (server, ports) = await startServer(scheduler: scheduler, log: { lines.values.append($0) })
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await next(task) { _ in true }
+
+        server.connectionChanged(1, .waiting(.posix(.ENETDOWN)))
+        #expect(server.clientCount == 0)
+        #expect(lines.values.contains { $0.hasPrefix("Client 1 libéré : connexion en attente") })
+        #expect(scheduler.pendingCount == 0)
+    }
+
+    @Test("Fermeture normale : minuteries du client annulées, rien de plus au journal")
+    func normalCloseCancelsTimers() async throws {
+        let scheduler = FakeScheduler()
+        let lines = LineBox()
+        let (server, ports) = await startServer(scheduler: scheduler, log: { lines.values.append($0) })
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        _ = try await next(task) { _ in true }
+        try await waitUntil { scheduler.pendingCount == 2 }
+
+        task.cancel(with: .goingAway, reason: nil)
+        try await waitUntil { server.clientCount == 0 }
+        #expect(scheduler.pendingCount == 0)
+        #expect(!lines.values.contains { $0.contains("libéré") })
     }
 }
 
