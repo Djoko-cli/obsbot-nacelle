@@ -1,4 +1,21 @@
 import Foundation
+import Network
+
+/// Où ouvrir une connexion vers ptzd.
+enum WebSocketEndpoint: Equatable, Sendable {
+    /// Le nom Tailscale du Mac.
+    case url(URL)
+    /// Le service Bonjour `_nacelle._tcp` trouvé sur le réseau local.
+    case service(NWEndpoint)
+}
+
+/// Découverte de ptzd sur le réseau local (Bonjour). Les résultats arrivent sur le MainActor.
+@MainActor
+protocol ServiceBrowser: AnyObject {
+    var onFound: ((NWEndpoint) -> Void)? { get set }
+    func start()
+    func stop()
+}
 
 /// Ce qui arrive sur la connexion WebSocket.
 enum TransportEvent: Equatable, Sendable {
@@ -12,7 +29,7 @@ enum TransportEvent: Equatable, Sendable {
 @MainActor
 protocol WebSocketTransport: AnyObject {
     var onEvent: ((TransportEvent) -> Void)? { get set }
-    func open(_ url: URL)
+    func open(_ endpoint: WebSocketEndpoint)
     func send(_ text: String)
     func close()
 }
@@ -35,8 +52,13 @@ final class URLSessionWebSocketTransport: NSObject, WebSocketTransport {
         self.scheduler = scheduler
     }
 
-    func open(_ url: URL) {
+    /// Le nom Tailscale ; un service Bonjour passe par `NWWebSocketTransport`.
+    func open(_ endpoint: WebSocketEndpoint) {
         close()
+        guard case let .url(url) = endpoint else {
+            onEvent?(.closed)
+            return
+        }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = Self.openTimeout
         let session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)

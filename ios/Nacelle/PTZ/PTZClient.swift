@@ -1,9 +1,12 @@
 import Foundation
 import NacelleProtocol
+import Network
 import Observation
 
-/// Dialogue avec ptzd (spec § 7.2) : prise en main à chaque connexion, `move` répété
-/// 10 fois par seconde tant que le joystick est hors du centre, reconnexion espacée.
+/// Dialogue avec ptzd (spec § 7.2, spec accès local § 8) : à chaque connexion, le nom Tailscale
+/// et le service Bonjour du réseau local sont essayés ensemble ; la première connexion
+/// authentifiée l'emporte. Puis prise en main, `move` répété 10 fois par seconde tant que le
+/// joystick est hors du centre, reconnexion espacée.
 @MainActor
 @Observable
 final class PTZClient {
@@ -14,8 +17,34 @@ final class PTZClient {
         case waitingToRetry
     }
 
+    /// Ce qui empêche l'authentification ; aucune reconnexion tant que l'utilisateur n'agit pas.
+    enum AuthIssue: Equatable {
+        /// Pas de clé, ou ptzd ne connaît pas cet iPhone.
+        case unpaired
+        /// Signature refusée.
+        case rejected
+        /// Code d'appairage faux, expiré ou déjà utilisé.
+        case badCode
+    }
+
+    /// Pourquoi une négociation vidéo n'a pas abouti.
+    enum NegotiationError: Error, Equatable {
+        /// Pas de connexion authentifiée dans le délai.
+        case notConnected
+        /// Connexion perdue ou fermée pendant la négociation.
+        case connectionLost
+        /// Pas de réponse de ptzd dans le délai.
+        case timeout
+        /// go2rtc n'a pas répondu à ptzd (`webrtcError`).
+        case relay(String)
+    }
+
     static let repeatInterval: TimeInterval = 0.1
+    /// Délai d'une négociation vidéo, attente de la connexion comprise.
+    static let negotiationTimeout: TimeInterval = 10
     static let retryDelays: [TimeInterval] = [1, 2, 4, 8]
+    /// Temps laissé à Bonjour pour trouver ptzd sur le réseau local, à chaque tentative.
+    static let discoveryWindow: TimeInterval = 3
 
     private(set) var link: Link = .idle
     /// Dernier état reçu de ptzd ; nil hors connexion.
@@ -25,21 +54,66 @@ final class PTZClient {
     /// Vrai quand une tentative de connexion a échoué, jusqu'à la prochaine réussite.
     /// Remis à faux par `start(url:)` et `stop()` : le bandeau revient à « Connexion… ».
     private(set) var isUnreachable = false
+    private(set) var authIssue: AuthIssue?
+    /// Cet iPhone s'est déjà authentifié, ou vient d'être appairé (enregistré).
+    private(set) var isPaired: Bool
 
-    @ObservationIgnored private let transport: any WebSocketTransport
+    @ObservationIgnored private let makeTransport: (WebSocketEndpoint) -> any WebSocketTransport
+    @ObservationIgnored private let browser: any ServiceBrowser
+    @ObservationIgnored private let keys: any DeviceKeyStoring
+    @ObservationIgnored private let pairingRecord: PairingRecord
     @ObservationIgnored private let scheduler: any Scheduler
+    @ObservationIgnored private let deviceName: String
     @ObservationIgnored private var url: URL?
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var openedThisAttempt = false
+    @ObservationIgnored private var candidates: [Candidate] = []
+    @ObservationIgnored private var active: Candidate?
+    @ObservationIgnored private var nextCandidateID = 0
+    @ObservationIgnored private var foundLocal = false
+    @ObservationIgnored private var discovery: (any Cancellable)?
     @ObservationIgnored private var retry: (any Cancellable)?
     @ObservationIgnored private var repeater: (any Cancellable)?
     @ObservationIgnored private var currentMove = JoystickVector.zero
+    /// Code saisi dans les réglages, envoyé au prochain défi.
+    @ObservationIgnored private var pendingCode: String?
+    @ObservationIgnored private var pairingCandidate: Candidate?
+    @ObservationIgnored private var nextOfferID = 0
+    /// Négociations vidéo en attente de `webrtcAnswer`, par identifiant d'offre.
+    @ObservationIgnored private var negotiations: [Int: CheckedContinuation<String, any Error>] = [:]
+    /// Négociations en attente d'une connexion authentifiée.
+    @ObservationIgnored private var waitingForLink: [Int: CheckedContinuation<Void, any Error>] = [:]
 
-    init(transport: any WebSocketTransport, scheduler: any Scheduler) {
-        self.transport = transport
+    /// Une connexion en cours d'essai ou retenue.
+    private final class Candidate {
+        let id: Int
+        let transport: any WebSocketTransport
+        /// Défi reçu, en attente de réponse.
+        var nonce: Data?
+
+        init(id: Int, transport: any WebSocketTransport) {
+            self.id = id
+            self.transport = transport
+        }
+    }
+
+    init(
+        makeTransport: @escaping (WebSocketEndpoint) -> any WebSocketTransport,
+        browser: any ServiceBrowser,
+        keys: any DeviceKeyStoring,
+        pairingRecord: PairingRecord,
+        scheduler: any Scheduler,
+        deviceName: String = "iPhone"
+    ) {
+        self.makeTransport = makeTransport
+        self.browser = browser
+        self.keys = keys
+        self.pairingRecord = pairingRecord
         self.scheduler = scheduler
-        transport.onEvent = { [weak self] event in
-            self?.handle(event)
+        self.deviceName = deviceName
+        isPaired = pairingRecord.isPaired
+        browser.onFound = { [weak self] endpoint in
+            self?.found(endpoint)
         }
     }
 
@@ -62,10 +136,60 @@ final class PTZClient {
         retry?.cancel()
         retry = nil
         url = nil
-        transport.close()
+        closeAll()
         link = .idle
         state = nil
         isUnreachable = false
+        failNegotiations(.connectionLost)
+    }
+
+    /// Négociation vidéo relayée par ptzd (spec accès local § 8.4) : attend la connexion
+    /// authentifiée si besoin, puis envoie l'offre ; 10 s au plus en tout.
+    func negotiate(offer: String) async throws -> String {
+        nextOfferID += 1
+        let id = nextOfferID
+        let deadline = scheduler.schedule(after: Self.negotiationTimeout) { [weak self] in
+            self?.expire(id)
+        }
+        defer { deadline.cancel() }
+        if link != .connected {
+            try await withCheckedThrowingContinuation { continuation in
+                waitingForLink[id] = continuation
+            }
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            negotiations[id] = continuation
+            send(.webrtcOffer(id: id, sdp: offer))
+        }
+    }
+
+    private func expire(_ id: Int) {
+        waitingForLink.removeValue(forKey: id)?.resume(throwing: NegotiationError.notConnected)
+        negotiations.removeValue(forKey: id)?.resume(throwing: NegotiationError.timeout)
+    }
+
+    private func failNegotiations(_ error: NegotiationError) {
+        let waiting = waitingForLink
+        let pending = negotiations
+        waitingForLink = [:]
+        negotiations = [:]
+        waiting.values.forEach { $0.resume(throwing: error) }
+        pending.values.forEach { $0.resume(throwing: error) }
+    }
+
+    /// Appairage avec le code de `ptzd pair` : envoyé au prochain défi, connexion relancée.
+    func pair(code: String) {
+        pendingCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        authIssue = nil
+        restart()
+    }
+
+    /// Oublie la clé et l'appairage ; ptzd refusera cet iPhone jusqu'au prochain appairage.
+    func forgetPairing() {
+        keys.delete()
+        setPaired(false)
+        pendingCode = nil
+        restart()
     }
 
     func setJoystick(_ vector: JoystickVector) {
@@ -96,56 +220,256 @@ final class PTZClient {
         send(.takeControl)
     }
 
-    private func connect() {
-        guard let url else { return }
-        link = .connecting
-        openedThisAttempt = false
-        transport.open(url)
+    // MARK: - Connexions
+
+    private func restart() {
+        guard url != nil else { return }
+        retry?.cancel()
+        retry = nil
+        attempt = 0
+        connect()
     }
 
-    private func handle(_ event: TransportEvent) {
+    /// Une tentative : le nom Tailscale tout de suite, le réseau local si Bonjour trouve ptzd.
+    private func connect() {
+        guard let url else { return }
+        closeAll()
+        link = .connecting
+        openedThisAttempt = false
+        foundLocal = false
+        open(.url(url))
+        browser.start()
+        discovery = scheduler.schedule(after: Self.discoveryWindow) { [weak self] in
+            self?.discoveryEnded()
+        }
+    }
+
+    private func found(_ endpoint: NWEndpoint) {
+        guard link == .connecting, active == nil, !foundLocal else { return }
+        foundLocal = true
+        open(.service(endpoint))
+    }
+
+    private func discoveryEnded() {
+        discovery = nil
+        browser.stop()
+        if candidates.isEmpty, active == nil {
+            attemptFailed()
+        }
+    }
+
+    private func open(_ endpoint: WebSocketEndpoint) {
+        nextCandidateID += 1
+        let candidate = Candidate(id: nextCandidateID, transport: makeTransport(endpoint))
+        candidates.append(candidate)
+        candidate.transport.onEvent = { [weak self, weak candidate] event in
+            guard let self, let candidate else { return }
+            self.handle(event, from: candidate)
+        }
+        candidate.transport.open(endpoint)
+    }
+
+    private func closeAll() {
+        discovery?.cancel()
+        discovery = nil
+        browser.stop()
+        for candidate in candidates {
+            candidate.transport.onEvent = nil
+            candidate.transport.close()
+        }
+        candidates = []
+        active = nil
+        pairingCandidate = nil
+    }
+
+    private func close(_ candidate: Candidate) {
+        candidate.transport.onEvent = nil
+        candidate.transport.close()
+        candidates.removeAll { $0 === candidate }
+        if pairingCandidate === candidate {
+            pairingCandidate = nil
+        }
+    }
+
+    private func handle(_ event: TransportEvent, from candidate: Candidate) {
         switch event {
         case .opened:
-            link = .connected
             openedThisAttempt = true
-            attempt = 0
-            isUnreachable = false
-            send(.takeControl)
         case let .message(text):
             guard let message = try? NacelleCodec.decodeServer(text) else { return }
-            switch message {
-            case let .state(snapshot):
-                state = snapshot
-            case let .error(code, _):
-                lastError = code
-            case .challenge, .authenticated, .paired, .webrtcAnswer, .webrtcError:
-                // Authentification et vidéo relayée : branchées plus loin dans le plan.
-                break
+            if candidate === active {
+                handleActive(message)
+            } else {
+                handleHandshake(message, from: candidate)
             }
         case .closed:
-            stopRepeating()
-            currentMove = .zero
-            state = nil
-            guard url != nil else {
-                link = .idle
-                return
+            candidates.removeAll { $0 === candidate }
+            if pairingCandidate === candidate {
+                pairingCandidate = nil
             }
-            if !openedThisAttempt {
-                isUnreachable = true
-            }
-            link = .waitingToRetry
-            let delay = Self.retryDelays[min(attempt, Self.retryDelays.count - 1)]
-            attempt += 1
-            retry = scheduler.schedule(after: delay) { [weak self] in
-                self?.retry = nil
-                self?.connect()
+            if candidate === active {
+                active = nil
+                lost()
+            } else if active == nil, candidates.isEmpty, discovery == nil, link == .connecting {
+                attemptFailed()
             }
         }
     }
 
+    private func handleHandshake(_ message: ServerMessage, from candidate: Candidate) {
+        switch message {
+        case let .challenge(nonce):
+            answer(nonce, on: candidate)
+        case .paired:
+            pendingCode = nil
+            pairingCandidate = nil
+            setPaired(true)
+            for waiting in candidates where waiting.nonce != nil {
+                authenticate(waiting)
+            }
+        case .authenticated:
+            becomeActive(candidate)
+        case let .error(code, _):
+            switch code {
+            case .unpaired:
+                setPaired(false)
+                giveUp(.unpaired)
+            case .authFailed:
+                giveUp(.rejected)
+            case .badCode, .pairingClosed:
+                pendingCode = nil
+                giveUp(.badCode)
+            default:
+                lastError = code
+            }
+        default:
+            break
+        }
+    }
+
+    private func answer(_ nonce: Data, on candidate: Candidate) {
+        candidate.nonce = nonce
+        if let code = pendingCode {
+            // Un seul appairage à la fois : les autres connexions attendent `paired`.
+            guard pairingCandidate == nil else { return }
+            guard let key = try? keys.loadOrCreate() else {
+                giveUp(.unpaired)
+                return
+            }
+            pairingCandidate = candidate
+            send(.pair(code: code, publicKey: key.publicKeyX963, name: deviceName), on: candidate)
+        } else if keys.load() != nil {
+            authenticate(candidate)
+        } else {
+            setPaired(false)
+            giveUp(.unpaired)
+        }
+    }
+
+    private func authenticate(_ candidate: Candidate) {
+        guard let nonce = candidate.nonce, let key = keys.load(), let signature = try? key.signChallenge(nonce) else { return }
+        candidate.nonce = nil
+        send(.auth(deviceID: key.deviceID, signature: signature), on: candidate)
+    }
+
+    private func becomeActive(_ candidate: Candidate) {
+        guard active == nil else {
+            close(candidate)
+            return
+        }
+        active = candidate
+        for other in candidates where other !== candidate {
+            close(other)
+        }
+        discovery?.cancel()
+        discovery = nil
+        browser.stop()
+        link = .connected
+        attempt = 0
+        isUnreachable = false
+        authIssue = nil
+        setPaired(true)
+        send(.takeControl)
+        let waiting = waitingForLink
+        waitingForLink = [:]
+        waiting.values.forEach { $0.resume() }
+    }
+
+    private func handleActive(_ message: ServerMessage) {
+        switch message {
+        case let .state(snapshot):
+            state = snapshot
+        case let .error(code, _):
+            lastError = code
+        case let .webrtcAnswer(id, sdp):
+            negotiations.removeValue(forKey: id)?.resume(returning: sdp)
+        case let .webrtcError(id, message):
+            negotiations.removeValue(forKey: id)?.resume(throwing: NegotiationError.relay(message))
+        case .challenge, .authenticated, .paired:
+            break
+        }
+    }
+
+    /// Plus de reconnexion : l'utilisateur doit appairer l'iPhone (spec accès local § 8.5).
+    private func giveUp(_ issue: AuthIssue) {
+        authIssue = issue
+        retry?.cancel()
+        retry = nil
+        closeAll()
+        link = .idle
+        failNegotiations(.notConnected)
+    }
+
+    private func lost() {
+        stopRepeating()
+        currentMove = .zero
+        state = nil
+        let pending = negotiations
+        negotiations = [:]
+        pending.values.forEach { $0.resume(throwing: NegotiationError.connectionLost) }
+        scheduleRetry()
+    }
+
+    private func attemptFailed() {
+        closeAll()
+        if !openedThisAttempt {
+            isUnreachable = true
+        }
+        state = nil
+        scheduleRetry()
+    }
+
+    private func scheduleRetry() {
+        guard url != nil else {
+            link = .idle
+            return
+        }
+        closeAll()
+        link = .waitingToRetry
+        let delay = Self.retryDelays[min(attempt, Self.retryDelays.count - 1)]
+        attempt += 1
+        retry = scheduler.schedule(after: delay) { [weak self] in
+            self?.retry = nil
+            self?.connect()
+        }
+    }
+
+    private func setPaired(_ paired: Bool) {
+        guard isPaired != paired else { return }
+        isPaired = paired
+        pairingRecord.isPaired = paired
+    }
+
+    // MARK: - Envoi
+
     private func send(_ message: ClientMessage) {
-        guard link == .connected, let text = try? NacelleCodec.encode(message) else { return }
-        transport.send(text)
+        guard link == .connected, let active else { return }
+        send(message, on: active)
+    }
+
+    private func send(_ message: ClientMessage, on candidate: Candidate) {
+        guard let text = try? NacelleCodec.encode(message) else { return }
+        candidate.transport.send(text)
     }
 
     private func scheduleRepeat() {
@@ -164,5 +488,20 @@ final class PTZClient {
     private func stopRepeating() {
         repeater?.cancel()
         repeater = nil
+    }
+}
+
+/// Mémoire de l'appairage, pour l'afficher dans les réglages.
+final class PairingRecord {
+    static let key = "paired"
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    var isPaired: Bool {
+        get { defaults.bool(forKey: Self.key) }
+        set { defaults.set(newValue, forKey: Self.key) }
     }
 }

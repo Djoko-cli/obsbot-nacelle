@@ -2,10 +2,14 @@ import Foundation
 import Observation
 @preconcurrency import WebRTC
 
-/// Vidéo en direct de go2rtc, en WebRTC, réception seule (spec § 7.2).
+/// Vidéo en direct de go2rtc, en WebRTC, réception seule (spec § 7.2). L'offre est négociée
+/// par `signal`, qui la relaie à go2rtc (spec accès local § 8.4).
 @MainActor
 @Observable
 final class VideoSession {
+    /// Envoie l'offre SDP, renvoie la réponse SDP.
+    typealias Signal = @MainActor (_ offer: String) async throws -> String
+
     enum Phase: Equatable {
         case idle
         case connecting
@@ -19,7 +23,7 @@ final class VideoSession {
     private(set) var phase: Phase = .idle
 
     @ObservationIgnored private let scheduler: any Scheduler
-    @ObservationIgnored private var url: URL?
+    @ObservationIgnored private var signal: Signal?
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var peer: RTCPeerConnection?
@@ -47,15 +51,15 @@ final class VideoSession {
         track?.add(renderer)
     }
 
-    func start(url: URL) {
-        self.url = url
+    func start(signal: @escaping Signal) {
+        self.signal = signal
         attempt = 0
         connect()
     }
 
     /// Passage en arrière-plan : fermeture de la connexion vidéo.
     func stop() {
-        url = nil
+        signal = nil
         retry?.cancel()
         retry = nil
         teardown()
@@ -63,7 +67,7 @@ final class VideoSession {
     }
 
     private func connect() {
-        guard let url else { return }
+        guard let signal else { return }
         retry?.cancel()
         retry = nil
         teardown()
@@ -71,11 +75,11 @@ final class VideoSession {
         let current = generation
         phase = .connecting
         Task {
-            await negotiate(url: url, generation: current)
+            await negotiate(signal: signal, generation: current)
         }
     }
 
-    private func negotiate(url: URL, generation current: Int) async {
+    private func negotiate(signal: Signal, generation current: Int) async {
         do {
             let peer = try makePeer(generation: current)
             let offer = try await peer.offer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil))
@@ -84,8 +88,7 @@ final class VideoSession {
             guard current == generation else { return }
             // Sans offre locale, échec : nouvel essai, au lieu de rester à `connecting`.
             guard let sdp = peer.localDescription?.sdp else { throw MissingLocalDescription() }
-            let (data, response) = try await URLSession.shared.data(for: Signaling.request(url: url, offerSDP: sdp))
-            let answer = try Signaling.answer(data: data, response: response)
+            let answer = try await signal(sdp)
             guard current == generation else { return }
             try await peer.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: answer))
         } catch {
@@ -163,7 +166,7 @@ final class VideoSession {
     private func lost() {
         teardown()
         phase = .lost
-        guard url != nil else { return }
+        guard signal != nil else { return }
         let delay = Self.retryDelays[min(attempt, Self.retryDelays.count - 1)]
         attempt += 1
         retry = scheduler.schedule(after: delay) { [weak self] in

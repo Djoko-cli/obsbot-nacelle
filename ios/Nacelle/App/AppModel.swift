@@ -36,7 +36,20 @@ final class AppModel {
         let scheduler = MainScheduler()
         return AppModel(
             store: SettingsStore(),
-            ptz: PTZClient(transport: URLSessionWebSocketTransport(scheduler: scheduler), scheduler: scheduler),
+            ptz: PTZClient(
+                makeTransport: { endpoint in
+                    switch endpoint {
+                    case .url:
+                        URLSessionWebSocketTransport(scheduler: scheduler)
+                    case .service:
+                        NWWebSocketTransport(scheduler: scheduler)
+                    }
+                },
+                browser: BonjourServiceBrowser(),
+                keys: KeychainDeviceKeyStore(),
+                pairingRecord: PairingRecord(),
+                scheduler: scheduler
+            ),
             video: VideoSession(scheduler: scheduler)
         )
     }
@@ -45,10 +58,25 @@ final class AppModel {
     /// Sans effet si déjà actif : un retour .inactive → .active ne relance rien.
     func activate() {
         isForeground = true
-        guard !isActive, let ptzdURL = settings.ptzdURL, let webRTCURL = settings.webRTCURL else { return }
+        guard !isActive, let ptzdURL = settings.ptzdURL else { return }
         isActive = true
         ptz.start(url: ptzdURL)
-        video.start(url: webRTCURL)
+        video.start { [weak self] offer in
+            guard let self else { throw PTZClient.NegotiationError.connectionLost }
+            return try await self.signal(offer: offer)
+        }
+    }
+
+    /// Offre vidéo relayée par ptzd. Pendant la transition (spec accès local § 11, étapes 1 à 3),
+    /// si go2rtc ne répond pas à ptzd, l'ancien `POST` direct vers go2rtc est retenté.
+    private func signal(offer: String) async throws -> String {
+        do {
+            return try await ptz.negotiate(offer: offer)
+        } catch PTZClient.NegotiationError.relay {
+            guard let url = settings.webRTCURL else { throw PTZClient.NegotiationError.relay("") }
+            let (data, response) = try await URLSession.shared.data(for: Signaling.request(url: url, offerSDP: offer))
+            return try Signaling.answer(data: data, response: response)
+        }
     }
 
     /// Inactif (Centre de contrôle, appel, alerte, sélecteur d'apps) : arrêt de la nacelle, sans

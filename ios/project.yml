@@ -37,7 +37,9 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        NSLocalNetworkUsageDescription: "À la maison, la vidéo de la caméra peut passer directement par le réseau local."
+        NSLocalNetworkUsageDescription: "À la maison, l'app trouve le Mac et la caméra sur le Wi-Fi, sans Tailscale."
+        NSBonjourServices:
+          - _nacelle._tcp
         NSAppTransportSecurity:
           NSExceptionDomains:
             ts.net:
