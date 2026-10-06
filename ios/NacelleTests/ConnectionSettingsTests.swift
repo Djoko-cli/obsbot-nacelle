@@ -58,3 +58,16 @@ struct ConnectionSettingsTests {
         #expect(store.load() == settings)
     }
 }
+
+@Suite("Code d'appairage saisi")
+struct PairingCodeInputTests {
+    @Test("Six chiffres, espaces aux bords ignorés", arguments: ["042917", " 042917 "])
+    func valid(_ text: String) {
+        #expect(PairingCodeInput.isValid(text))
+    }
+
+    @Test("Trop court, trop long, lettres ou chiffres non latins : refusé", arguments: ["04291", "0429171", "04291a", "٠٤٢٩١٧", ""])
+    func invalid(_ text: String) {
+        #expect(!PairingCodeInput.isValid(text))
+    }
+}

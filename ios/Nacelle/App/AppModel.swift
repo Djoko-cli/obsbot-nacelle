@@ -85,6 +85,16 @@ final class AppModel {
         ptz.setJoystick(.zero)
     }
 
+    /// Appairage avec le code affiché par `ptzd pair` sur le Mac.
+    func pair(code: String) {
+        ptz.pair(code: code)
+    }
+
+    /// Oublie la clé de cet iPhone.
+    func forgetPairing() {
+        ptz.forgetPairing()
+    }
+
     /// Arrière-plan : arrêt de la nacelle, fermeture du WebSocket et de la vidéo.
     func deactivate() {
         isForeground = false
@@ -102,6 +112,7 @@ final class AppModel {
         guard isActive else { return nil }
         return StatusBanner.text(for: BannerInputs(
             macUnreachable: ptz.isUnreachable,
+            authIssue: ptz.authIssue,
             connecting: ptz.link != .connected || video.phase != .playing,
             state: ptz.state
         ))
