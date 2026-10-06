@@ -74,6 +74,7 @@ struct PTZDaemon {
             hosts: [config.listenAddress, "127.0.0.1"],
             port: UInt16(config.port),
             controller: controller,
+            authority: DeviceAuthority(directory: supportDirectory),
             scheduler: scheduler,
             log: log
         )

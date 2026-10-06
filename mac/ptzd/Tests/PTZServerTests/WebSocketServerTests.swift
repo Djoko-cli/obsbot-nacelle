@@ -1,6 +1,8 @@
+import CryptoKit
 import Foundation
 import NacelleProtocol
 import Network
+import PTZAuth
 import PTZCore
 import Testing
 @testable import PTZServer
@@ -10,8 +12,14 @@ import Testing
 struct WebSocketServerTests {
     let camera = StubCamera()
     let controller: PTZController
+    let authority: DeviceAuthority
+    /// Clé de l'appareil de test, appairée par `pairTestDevice()`.
+    let key = P256.Signing.PrivateKey()
 
-    init() {
+    init() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "ptzserver-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        authority = DeviceAuthority(directory: directory)
         controller = PTZController(
             camera: camera,
             scheduler: DispatchScheduler(),
@@ -28,9 +36,13 @@ struct WebSocketServerTests {
     private func startServer(
         on hosts: [String] = ["127.0.0.1"],
         scheduler: any Scheduler = DispatchScheduler(),
-        log: @escaping LogSink = { _ in }
+        log: @escaping LogSink = { _ in },
+        trustLoopback: Bool = true
     ) async -> (WebSocketServer, [String: UInt16]) {
-        let server = WebSocketServer(hosts: hosts, port: 0, controller: controller, scheduler: scheduler, log: log)
+        let server = WebSocketServer(
+            hosts: hosts, port: 0, controller: controller, authority: authority,
+            scheduler: scheduler, log: log, trustLoopback: trustLoopback
+        )
         let ports = await withCheckedContinuation { continuation in
             var ready: [String: UInt16] = [:]
             server.onReady = { host, port in
@@ -80,6 +92,31 @@ struct WebSocketServerTests {
         #expect(condition())
     }
 
+    private var deviceID: String {
+        NacelleAuth.deviceID(publicKeyX963: key.publicKey.x963Representation)
+    }
+
+    private func pairTestDevice() throws {
+        try authority.devices.add(PairedDevice(deviceID: deviceID, name: "iPhone de test", publicKey: key.publicKey.x963Representation, pairedAt: Date()))
+    }
+
+    private func send(_ message: ClientMessage, on task: URLSessionWebSocketTask) async throws {
+        try await task.send(.string(try NacelleCodec.encode(message)))
+    }
+
+    /// Le défi reçu à l'ouverture.
+    private func challenge(_ task: URLSessionWebSocketTask) async throws -> Data {
+        guard case let .challenge(nonce) = try await next(task, where: { _ in true }) else {
+            Issue.record("défi attendu")
+            return Data()
+        }
+        return nonce
+    }
+
+    private func signature(for nonce: Data) throws -> Data {
+        try key.signature(for: NacelleAuth.signedPayload(nonce: nonce, deviceID: deviceID)).derRepresentation
+    }
+
     /// Lit les messages jusqu'au premier qui satisfait la condition.
     private func next(_ task: URLSessionWebSocketTask, where matches: (ServerMessage) -> Bool) async throws -> ServerMessage {
         while true {
@@ -91,15 +128,16 @@ struct WebSocketServerTests {
         }
     }
 
-    @Test("État envoyé à la connexion ; move appliqué ; message illisible signalé")
+    @Test("127.0.0.1 : authentifié d'office, puis l'état ; move appliqué ; message illisible signalé")
     func roundTrip() async throws {
         let (server, ports) = await startServer()
         let task = connect("127.0.0.1", ports["127.0.0.1"]!)
         defer { task.cancel(with: .goingAway, reason: nil) }
 
-        let first = try await next(task) { _ in true }
-        guard case let .state(snapshot) = first else {
-            Issue.record("état attendu, reçu \(first)")
+        #expect(try await next(task) { _ in true } == .authenticated)
+        let second = try await next(task) { _ in true }
+        guard case let .state(snapshot) = second else {
+            Issue.record("état attendu, reçu \(second)")
             return
         }
         #expect(snapshot.camera == .connected)
@@ -132,7 +170,10 @@ struct WebSocketServerTests {
 
     @Test("Une adresse en double n'est écoutée qu'une fois")
     func duplicateHosts() async throws {
-        let server = WebSocketServer(hosts: ["127.0.0.1", "127.0.0.1"], port: 0, controller: controller, scheduler: DispatchScheduler(), log: { _ in })
+        let server = WebSocketServer(
+            hosts: ["127.0.0.1", "127.0.0.1"], port: 0, controller: controller, authority: authority,
+            scheduler: DispatchScheduler(), log: { _ in }
+        )
         var readyCount = 0
         server.onReady = { _, _ in readyCount += 1 }
         server.start()
@@ -190,11 +231,139 @@ struct WebSocketServerTests {
         defer { client.cancel() }
         try await waitUntil { server.clientCount == 1 }
 
-        scheduler.advance(by: WebSocketServer.handshakeTimeout - 0.1)
+        scheduler.advance(by: WebSocketServer.authTimeout - 0.1)
         #expect(server.clientCount == 1)
         scheduler.advance(by: 0.1)
         #expect(server.clientCount == 0)
-        #expect(lines.values.contains("Client 1 libéré : poignée de main non terminée en 10 s."))
+        #expect(lines.values.contains("Client 1 libéré : pas authentifié en 10 s."))
+    }
+
+    @Test("Sans 127.0.0.1 de confiance : défi d'abord, rien d'autre avant l'authentification")
+    func challengeFirst() async throws {
+        let (server, ports) = await startServer(trustLoopback: false)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+
+        #expect(try await challenge(task).count == NacelleAuth.nonceLength)
+        try await send(.move(pan: 1, tilt: 0), on: task)
+        #expect(try await next(task) { _ in true } == .error(code: .notAuthenticated, message: "Authentification d'abord."))
+        #expect(camera.relativeCommands.isEmpty)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Signature juste : authenticated, puis l'état ; les commandes passent")
+    func validAuth() async throws {
+        try pairTestDevice()
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) }, trustLoopback: false)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+
+        let nonce = try await challenge(task)
+        try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: task)
+        #expect(try await next(task) { _ in true } == .authenticated)
+        guard case .state = try await next(task, where: { _ in true }) else {
+            Issue.record("état attendu")
+            return
+        }
+        try await send(.move(pan: 1, tilt: 0), on: task)
+        _ = try await next(task) { if case let .state(s) = $0 { s.moving } else { false } }
+        #expect(lines.values.contains("Client 1 authentifié : iPhone de test (\(deviceID.prefix(8)))."))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Appareil inconnu : unpaired, puis fermeture et place libérée")
+    func unknownDevice() async throws {
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) }, trustLoopback: false)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+
+        let nonce = try await challenge(task)
+        try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: task)
+        #expect(try await next(task) { _ in true } == .error(code: .unpaired, message: "Appareil inconnu : l'appairer avec ptzd pair."))
+        try await waitUntil { server.clientCount == 0 }
+        #expect(lines.values.contains { $0.hasPrefix("Client 1 refusé : appareil inconnu \(deviceID.prefix(8))") })
+    }
+
+    @Test("Signature d'un autre défi (rejeu) : authFailed, puis fermeture")
+    func replayedSignature() async throws {
+        try pairTestDevice()
+        let (server, ports) = await startServer(trustLoopback: false)
+        let first = connect("127.0.0.1", ports["127.0.0.1"]!)
+        let second = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { [first, second].forEach { $0.cancel(with: .goingAway, reason: nil) } }
+
+        let firstNonce = try await challenge(first)
+        _ = try await challenge(second)
+        try await send(.auth(deviceID: deviceID, signature: try signature(for: firstNonce)), on: second)
+        #expect(try await next(second) { _ in true } == .error(code: .authFailed, message: "Signature refusée."))
+        try await waitUntil { server.clientCount == 1 }
+    }
+
+    @Test("Défi sans réponse : place libérée 10 s après l'acceptation")
+    func authTimeout() async throws {
+        let scheduler = FakeScheduler()
+        let lines = LineBox()
+        let (server, ports) = await startServer(scheduler: scheduler, log: { lines.values.append($0) }, trustLoopback: false)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await challenge(task)
+
+        scheduler.advance(by: WebSocketServer.authTimeout)
+        #expect(server.clientCount == 0)
+        #expect(lines.values.contains("Client 1 libéré : pas authentifié en 10 s."))
+    }
+
+    @Test("Appairage : code faux (connexion gardée), puis bon code, puis auth sur le même défi")
+    func pairing() async throws {
+        let code = try authority.pairing.open()
+        let wrong = code == "000000" ? "000001" : "000000"
+        let (server, ports) = await startServer(trustLoopback: false)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        let nonce = try await challenge(task)
+        let publicKey = key.publicKey.x963Representation
+
+        try await send(.pair(code: wrong, publicKey: publicKey, name: "iPhone"), on: task)
+        #expect(try await next(task) { _ in true } == .error(code: .badCode, message: "Code d'appairage faux."))
+        try await send(.pair(code: code, publicKey: publicKey, name: "iPhone"), on: task)
+        #expect(try await next(task) { _ in true } == .paired(deviceID: deviceID))
+        try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: task)
+        #expect(try await next(task) { _ in true } == .authenticated)
+        #expect(try authority.devices.device(id: deviceID)?.name == "iPhone")
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Appairage sans code en cours : pairingClosed")
+    func pairingClosed() async throws {
+        let (server, ports) = await startServer(trustLoopback: false)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await challenge(task)
+        try await send(.pair(code: "123456", publicKey: key.publicKey.x963Representation, name: "iPhone"), on: task)
+        #expect(try await next(task) { _ in true } == .error(code: .pairingClosed, message: "Aucun appairage en cours : lancer ptzd pair sur le Mac."))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("L'état n'est diffusé qu'aux clients authentifiés")
+    func broadcastOnlyToAuthenticated() async throws {
+        try pairTestDevice()
+        let (server, ports) = await startServer(trustLoopback: false)
+        let anonymous = connect("127.0.0.1", ports["127.0.0.1"]!)
+        let member = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { [anonymous, member].forEach { $0.cancel(with: .goingAway, reason: nil) } }
+        _ = try await challenge(anonymous)
+        let nonce = try await challenge(member)
+        try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: member)
+        _ = try await next(member) { if case .state = $0 { true } else { false } }
+
+        try await send(.move(pan: 1, tilt: 0), on: member)
+        _ = try await next(member) { if case let .state(s) = $0 { s.moving } else { false } }
+        // Le client anonyme ne reçoit que la réponse à son propre message.
+        try await send(.zoom(value: 10), on: anonymous)
+        #expect(try await next(anonymous) { _ in true } == .error(code: .notAuthenticated, message: "Authentification d'abord."))
+        withExtendedLifetime(server) {}
     }
 
     @Test("Client qui ne répond pas aux pings : place libérée 25 s après le dernier pong")
