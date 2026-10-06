@@ -50,21 +50,28 @@ public struct PairingCode: Sendable {
             return .closed
         }
         if Self.hash(code, salt: stored.salt) == stored.hash {
-            close()
-            return .accepted
+            // Usage unique : accepté seulement si le code est bien effacé.
+            return close() ? .accepted : .closed
         }
         stored.failures += 1
         if stored.failures >= Self.maxFailures {
             close()
-        } else {
-            try? PrivateFile.write(try Self.encoder.encode(stored), to: url)
+        } else if (try? PrivateFile.write(try Self.encoder.encode(stored), to: url)) == nil {
+            // Compteur non enregistré : le code est fermé plutôt que d'offrir des essais illimités.
+            close()
         }
         return .wrong
     }
 
-    /// Supprime le code en cours, s'il y en a un.
-    public func close() {
-        try? FileManager.default.removeItem(at: url)
+    /// Supprime le code en cours, s'il y en a un. Vrai si plus aucun code n'est enregistré.
+    @discardableResult
+    public func close() -> Bool {
+        do {
+            try FileManager.default.removeItem(at: url)
+            return true
+        } catch {
+            return !FileManager.default.fileExists(atPath: url.path)
+        }
     }
 
     static func hash(_ code: String, salt: Data) -> Data {
