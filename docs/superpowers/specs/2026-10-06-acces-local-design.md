@@ -280,3 +280,7 @@ Décidé par Majid le 2026-10-06, après la relecture de sécurité de la tâche
 | Réglages partagés | Les réglages TLS (version, suite, reprise) sont dans `NacelleProtocol`, communs au Mac et à l'iPhone |
 
 Vérifié en amont (macOS 27, simulateur iOS 27) : échanges dans les deux sens, mauvaise clé refusée en quelques millisecondes, identité inconnue refusée, relais sans clé refusé, API non dépréciées, aucun avertissement en Swift 6 strict.
+
+## 15. Amendement : découverte et appairage par QR code
+
+Décidé par Majid le 2026-10-06 : l'app découvre le Mac par Bonjour et retient son adresse locale, utilisée aussi en 4G par la route de sous-réseau du NAS ; l'appairage se fait par QR code seulement, sur le réseau local, et remplace le code à 6 chiffres et la règle « appairage par Tailscale seulement » (§ 6.4, § 8.1, § 8.3, § 8.5, § 14). Détails : [2026-10-06-decouverte-qr-design.md](2026-10-06-decouverte-qr-design.md).
