@@ -2,6 +2,7 @@ import Foundation
 import NacelleProtocol
 import Network
 import Observation
+import os
 
 /// Dialogue avec ptzd (spec § 7.2, spec accès local § 8) : à chaque connexion, le nom Tailscale
 /// et le service Bonjour du réseau local sont essayés ensemble ; la première connexion
@@ -52,6 +53,7 @@ final class PTZClient {
     static let discoveryWindow: TimeInterval = 3
     /// Temps laissé à chaque connexion pour s'authentifier, comme ptzd côté serveur.
     static let authTimeout: TimeInterval = 10
+    private static let logger = Logger(subsystem: "io.github.djoko-cli.nacelle", category: "ptz")
 
     private(set) var link: Link = .idle
     /// Dernier état reçu de ptzd ; nil hors connexion.
@@ -378,7 +380,12 @@ final class PTZClient {
         case let .paired(_, lanKey):
             // Seule la connexion qui a envoyé le code (Tailscale) peut confirmer l'appairage.
             guard candidate === pairingCandidate else { return }
-            try? keys.saveLANKey(lanKey)
+            // Sans le secret, seul Tailscale reste : l'appairage est valable quand même.
+            do {
+                try keys.saveLANKey(lanKey)
+            } catch {
+                Self.logger.error("Secret du réseau local non enregistré : \(String(describing: error), privacy: .public)")
+            }
             pendingCode = nil
             pairingCandidate = nil
             setPaired(true)
