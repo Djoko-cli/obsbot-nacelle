@@ -5,6 +5,7 @@ import SwiftUI
 struct PairingView: View {
     let model: PanelModel
     @Environment(\.dismiss) private var dismiss
+    @State private var shownAt = Date()
 
     var body: some View {
         VStack(spacing: 12) {
@@ -18,8 +19,15 @@ struct PairingView: View {
                 }
                 Text("Dans PTZBot sur l'iPhone, touchez **Scanner le QR code**.")
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text("Valable encore \(Labels.remaining(until: invitation.expiresAt, now: context.date)) · une seule fois")
-                        .font(.caption).foregroundStyle(.secondary)
+                    let total = invitation.expiresAt.timeIntervalSince(shownAt)
+                    let remaining = max(0, invitation.expiresAt.timeIntervalSince(context.date))
+                    VStack(spacing: 8) {
+                        if total > 0 {
+                            ProgressView(value: remaining, total: total)
+                        }
+                        Text("Valable encore \(Labels.remaining(until: invitation.expiresAt, now: context.date)) · une seule fois")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Text(invitation.hosts.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
                 Text("Ne montrez ce code qu'à l'iPhone à appairer.").font(.caption).foregroundStyle(.secondary)
@@ -48,6 +56,11 @@ struct PairingView: View {
         .onChange(of: model.pairing == nil) { _, closed in
             if closed {
                 dismiss()
+            }
+        }
+        .onChange(of: model.pairing?.phase) { _, phase in
+            if case .showing = phase {
+                shownAt = Date()
             }
         }
         .onDisappear {
