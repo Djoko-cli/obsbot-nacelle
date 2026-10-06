@@ -186,7 +186,7 @@ struct PTZClientTests {
         #expect(transports.last?.opened == [.url(url)])
     }
 
-    @Test("QR code, deux connexions au défi : une seule envoie la preuve, l'autre s'authentifie après paired")
+    @Test("QR code, deux connexions au défi : une seule envoie la preuve, l'autre s'authentifie après paired ; adresse du QR retenue")
     func pairingWithTwoPaths() throws {
         keys.key = nil
         var learned: [String] = []
@@ -207,8 +207,8 @@ struct PTZClientTests {
         try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: local)
         #expect(decoded(local).contains { if case .auth = $0 { true } else { false } })
         #expect(decoded(first).contains { if case .auth = $0 { true } else { false } })
-        // Service Bonjour sans adresse résolue : rien à retenir.
-        #expect(learned.isEmpty)
+        // Service Bonjour sans adresse résolue : la première adresse du QR est retenue.
+        #expect(learned == ["192.0.2.30"])
     }
 
     @Test("QR code refusé par ptzd : « QR code refusé », plus de reconnexion, QR oublié", arguments: [ErrorCode.badCode, .pairingClosed, .notLocal])
