@@ -29,6 +29,7 @@ struct AuthCommandTests {
         let result = AuthCommand.run(["revoke", "0123"], authority: authority)
         #expect(result.status == 0)
         #expect(result.output.hasPrefix("Retiré : 01234567  iPhone."))
+        #expect(result.output.hasSuffix("retirez-le plutôt depuis PTZBot sur le Mac."))
         #expect(try authority.devices.all().isEmpty)
     }
 
