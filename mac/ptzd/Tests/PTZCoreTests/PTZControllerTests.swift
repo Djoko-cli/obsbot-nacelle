@@ -1,3 +1,4 @@
+import Foundation
 import NacelleProtocol
 import Testing
 @testable import PTZCore
@@ -31,6 +32,15 @@ struct PTZControllerTests {
         #expect(controller.snapshot.camera == .absent)
         #expect(controller.snapshot.privacy)
         #expect(controller.snapshot.control == .idle)
+    }
+
+    @Test("Messages de session : refusés sans toucher à la caméra")
+    func sessionMessages() {
+        let controller = makeController()
+        #expect(controller.handle(.auth(deviceID: "x", signature: Data()), from: 1)?.code == .badMessage)
+        #expect(controller.handle(.pair(code: "123456", publicKey: Data(), name: "x"), from: 1)?.code == .badMessage)
+        #expect(controller.handle(.webrtcOffer(id: 1, sdp: "v=0"), from: 1)?.code == .badMessage)
+        #expect(camera.relativeCommands.isEmpty)
     }
 
     @Test("Caméra absente : move, zoom et privacy sont refusés")
