@@ -20,7 +20,7 @@ iPhone : app SwiftUI                         Mac (celui de go2rtc)
 ┌───────────────────────────┐            ┌──────────────────────────────────┐
 │ Joystick, zoom,           │            │ ptzd                             │
 │ vie privée, offre vidéo ──┼─ WebSocket▶│   ├─ commandes UVC ──▶ Tiny 2    │
-│                           │  authentifié  ├─ lance obsbot-ai-off (SDK)   │
+│                           │ authentifié│   ├─ lance obsbot-ai-off (SDK)   │
 │                           │◀─ état ────│   └─ relaie l'offre ──┐          │
 │                           │            │                       ▼          │
 │ Vidéo WebRTC ◀────────────┼─ images ───│ go2rtc (API en local) ◀── ffmpeg │
@@ -152,6 +152,9 @@ webrtc:
 - go2rtc dispense les clients locaux (127.0.0.1) du mot de passe RTSP : les sources `exec:` qui publient sur `{output}` continuent de fonctionner sans changement.
 - Un client RTSP du réseau, comme Homebridge, doit alors donner l'identifiant et le mot de passe dans l'adresse du flux : `rtsp://<identifiant>:<mot de passe>@<Mac>:8554/obsbot`.
 - Le port WebRTC 8555 reste ouvert : sans offre négociée par `ptzd`, il ne donne aucune image.
+- `go2rtc.yaml` contient le mot de passe RTSP : le passer en droits 600 (`chmod 600 go2rtc.yaml`).
+- Le flux RTSP vers Homebridge, identifiants compris, circule en clair sur le réseau local : un appareil qui intercepte ce trafic peut les lire, ainsi que les images.
+- Ne jamais exposer 127.0.0.1:1985 au réseau, par exemple avec `tailscale serve` ou `ssh -L` : les connexions venues de 127.0.0.1 sont dispensées d'authentification, tout client distant passé par là piloterait la caméra.
 
 ## Désinstaller
 
