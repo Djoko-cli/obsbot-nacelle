@@ -141,10 +141,18 @@ public final class WebSocketServer {
     }
 
     /// TLS à clé pré-partagée du réseau local : les secrets des appareils appairés à cet instant,
-    /// et le veto d'un appareil retiré depuis, relu à chaque poignée de main.
+    /// et le veto d'un appareil retiré depuis, relu à chaque poignée de main. `devices.json` illisible :
+    /// aucun appareil, et une ligne de journal (spec accès local § 9).
     private func localTLS() -> NWProtocolTLS.Options {
         let authority = authority
-        return NacelleTLS.server(identities: Array(authority.lanKeys().keys)) { authority.lanKey(for: $0) }
+        let keys: [String: Data]
+        do {
+            keys = try authority.readLANKeys()
+        } catch {
+            log("devices.json illisible : aucun appareil sur le réseau local.")
+            keys = [:]
+        }
+        return NacelleTLS.server(identities: Array(keys.keys)) { authority.lanKey(for: $0) }
     }
 
     /// Relance les écoutes du réseau local, pour qu'elles connaissent le secret d'un nouvel appareil.
@@ -305,7 +313,7 @@ public final class WebSocketServer {
         nextID += 1
         var client = Client(connection: connection, trusted: trusted, address: address, local: local)
         client.deadline = scheduler.schedule(after: Self.authTimeout) { [weak self] in
-            self?.release(id, reason: "pas authentifié en \(Int(Self.authTimeout)) s")
+            self?.release(id, reason: "pas authentifié en \(Int(Self.authTimeout)) s (\(address))")
         }
         clients[id] = client
         connection.stateUpdateHandler = { [weak self] state in

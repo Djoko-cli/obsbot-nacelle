@@ -253,7 +253,7 @@ struct WebSocketServerTests {
         #expect(server.clientCount == 1)
         scheduler.advance(by: 0.1)
         #expect(server.clientCount == 0)
-        #expect(lines.values.contains("Client 1 libéré : pas authentifié en 10 s."))
+        #expect(lines.values.contains("Client 1 libéré : pas authentifié en 10 s (127.0.0.1)."))
     }
 
     @Test("Sans 127.0.0.1 de confiance : défi d'abord, rien d'autre avant l'authentification")
@@ -330,7 +330,7 @@ struct WebSocketServerTests {
 
         scheduler.advance(by: WebSocketServer.authTimeout)
         #expect(server.clientCount == 0)
-        #expect(lines.values.contains("Client 1 libéré : pas authentifié en 10 s."))
+        #expect(lines.values.contains("Client 1 libéré : pas authentifié en 10 s (127.0.0.1)."))
     }
 
     @Test("Appairage : code faux (connexion gardée), puis bon code, puis auth sur le même défi")
@@ -455,6 +455,15 @@ struct WebSocketServerTests {
         let plain = connect("::1", ports["::1"]!)
         defer { plain.cancel(with: .goingAway, reason: nil) }
         await #expect(throws: (any Error).self) { _ = try await plain.receive() }
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Réseau local : devices.json illisible au montage de l'écoute TLS, journalisé")
+    func unreadableRegistryOnLocalNetwork() async throws {
+        try Data("pas du json".utf8).write(to: authority.devices.url)
+        let lines = LineBox()
+        let (server, _) = await startServer(on: ["127.0.0.1", "::1"], log: { lines.values.append($0) }, trustLoopback: false, localHosts: ["::1"])
+        #expect(lines.values.contains("devices.json illisible : aucun appareil sur le réseau local."))
         withExtendedLifetime(server) {}
     }
 
