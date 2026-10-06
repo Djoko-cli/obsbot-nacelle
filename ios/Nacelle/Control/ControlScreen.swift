@@ -49,8 +49,12 @@ struct ControlScreen: View {
             SettingsView(
                 settings: $model.settings,
                 isPaired: model.ptz.isPaired,
+                onPair: { model.pair(with: $0) },
                 onForget: { model.forgetPairing() }
             )
+        }
+        .fullScreenCover(isPresented: Binding(get: { model.needsPairing }, set: { _ in })) {
+            PairingScreen(model: model)
         }
     }
 

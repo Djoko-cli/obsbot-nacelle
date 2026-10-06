@@ -14,6 +14,8 @@ struct BannerInputs: Equatable {
 /// priorité : Mac injoignable, appairage, caméra débranchée, vie privée, suivi IA non coupé, prise en main,
 /// connexion.
 enum StatusBanner {
+    static let qrRefused = "QR code refusé : relance ptzd pair"
+
     static func text(for inputs: BannerInputs) -> String? {
         if inputs.macUnreachable {
             return "Mac injoignable : Tailscale est-il actif ?"
@@ -22,7 +24,7 @@ enum StatusBanner {
         case .unpaired:
             return "iPhone non appairé : scanne le QR code de ptzd pair"
         case .badCode:
-            return "QR code refusé : relance ptzd pair"
+            return qrRefused
         case .rejected:
             return "Accès refusé par le Mac"
         case nil:

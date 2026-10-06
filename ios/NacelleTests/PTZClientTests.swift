@@ -157,7 +157,9 @@ struct PTZClientTests {
         var learned: [String] = []
         client.onAddressLearned = { learned.append($0) }
         client.start(settings: settings)
+        #expect(!client.isPairing)
         client.pair(with: link)
+        #expect(client.isPairing)
         let first = try #require(qr("192.0.2.30"))
         first.remoteAddress = "192.0.2.30"
         first.emit(.opened)
@@ -169,6 +171,7 @@ struct PTZClientTests {
         try emit(.paired(deviceID: key.deviceID, lanKey: newKey), on: first)
         #expect(keys.storedLANKey == newKey)
         #expect(client.isPaired)
+        #expect(!client.isPairing)
         #expect(learned == ["192.0.2.30"])
         guard case let .auth(deviceID, signature) = decoded(first).last else {
             Issue.record("auth attendu après paired")
@@ -220,6 +223,7 @@ struct PTZClientTests {
         try emit(.challenge(nonce: nonce), on: first)
         try emit(.error(code: code, message: "x"), on: first)
         #expect(client.authIssue == .badCode)
+        #expect(!client.isPairing)
         #expect(client.link == .idle)
         #expect(first.closeCount >= 1)
         let opened = transports.all.count

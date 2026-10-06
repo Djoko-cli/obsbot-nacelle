@@ -1,4 +1,4 @@
-# Projet Xcode de l'app Nacelle, généré par xcodegen (le .xcodeproj n'est pas versionné).
+# Projet Xcode de l'app PTZBot (cible Nacelle), généré par xcodegen (le .xcodeproj n'est pas versionné).
 # Générer : cd ios && xcodegen
 name: Nacelle
 options:
@@ -35,13 +35,14 @@ targets:
     info:
       path: Nacelle/Info.plist
       properties:
-        CFBundleDisplayName: Nacelle
+        CFBundleDisplayName: PTZBot
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSLocalNetworkUsageDescription: "À la maison, l'app trouve le Mac et la caméra sur le Wi-Fi, sans Tailscale."
+        NSCameraUsageDescription: "Pour scanner le QR code affiché par ptzd pair sur le Mac."
         NSBonjourServices:
           - _nacelle._tcp
         NSAppTransportSecurity:
