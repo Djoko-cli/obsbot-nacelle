@@ -451,7 +451,9 @@ final class PTZClient {
                 return
             }
             pairingCandidate = candidate
-            send(.pair(code: code, publicKey: key.publicKeyX963, name: deviceName), on: candidate)
+            // Transition (plan découverte et QR, tâche 1) : le code voyage dans `pairingID`, sans preuve ;
+            // la tâche 4 remplace ce passage par l'appairage du QR code.
+            send(.pair(pairingID: code, publicKey: key.publicKeyX963, name: deviceName, proof: Data()), on: candidate)
         } else if keys.load() != nil {
             authenticate(candidate)
         } else {
@@ -503,7 +505,7 @@ final class PTZClient {
             negotiations.removeValue(forKey: id)?.resume(returning: sdp)
         case let .webrtcError(id, message):
             negotiations.removeValue(forKey: id)?.resume(throwing: NegotiationError.relay(message))
-        case .challenge, .authenticated, .paired:
+        case .challenge, .authenticated, .paired, .pairingOpened:
             break
         }
     }

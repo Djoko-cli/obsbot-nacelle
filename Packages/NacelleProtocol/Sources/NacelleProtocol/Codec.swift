@@ -31,7 +31,7 @@ public enum NacelleCodec {
 
 extension ClientMessage: Codable {
     private enum CodingKeys: String, CodingKey {
-        case type, pan, tilt, value, on, code, publicKey, name, deviceID, signature, id, sdp
+        case type, pan, tilt, value, on, pairingID, publicKey, name, proof, deviceID, signature, id, sdp
     }
 
     public init(from decoder: any Decoder) throws {
@@ -51,10 +51,13 @@ extension ClientMessage: Codable {
             self = .privacy(on: try container.decode(Bool.self, forKey: .on))
         case "pair":
             self = .pair(
-                code: try container.decode(String.self, forKey: .code),
+                pairingID: try container.decode(String.self, forKey: .pairingID),
                 publicKey: try container.decode(Data.self, forKey: .publicKey),
-                name: try container.decode(String.self, forKey: .name)
+                name: try container.decode(String.self, forKey: .name),
+                proof: try container.decode(Data.self, forKey: .proof)
             )
+        case "openPairing":
+            self = .openPairing
         case "auth":
             self = .auth(
                 deviceID: try container.decode(String.self, forKey: .deviceID),
@@ -82,11 +85,14 @@ extension ClientMessage: Codable {
         case let .privacy(on):
             try container.encode("privacy", forKey: .type)
             try container.encode(on, forKey: .on)
-        case let .pair(code, publicKey, name):
+        case let .pair(pairingID, publicKey, name, proof):
             try container.encode("pair", forKey: .type)
-            try container.encode(code, forKey: .code)
+            try container.encode(pairingID, forKey: .pairingID)
             try container.encode(publicKey, forKey: .publicKey)
             try container.encode(name, forKey: .name)
+            try container.encode(proof, forKey: .proof)
+        case .openPairing:
+            try container.encode("openPairing", forKey: .type)
         case let .auth(deviceID, signature):
             try container.encode("auth", forKey: .type)
             try container.encode(deviceID, forKey: .deviceID)
@@ -136,7 +142,7 @@ extension StateSnapshot: Codable {
 
 extension ServerMessage: Codable {
     private enum CodingKeys: String, CodingKey {
-        case type, code, message, nonce, deviceID, id, sdp, lanKey
+        case type, code, message, nonce, deviceID, id, sdp, lanKey, invitation
     }
 
     public init(from decoder: any Decoder) throws {
@@ -154,6 +160,8 @@ extension ServerMessage: Codable {
             self = .challenge(nonce: try container.decode(Data.self, forKey: .nonce))
         case "authenticated":
             self = .authenticated
+        case "pairingOpened":
+            self = .pairingOpened(try container.decode(PairingInvitation.self, forKey: .invitation))
         case "paired":
             self = .paired(deviceID: try container.decode(String.self, forKey: .deviceID), lanKey: try container.decode(Data.self, forKey: .lanKey))
         case "webrtcAnswer":
@@ -180,6 +188,9 @@ extension ServerMessage: Codable {
             try container.encode(nonce, forKey: .nonce)
         case .authenticated:
             try container.encode("authenticated", forKey: .type)
+        case let .pairingOpened(invitation):
+            try container.encode("pairingOpened", forKey: .type)
+            try container.encode(invitation, forKey: .invitation)
         case let .paired(deviceID, lanKey):
             try container.encode("paired", forKey: .type)
             try container.encode(deviceID, forKey: .deviceID)

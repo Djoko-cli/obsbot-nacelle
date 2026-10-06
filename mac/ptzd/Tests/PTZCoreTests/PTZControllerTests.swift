@@ -38,7 +38,7 @@ struct PTZControllerTests {
     func sessionMessages() {
         let controller = makeController()
         #expect(controller.handle(.auth(deviceID: "x", signature: Data()), from: 1)?.code == .badMessage)
-        #expect(controller.handle(.pair(code: "123456", publicKey: Data(), name: "x"), from: 1)?.code == .badMessage)
+        #expect(controller.handle(.pair(pairingID: "123456", publicKey: Data(), name: "x", proof: Data()), from: 1)?.code == .badMessage)
         #expect(controller.handle(.webrtcOffer(id: 1, sdp: "v=0"), from: 1)?.code == .badMessage)
         #expect(camera.relativeCommands.isEmpty)
     }

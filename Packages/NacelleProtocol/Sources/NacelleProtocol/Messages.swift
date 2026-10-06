@@ -10,8 +10,11 @@ public enum ClientMessage: Equatable, Sendable {
     case zoom(value: Int)
     /// Entre en vie privée (true) ou en sort (false).
     case privacy(on: Bool)
-    /// Enregistre la clé de l'appareil avec le code affiché par `ptzd pair` (spec accès local § 6.4).
-    case pair(code: String, publicKey: Data, name: String)
+    /// Enregistre la clé de l'appareil pour l'appairage `pairingID` du QR code ; `proof` prouve que
+    /// l'app connaît le secret du QR (spec découverte et QR § 6).
+    case pair(pairingID: String, publicKey: Data, name: String, proof: Data)
+    /// Ouvre un appairage ; accepté seulement depuis 127.0.0.1 (`ptzd pair`).
+    case openPairing
     /// Répond au défi : signature DER de `NacelleAuth.signedPayload` (spec accès local § 6.3).
     case auth(deviceID: String, signature: Data)
     /// Offre WebRTC à relayer à go2rtc ; `id` croît à chaque offre (spec accès local § 6.5).
@@ -48,6 +51,8 @@ public enum ErrorCode: String, Codable, Sendable {
     case pairingClosed
     /// Message refusé avant l'authentification.
     case notAuthenticated
+    /// `openPairing` hors de 127.0.0.1, ou `pair` hors de l'écoute du réseau local.
+    case notLocal
 }
 
 /// État complet publié par ptzd.
@@ -90,6 +95,8 @@ public enum ServerMessage: Equatable, Sendable {
     case challenge(nonce: Data)
     /// Connexion authentifiée ; l'état suit aussitôt.
     case authenticated
+    /// Appairage ouvert : ce que `ptzd pair` met dans le QR code.
+    case pairingOpened(PairingInvitation)
     /// L'appareil vient d'être enregistré ; `lanKey` est son secret du canal chiffré du réseau local
     /// (spec accès local § 14), remis seulement par Tailscale.
     case paired(deviceID: String, lanKey: Data)
@@ -97,4 +104,48 @@ public enum ServerMessage: Equatable, Sendable {
     case webrtcAnswer(id: Int, sdp: String)
     /// go2rtc injoignable ou en erreur pour l'offre `id`.
     case webrtcError(id: Int, message: String)
+}
+
+/// Un appairage ouvert par ptzd : identifiant, secret, échéance, et où joindre le Mac.
+public struct PairingInvitation: Codable, Equatable, Sendable {
+    public var pairingID: String
+    /// 32 octets aléatoires ; clé TLS de l'appairage et clé de la preuve.
+    public var secret: Data
+    public var expiresAt: Date
+    /// Adresses IPv4 du Mac sur le réseau local.
+    public var hosts: [String]
+    public var port: Int
+
+    public init(pairingID: String, secret: Data, expiresAt: Date, hosts: [String], port: Int) {
+        self.pairingID = pairingID
+        self.secret = secret
+        self.expiresAt = expiresAt
+        self.hosts = hosts
+        self.port = port
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pairingID, secret, expiresAt, hosts, port
+    }
+
+    /// `expiresAt` s'écrit en secondes depuis 1970 (spec découverte et QR § 6).
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            pairingID: try c.decode(String.self, forKey: .pairingID),
+            secret: try c.decode(Data.self, forKey: .secret),
+            expiresAt: Date(timeIntervalSince1970: try c.decode(Double.self, forKey: .expiresAt)),
+            hosts: try c.decode([String].self, forKey: .hosts),
+            port: try c.decode(Int.self, forKey: .port)
+        )
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(pairingID, forKey: .pairingID)
+        try c.encode(secret, forKey: .secret)
+        try c.encode(expiresAt.timeIntervalSince1970, forKey: .expiresAt)
+        try c.encode(hosts, forKey: .hosts)
+        try c.encode(port, forKey: .port)
+    }
 }

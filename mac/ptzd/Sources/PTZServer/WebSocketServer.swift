@@ -387,7 +387,9 @@ public final class WebSocketServer {
         }
         guard let client = clients[id] else { return }
         switch message {
-        case let .pair(code, publicKey, name):
+        // Transition (plan découverte et QR, tâche 1) : l'identifiant porte encore le code à 6 chiffres ;
+        // la tâche 2 remplace ce passage par l'appairage du QR code.
+        case let .pair(code, publicKey, name, _):
             guard !client.authenticated else {
                 send(.error(code: .badMessage, message: "Déjà authentifié."), to: id)
                 return

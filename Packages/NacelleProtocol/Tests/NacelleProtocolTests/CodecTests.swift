@@ -10,7 +10,8 @@ struct ClientMessageTests {
         .zoom(value: 33),
         .privacy(on: true),
         .privacy(on: false),
-        .pair(code: "042917", publicKey: Data([4, 1, 2, 3]), name: "iPhone"),
+        .pair(pairingID: "1a2b3c4d", publicKey: Data([4, 1, 2, 3]), name: "iPhone", proof: Data(repeating: 5, count: 32)),
+        .openPairing,
         .auth(deviceID: "00112233445566778899aabbccddeeff", signature: Data([48, 69, 2, 1])),
         .webrtcOffer(id: 3, sdp: "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\n"),
     ])
@@ -19,10 +20,10 @@ struct ClientMessageTests {
         #expect(try NacelleCodec.decodeClient(text) == message)
     }
 
-    @Test("Les octets passent en base64, le code reste une chaîne (zéros en tête)")
+    @Test("pair : identifiant, clé publique et preuve en base64")
     func pairFormat() throws {
-        let text = try NacelleCodec.encode(ClientMessage.pair(code: "007123", publicKey: Data([1, 2, 3]), name: "iPhone"))
-        #expect(text == #"{"code":"007123","name":"iPhone","publicKey":"AQID","type":"pair"}"#)
+        let text = try NacelleCodec.encode(ClientMessage.pair(pairingID: "1a2b3c4d", publicKey: Data([1, 2, 3]), name: "iPhone", proof: Data([9])))
+        #expect(text == #"{"name":"iPhone","pairingID":"1a2b3c4d","proof":"CQ==","publicKey":"AQID","type":"pair"}"#)
     }
 
     @Test("takeControl s'écrit avec son seul type")
@@ -73,6 +74,11 @@ struct ServerMessageTests {
         .state(unknown),
         .error(code: .privacyActive, message: "Vie privée active : mouvement refusé."),
         .error(code: .unpaired, message: "Appareil inconnu."),
+        .error(code: .notLocal, message: "Réseau local seulement."),
+        .pairingOpened(PairingInvitation(
+            pairingID: "1a2b3c4d", secret: Data(repeating: 1, count: 32),
+            expiresAt: Date(timeIntervalSince1970: 1_791_300_000), hosts: ["192.0.2.30", "192.0.2.43"], port: 1985
+        )),
         .challenge(nonce: Data(repeating: 7, count: 32)),
         .authenticated,
         .paired(deviceID: "00112233445566778899aabbccddeeff", lanKey: Data(repeating: 9, count: 32)),
@@ -88,6 +94,13 @@ struct ServerMessageTests {
     func unknownValuesAreNull() throws {
         let text = try NacelleCodec.encode(ServerMessage.state(Self.unknown))
         #expect(text == #"{"camera":"absent","control":"idle","moving":false,"pan":null,"privacy":true,"tilt":null,"type":"state","zoom":null}"#)
+    }
+
+    @Test("pairingOpened : échéance en secondes depuis 1970")
+    func pairingOpenedFormat() throws {
+        let invitation = PairingInvitation(pairingID: "1a2b3c4d", secret: Data([1]), expiresAt: Date(timeIntervalSince1970: 1_791_300_000), hosts: ["192.0.2.30"], port: 1985)
+        let text = try NacelleCodec.encode(ServerMessage.pairingOpened(invitation))
+        #expect(text.contains(#""expiresAt":1791300000"#))
     }
 
     @Test("authenticated s'écrit avec son seul type")

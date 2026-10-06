@@ -128,7 +128,7 @@ struct PTZClientTests {
         client.pair(code: " 042917 ")
         try emit(.challenge(nonce: nonce), on: tailscale)
         let key = try #require(keys.key)
-        #expect(decoded(tailscale) == [.pair(code: "042917", publicKey: key.publicKeyX963, name: "iPhone")])
+        #expect(decoded(tailscale) == [.pair(pairingID: "042917", publicKey: key.publicKeyX963, name: "iPhone", proof: Data())])
         try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: tailscale)
         #expect(client.isPaired)
         guard case .auth = decoded(tailscale).last else {
@@ -236,7 +236,7 @@ struct PTZClientTests {
         #expect(decoded(local).isEmpty)
         try emit(.challenge(nonce: nonce), on: tailscale)
         let key = try #require(keys.key)
-        #expect(decoded(tailscale) == [.pair(code: "042917", publicKey: key.publicKeyX963, name: "iPhone")])
+        #expect(decoded(tailscale) == [.pair(pairingID: "042917", publicKey: key.publicKeyX963, name: "iPhone", proof: Data())])
         #expect(decoded(local).isEmpty)
         // Un faux « paired » venu du réseau local ne compte pas.
         try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: local)
@@ -304,7 +304,7 @@ struct PTZClientTests {
         tailscale.emit(.opened)
         try emit(.challenge(nonce: nonce), on: tailscale)
         let key = try #require(keys.key)
-        #expect(decoded(tailscale) == [.pair(code: "042917", publicKey: key.publicKeyX963, name: "iPhone")])
+        #expect(decoded(tailscale) == [.pair(pairingID: "042917", publicKey: key.publicKeyX963, name: "iPhone", proof: Data())])
         try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: tailscale)
         try emit(.authenticated, on: tailscale)
         #expect(client.link == .connected)
