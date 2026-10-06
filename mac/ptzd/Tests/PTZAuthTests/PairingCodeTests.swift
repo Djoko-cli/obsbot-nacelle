@@ -60,6 +60,14 @@ struct PairingCodeTests {
         #expect(pairing.attempt(code) == .closed)
     }
 
+    @Test("Bon code mais fichier impossible à effacer : refusé (usage unique)")
+    func acceptedOnlyIfErased() throws {
+        let code = try pairing.open()
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
+        #expect(pairing.attempt(code) == .closed)
+    }
+
     @Test("Sans code en cours : fermé")
     func noCode() {
         #expect(pairing.attempt("123456") == .closed)
