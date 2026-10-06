@@ -151,11 +151,19 @@ rtsp:
   password: "<mot de passe>"
 webrtc:
   listen: ":8555"
+ffmpeg:
+  bin: /opt/homebrew/bin/ffmpeg   # chemin complet : sous launchd, le PATH ne contient pas /opt/homebrew/bin
+streams:
+  obsbot:
+    - exec:…   # vidéo de la caméra (H.264)
+    - exec:…   # micro de la caméra (AAC, pour HomeKit)
+    - ffmpeg:obsbot#audio=opus   # le même son en Opus, pour PTZBot (WebRTC)
 ```
 
 - go2rtc dispense les clients locaux (127.0.0.1) du mot de passe RTSP : les sources `exec:` qui publient sur `{output}` continuent de fonctionner sans changement.
 - Un client RTSP du réseau, comme Homebridge, doit alors donner l'identifiant et le mot de passe dans l'adresse du flux : `rtsp://<identifiant>:<mot de passe>@<Mac>:8554/obsbot`.
 - Le port WebRTC 8555 reste ouvert : sans offre négociée par `ptzd`, il ne donne aucune image.
+- Son dans PTZBot : WebRTC ne transporte pas l'AAC. La source `ffmpeg:obsbot#audio=opus` le convertit en Opus dès que PTZBot est ouvert, même son coupé (le bouton ne fait que couper la lecture, pour que le son revienne tout de suite). Sans la ligne `ffmpeg: bin:`, go2rtc lancé par launchd ne trouve pas `ffmpeg` et la piste audio reste muette, sans message d'erreur.
 - `go2rtc.yaml` contient le mot de passe RTSP : le passer en droits 600 (`chmod 600 go2rtc.yaml`).
 - Le flux RTSP vers Homebridge, identifiants compris, circule en clair sur le réseau local : un appareil qui intercepte ce trafic peut les lire, ainsi que les images.
 - Le QR code de `ptzd pair`, et l'URL affichée sous lui, permettent d'appairer un appareil pendant 5 minutes : ne les afficher que le temps du scan.
