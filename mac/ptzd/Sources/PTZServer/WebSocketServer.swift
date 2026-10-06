@@ -197,8 +197,13 @@ public final class WebSocketServer {
             MainActor.assumeIsolated { self?.listenerChanged(host, state) }
         }
         let trusted = !local && trustLoopback && Self.isLoopback(host)
+        // L'écoute Tailscale (ni boucle locale ni réseau local) n'admet que des adresses Tailscale :
+        // l'appairage y est permis parce que WireGuard authentifie les pairs (spec accès local § 12).
+        // Les écoutes en boucle locale en sont dispensées, même sans confiance (`trustLoopback` à
+        // faux, tests) : seuls les programmes du Mac y arrivent, et les tests y jouent ce rôle.
+        let tailscaleOnly = !local && !Self.isLoopback(host)
         listener.newConnectionHandler = { [weak self] connection in
-            MainActor.assumeIsolated { self?.accept(connection, trusted: trusted, local: local) }
+            MainActor.assumeIsolated { self?.accept(connection, trusted: trusted, local: local, tailscaleOnly: tailscaleOnly) }
         }
         listeners[host] = listener
         listener.start(queue: .main)
@@ -228,6 +233,23 @@ public final class WebSocketServer {
     /// Écoute en boucle locale : seuls les programmes du Mac y arrivent.
     nonisolated static func isLoopback(_ host: String) -> Bool {
         host == "127.0.0.1" || host == "::1"
+    }
+
+    /// Adresse Tailscale : 100.64.0.0/10 en IPv4, fd7a:115c:a1e0::/48 en IPv6 (zone `%…` ignorée).
+    /// Un texte qui n'est pas une adresse IP n'en est pas une.
+    nonisolated static func isTailscaleAddress(_ host: String) -> Bool {
+        let address = String(host.prefix { $0 != "%" })
+        var ipv4 = in_addr()
+        if inet_pton(AF_INET, address, &ipv4) == 1 {
+            let bytes = withUnsafeBytes(of: ipv4) { Array($0) }
+            return bytes[0] == 100 && bytes[1] & 0xC0 == 64
+        }
+        var ipv6 = in6_addr()
+        if inet_pton(AF_INET6, address, &ipv6) == 1 {
+            let bytes = withUnsafeBytes(of: ipv6) { Array($0) }
+            return bytes.starts(with: [0xFD, 0x7A, 0x11, 0x5C, 0xA1, 0xE0])
+        }
+        return false
     }
 
     /// Adresse distante d'une connexion : l'hôte, sans le port.
@@ -262,8 +284,13 @@ public final class WebSocketServer {
         clients.values.filter { $0.authenticated || $0.trusted }.count
     }
 
-    private func accept(_ connection: NWConnection, trusted: Bool, local: Bool = false) {
+    private func accept(_ connection: NWConnection, trusted: Bool, local: Bool = false, tailscaleOnly: Bool = false) {
         let address = Self.address(of: connection.endpoint)
+        guard !tailscaleOnly || Self.isTailscaleAddress(address) else {
+            log("Connexion refusée : adresse hors Tailscale (\(address)).")
+            connection.cancel()
+            return
+        }
         let pending = clients.values.filter { !$0.authenticated && !$0.trusted }.map(\.address)
         guard Self.admits(trusted: trusted, address: address, authenticated: reservedCount, pendingAddresses: pending) else {
             if trusted {
