@@ -369,20 +369,23 @@ struct WebSocketServerTests {
 
     @Test("openPairing sans la confiance de 127.0.0.1 : notLocal, aucun appairage ouvert")
     func openPairingRefused() async throws {
-        let (server, ports) = await startServer(trustLoopback: false)
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) }, trustLoopback: false)
         let task = connect("127.0.0.1", ports["127.0.0.1"]!)
         defer { task.cancel(with: .goingAway, reason: nil) }
         _ = try await challenge(task)
         try await send(.openPairing, on: task)
         #expect(try await next(task) { _ in true } == .error(code: .notLocal, message: "Ouverture d'appairage depuis le Mac seulement."))
         #expect(authority.pairing.current == nil)
+        #expect(lines.values.contains("Client 1 : ouverture d'appairage refusée hors du Mac (127.0.0.1)."))
         withExtendedLifetime(server) {}
     }
 
     @Test("Appairage hors du réseau local (Tailscale) : notLocal, même avec la bonne preuve")
     func pairOnlyOnLocalNetwork() async throws {
         let opened = authority.pairing.open()
-        let (server, ports) = await startServer(trustLoopback: false)
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) }, trustLoopback: false)
         let task = connect("127.0.0.1", ports["127.0.0.1"]!)
         defer { task.cancel(with: .goingAway, reason: nil) }
         let nonce = try await challenge(task)
@@ -393,6 +396,7 @@ struct WebSocketServerTests {
         try await send(pair, on: task)
         #expect(try await next(task) { _ in true } == .error(code: .notLocal, message: "Appairage par QR code sur le réseau local seulement."))
         #expect(authority.pairing.current?.pairingID == opened.pairingID)
+        #expect(lines.values.contains("Client 1 : appairage refusé hors du réseau local (127.0.0.1)."))
         withExtendedLifetime(server) {}
     }
 
@@ -561,15 +565,17 @@ struct WebSocketServerTests {
         let (server, ports) = await startServer(
             on: ["127.0.0.1", "::1"], scheduler: scheduler, log: { lines.values.append($0) }, localHosts: ["::1"]
         )
-        let (task, invitation) = try await openPairing(port: ports["127.0.0.1"]!)
-        defer { task.cancel(with: .goingAway, reason: nil) }
-        let opened = try #require(invitation)
         let rebuilt = PortBox()
         server.onReady = { host, port in
             if host == "::1" {
                 rebuilt.port = port
             }
         }
+        let (task, invitation) = try await openPairing(port: ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        let opened = try #require(invitation)
+        try await waitUntil { rebuilt.port != nil }
+        rebuilt.port = nil
         scheduler.advance(by: PairingWindow.lifetime - 1)
         #expect(authority.pairing.current?.pairingID == opened.pairingID)
         scheduler.advance(by: 1)

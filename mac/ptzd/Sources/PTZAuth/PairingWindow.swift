@@ -69,11 +69,15 @@ public final class PairingWindow: Sendable {
     }
 
     /// Ferme l'appairage en cours, s'il y en a un et s'il porte cet identifiant (nil : n'importe lequel).
-    public func close(_ pairingID: String? = nil) {
+    /// Retourne vrai s'il a fermé un appairage stocké, sans tenir compte de l'échéance.
+    @discardableResult
+    public func close(_ pairingID: String? = nil) -> Bool {
         state.withLock { open in
-            if pairingID == nil || open?.pairingID == pairingID {
-                open = nil
+            guard let current = open, pairingID == nil || current.pairingID == pairingID else {
+                return false
             }
+            open = nil
+            return true
         }
     }
 }

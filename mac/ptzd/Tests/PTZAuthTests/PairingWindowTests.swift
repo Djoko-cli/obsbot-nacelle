@@ -60,9 +60,21 @@ struct PairingWindowTests {
         let first = window.open()
         let second = window.open()
         #expect(window.attempt(pairingID: first.pairingID, proof: proof(first.secret), nonce: nonce, publicKeyX963: key) == .closed)
-        window.close(first.pairingID)
+        #expect(!window.close(first.pairingID))
         #expect(window.current?.pairingID == second.pairingID)
-        window.close(second.pairingID)
+        #expect(window.close(second.pairingID))
         #expect(window.current == nil)
+    }
+
+    @Test("Fermeture après l'échéance : l'appairage stocké est fermé une fois")
+    func closeAfterExpiry() {
+        let opened = window.open()
+        clock.advance(PairingWindow.lifetime + 1)
+        #expect(window.current == nil)
+        #expect(window.close(opened.pairingID))
+        #expect(!window.close(opened.pairingID))
+        let another = window.open()
+        #expect(!window.close(opened.pairingID))
+        #expect(window.close(another.pairingID))
     }
 }
