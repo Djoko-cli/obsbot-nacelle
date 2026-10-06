@@ -10,8 +10,9 @@ final class AppModel {
         didSet {
             guard settings != oldValue else { return }
             store.save(settings)
-            // Au premier plan, de nouveaux réglages (dont ceux du premier lancement) connectent tout de suite.
-            if isForeground {
+            // Au premier plan, de nouveaux réglages reconnectent tout de suite, sauf l'adresse retenue
+            // à l'appairage : la connexion en cours la vaut déjà.
+            if isForeground, !rememberingAddress {
                 disconnect()
                 activate()
             }
@@ -23,6 +24,7 @@ final class AppModel {
     /// Connecté (ou en train de se connecter) au contrôle et à la vidéo.
     private(set) var isActive = false
     @ObservationIgnored private var isForeground = false
+    @ObservationIgnored private var rememberingAddress = false
     @ObservationIgnored private let store: SettingsStore
 
     init(store: SettingsStore, ptz: PTZClient, video: VideoSession) {
@@ -30,6 +32,9 @@ final class AppModel {
         self.ptz = ptz
         self.video = video
         settings = store.load()
+        ptz.onAddressLearned = { [weak self] address in
+            self?.remember(address)
+        }
     }
 
     static func live() -> AppModel {
@@ -41,7 +46,7 @@ final class AppModel {
                     switch endpoint {
                     case .url:
                         URLSessionWebSocketTransport(scheduler: scheduler)
-                    case .service:
+                    case .tls:
                         NWWebSocketTransport(scheduler: scheduler)
                     }
                 },
@@ -58,9 +63,9 @@ final class AppModel {
     /// Sans effet si déjà actif : un retour .inactive → .active ne relance rien.
     func activate() {
         isForeground = true
-        guard !isActive, let ptzdURL = settings.ptzdURL else { return }
+        guard !isActive else { return }
         isActive = true
-        ptz.start(url: ptzdURL)
+        ptz.start(settings: settings)
         // Offre vidéo relayée par ptzd (spec accès local § 8.4).
         video.start { [ptz] offer in
             try await ptz.negotiate(offer: offer)
@@ -73,9 +78,18 @@ final class AppModel {
         ptz.setJoystick(.zero)
     }
 
-    /// Appairage avec le code affiché par `ptzd pair` sur le Mac.
-    func pair(code: String) {
-        ptz.pair(code: code)
+    /// Appairage avec le QR code affiché par `ptzd pair` sur le Mac.
+    func pair(with link: PairingLink) {
+        ptz.pair(with: link)
+    }
+
+    /// L'adresse du Mac qui vient d'appairer l'iPhone va dans le champ s'il est vide (spec découverte et QR § 8.3).
+    private func remember(_ address: String) {
+        guard settings.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        rememberingAddress = true
+        settings.host = address
+        rememberingAddress = false
+        ptz.update(settings)
     }
 
     /// Oublie la clé de cet iPhone.
@@ -95,7 +109,7 @@ final class AppModel {
         video.stop()
     }
 
-    /// Rien tant que l'app n'est pas connectée (réglages incomplets : la feuille des réglages est ouverte).
+    /// Rien tant que l'app n'est pas au premier plan.
     var bannerText: String? {
         guard isActive else { return nil }
         return StatusBanner.text(for: BannerInputs(

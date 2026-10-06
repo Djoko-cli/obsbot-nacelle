@@ -3,16 +3,17 @@ import Network
 
 /// Où ouvrir une connexion vers ptzd.
 enum WebSocketEndpoint: Equatable, Sendable {
-    /// Le nom Tailscale du Mac.
+    /// L'écoute Tailscale du Mac, en WebSocket simple.
     case url(URL)
-    /// Le service Bonjour `_nacelle._tcp` trouvé sur le réseau local, joint en TLS avec ce secret
-    /// (spec accès local § 14).
-    case service(NWEndpoint, LANCredentials)
+    /// Le réseau local (service Bonjour `_nacelle._tcp`, adresse du QR code ou du champ), en TLS
+    /// avec ce secret (spec accès local § 14, spec découverte et QR § 8.2).
+    case tls(NWEndpoint, LANCredentials)
 }
 
-/// Identité et secret du canal chiffré du réseau local, remis à l'appairage.
+/// Identité et secret du canal chiffré du réseau local : ceux remis à l'appairage, ou ceux du QR code
+/// pendant l'appairage.
 struct LANCredentials: Equatable, Sendable {
-    /// Le `deviceID` de l'iPhone, identité TLS.
+    /// Le `deviceID` de l'iPhone, ou `pair-<pairingID>` pendant l'appairage.
     var identity: String
     var key: Data
 }
@@ -37,6 +38,8 @@ enum TransportEvent: Equatable, Sendable {
 @MainActor
 protocol WebSocketTransport: AnyObject {
     var onEvent: ((TransportEvent) -> Void)? { get set }
+    /// Adresse IPv4 du Mac une fois la connexion ouverte, si le transport la connaît.
+    var remoteAddress: String? { get }
     func open(_ endpoint: WebSocketEndpoint)
     func send(_ text: String)
     func close()
@@ -51,6 +54,8 @@ final class URLSessionWebSocketTransport: NSObject, WebSocketTransport {
     static let openTimeout: TimeInterval = 10
 
     var onEvent: ((TransportEvent) -> Void)?
+    /// Le nom Tailscale suffit : rien à retenir.
+    let remoteAddress: String? = nil
     private let scheduler: any Scheduler
     private var session: URLSession?
     private var task: URLSessionWebSocketTask?
@@ -60,7 +65,7 @@ final class URLSessionWebSocketTransport: NSObject, WebSocketTransport {
         self.scheduler = scheduler
     }
 
-    /// Le nom Tailscale ; un service Bonjour passe par `NWWebSocketTransport`.
+    /// Le nom Tailscale ; le réseau local passe par `NWWebSocketTransport`.
     func open(_ endpoint: WebSocketEndpoint) {
         close()
         guard case let .url(url) = endpoint else {

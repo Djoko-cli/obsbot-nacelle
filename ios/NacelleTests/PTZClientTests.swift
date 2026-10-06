@@ -15,7 +15,11 @@ struct PTZClientTests {
     let record = PairingRecord(defaults: UserDefaults(suiteName: "ptzclient-\(UUID().uuidString)")!)
     let client: PTZClient
     let url = URL(string: "ws://mac.exemple.ts.net:1985")!
-    let service = NWEndpoint.service(name: "Nacelle", type: "_nacelle._tcp", domain: "local.", interface: nil)
+    /// Le champ porte le nom Tailscale : la connexion part en WebSocket simple vers `url`.
+    let settings = ConnectionSettings(host: "mac.exemple.ts.net")
+    let service = NWEndpoint.service(name: "PTZBot sur Mac", type: "_nacelle._tcp", domain: "local.", interface: nil)
+    /// QR code de `ptzd pair`.
+    let link = PairingLink(pairingID: "1a2b3c4d", secret: Data(repeating: 5, count: 32), hosts: ["192.0.2.30", "192.0.2.31"], port: 1985)
     let nonce = Data(repeating: 7, count: 32)
     let lanKey = Data(repeating: 9, count: 32)
 
@@ -44,9 +48,19 @@ struct PTZClientTests {
         transport.emit(.message(try NacelleCodec.encode(message)))
     }
 
+    /// Identité TLS et secret du QR code.
+    private var pairingCredentials: LANCredentials {
+        LANCredentials(identity: "pair-1a2b3c4d", key: link.secret)
+    }
+
+    /// La connexion vers une adresse du QR code.
+    private func qr(_ host: String) -> FakeTransport? {
+        transports.to(.tls(.hostPort(host: NWEndpoint.Host(host), port: 1985), pairingCredentials))
+    }
+
     /// Ouverture, défi, signature, authentification, par Tailscale.
     private func connect() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         tailscale.emit(.opened)
         try emit(.challenge(nonce: nonce), on: tailscale)
         try emit(.authenticated, on: tailscale)
@@ -61,7 +75,7 @@ struct PTZClientTests {
 
     @Test("Défi : réponse signée, vérifiable par ptzd")
     func answersChallenge() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         tailscale.emit(.opened)
         #expect(client.link == .connecting)
         try emit(.challenge(nonce: nonce), on: tailscale)
@@ -83,15 +97,15 @@ struct PTZClientTests {
         #expect(record.isPaired)
     }
 
-    @Test("Sans clé : « non appairé », plus de reconnexion")
+    @Test("Sans clé : « non appairé » sans rien ouvrir, plus de reconnexion")
     func noKey() throws {
         keys.key = nil
-        client.start(url: url)
-        try emit(.challenge(nonce: nonce), on: tailscale)
+        client.start(settings: settings)
         #expect(client.authIssue == .unpaired)
         #expect(client.link == .idle)
+        #expect(!browser.isRunning)
         scheduler.advance(by: 30)
-        #expect(transports.all.count == 1)
+        #expect(transports.all.isEmpty)
     }
 
     @Test("ptzd ne connaît pas l'iPhone : « non appairé », appairage oublié")
@@ -99,7 +113,7 @@ struct PTZClientTests {
         record.isPaired = true
         try connect()
         client.stop()
-        client.start(url: url)
+        client.start(settings: settings)
         try emit(.challenge(nonce: nonce), on: tailscale)
         try emit(.error(code: .unpaired, message: "x"), on: tailscale)
         #expect(client.authIssue == .unpaired)
@@ -110,7 +124,7 @@ struct PTZClientTests {
 
     @Test("Signature refusée : « refusé », plus de reconnexion")
     func rejected() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         try emit(.challenge(nonce: nonce), on: tailscale)
         try emit(.error(code: .authFailed, message: "x"), on: tailscale)
         #expect(client.authIssue == .rejected)
@@ -119,64 +133,167 @@ struct PTZClientTests {
         #expect(transports.all.count == 1)
     }
 
-    // MARK: - Appairage
+    // MARK: - Appairage par QR code
 
-    @Test("Appairage : clé créée, code et clé envoyés, puis auth sur le même défi")
+    @Test("QR code : chaque adresse du QR et Bonjour, en TLS avec le secret du QR ; pas l'adresse du champ")
+    func pairingCandidates() throws {
+        keys.key = nil
+        keys.storedLANKey = nil
+        client.start(settings: settings)
+        client.pair(with: link)
+        #expect(qr("192.0.2.30") != nil)
+        #expect(qr("192.0.2.31") != nil)
+        #expect(transports.to(.url(url)) == nil)
+        #expect(browser.isRunning)
+        browser.find(service)
+        #expect(transports.local?.opened == [.tls(service, pairingCredentials)])
+        #expect(transports.all.count == 3)
+    }
+
+    @Test("QR code : clé créée, preuve sur le défi ; paired : secret rangé, adresse retenue, auth sur le même défi")
     func pairing() throws {
         keys.key = nil
-        client.start(url: url)
-        client.pair(code: " 042917 ")
-        try emit(.challenge(nonce: nonce), on: tailscale)
+        keys.storedLANKey = nil
+        var learned: [String] = []
+        client.onAddressLearned = { learned.append($0) }
+        client.start(settings: settings)
+        client.pair(with: link)
+        let first = try #require(qr("192.0.2.30"))
+        first.remoteAddress = "192.0.2.30"
+        first.emit(.opened)
+        try emit(.challenge(nonce: nonce), on: first)
         let key = try #require(keys.key)
-        #expect(decoded(tailscale) == [.pair(pairingID: "042917", publicKey: key.publicKeyX963, name: "iPhone", proof: Data())])
-        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: tailscale)
+        let proof = NacelleAuth.pairingProof(secret: link.secret, nonce: nonce, publicKeyX963: key.publicKeyX963)
+        #expect(decoded(first) == [.pair(pairingID: "1a2b3c4d", publicKey: key.publicKeyX963, name: "iPhone", proof: proof)])
+        let newKey = Data(repeating: 3, count: 32)
+        try emit(.paired(deviceID: key.deviceID, lanKey: newKey), on: first)
+        #expect(keys.storedLANKey == newKey)
         #expect(client.isPaired)
-        guard case .auth = decoded(tailscale).last else {
+        #expect(learned == ["192.0.2.30"])
+        guard case let .auth(deviceID, signature) = decoded(first).last else {
             Issue.record("auth attendu après paired")
             return
         }
-        try emit(.authenticated, on: tailscale)
+        #expect(NacelleAuth.verify(signature: signature, nonce: nonce, deviceID: deviceID, publicKeyX963: key.publicKeyX963))
+        try emit(.authenticated, on: first)
         #expect(client.link == .connected)
         #expect(client.authIssue == nil)
+        // Le QR ne sert qu'une fois : la connexion suivante revient au champ et à Bonjour.
+        client.stop()
+        let before = transports.all.count
+        client.start(settings: settings)
+        #expect(transports.all.count == before + 1)
+        #expect(transports.last?.opened == [.url(url)])
     }
 
-    @Test("Code refusé : « code refusé », plus de reconnexion, le code n'est pas réessayé")
-    func badCode() throws {
-        client.start(url: url)
-        client.pair(code: "000000")
-        try emit(.challenge(nonce: nonce), on: tailscale)
-        try emit(.error(code: .badCode, message: "x"), on: tailscale)
+    @Test("QR code, deux connexions au défi : une seule envoie la preuve, l'autre s'authentifie après paired")
+    func pairingWithTwoPaths() throws {
+        keys.key = nil
+        var learned: [String] = []
+        client.onAddressLearned = { learned.append($0) }
+        client.start(settings: settings)
+        client.pair(with: link)
+        browser.find(service)
+        let local = try #require(transports.local)
+        let first = try #require(qr("192.0.2.30"))
+        try emit(.challenge(nonce: nonce), on: local)
+        try emit(.challenge(nonce: nonce), on: first)
+        #expect(decoded(local).count == 1)
+        #expect(decoded(first).isEmpty)
+        let key = try #require(keys.key)
+        // Un « paired » d'une connexion qui n'a pas envoyé la preuve ne compte pas.
+        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: first)
+        #expect(decoded(first).isEmpty)
+        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: local)
+        #expect(decoded(local).contains { if case .auth = $0 { true } else { false } })
+        #expect(decoded(first).contains { if case .auth = $0 { true } else { false } })
+        // Service Bonjour sans adresse résolue : rien à retenir.
+        #expect(learned.isEmpty)
+    }
+
+    @Test("QR code refusé par ptzd : « QR code refusé », plus de reconnexion, QR oublié", arguments: [ErrorCode.badCode, .pairingClosed, .notLocal])
+    func pairingRefused(_ code: ErrorCode) throws {
+        keys.key = nil
+        client.start(settings: settings)
+        client.pair(with: link)
+        let first = try #require(qr("192.0.2.30"))
+        try emit(.challenge(nonce: nonce), on: first)
+        try emit(.error(code: code, message: "x"), on: first)
         #expect(client.authIssue == .badCode)
-        #expect(tailscale.closeCount >= 1)
+        #expect(client.link == .idle)
+        #expect(first.closeCount >= 1)
+        let opened = transports.all.count
+        scheduler.advance(by: 30)
+        #expect(transports.all.count == opened)
+        client.stop()
+        client.start(settings: settings)
+        #expect(transports.last?.opened == [.url(url)])
+    }
+
+    @Test("Aucun Mac ne répond avec le QR (secret refusé en TLS, Mac injoignable) : « QR code refusé », sans reconnexion")
+    func pairingUnanswered() throws {
+        keys.key = nil
+        client.start(settings: settings)
+        client.pair(with: link)
+        try #require(qr("192.0.2.30")).emit(.closed)
+        try #require(qr("192.0.2.31")).emit(.closed)
+        #expect(client.link == .connecting)
+        scheduler.advance(by: PTZClient.discoveryWindow)
+        #expect(client.authIssue == .badCode)
+        #expect(client.link == .idle)
         let opened = transports.all.count
         scheduler.advance(by: 30)
         #expect(transports.all.count == opened)
     }
 
-    @Test("Pas d'appairage en cours sur le Mac : « code refusé » aussi")
-    func pairingClosed() throws {
-        client.start(url: url)
-        client.pair(code: "123456")
-        try emit(.challenge(nonce: nonce), on: tailscale)
-        try emit(.error(code: .pairingClosed, message: "x"), on: tailscale)
-        #expect(client.authIssue == .badCode)
-    }
-
-    @Test("Oublier l'appairage : clé supprimée, puis « non appairé »")
+    @Test("Oublier l'appairage : clé et secret supprimés, puis « non appairé »")
     func forget() throws {
         try connect()
         client.forgetPairing()
         #expect(keys.key == nil)
+        #expect(keys.storedLANKey == nil)
         #expect(!client.isPaired)
-        try emit(.challenge(nonce: nonce), on: try #require(transports.last))
         #expect(client.authIssue == .unpaired)
+    }
+
+    // MARK: - Adresse du champ
+
+    @Test("Adresse locale dans le champ : jointe en TLS avec le secret de l'iPhone, en plus de Bonjour")
+    func localFallback() throws {
+        client.start(settings: ConnectionSettings(host: "mac-mini.local"))
+        let key = try #require(keys.key)
+        let credentials = LANCredentials(identity: key.deviceID, key: lanKey)
+        #expect(transports.all.map(\.opened) == [[.tls(.hostPort(host: "mac-mini.local", port: 1985), credentials)]])
+        #expect(browser.isRunning)
+    }
+
+    @Test("Adresse locale sans secret du réseau local : rien à tenter, Mac injoignable")
+    func localFallbackWithoutLANKey() {
+        keys.storedLANKey = nil
+        client.start(settings: ConnectionSettings(host: "mac-mini.local"))
+        #expect(transports.all.isEmpty)
+        #expect(!browser.isRunning)
+        scheduler.advance(by: PTZClient.discoveryWindow)
+        #expect(client.isUnreachable)
+        #expect(client.link == .waitingToRetry)
+    }
+
+    @Test("Adresse retenue en cours de route : prise en compte à la tentative suivante, sans couper")
+    func updateSettings() throws {
+        client.start(settings: ConnectionSettings())
+        #expect(transports.all.isEmpty)
+        client.update(settings)
+        #expect(client.link == .connecting)
+        scheduler.advance(by: PTZClient.discoveryWindow)
+        scheduler.advance(by: 1)
+        #expect(transports.last?.opened == [.url(url)])
     }
 
     // MARK: - Choix du chemin
 
     @Test("Les deux chemins essayés ; le premier authentifié l'emporte, l'autre est fermé")
     func race() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         #expect(browser.isRunning)
         browser.find(service)
         let local = try #require(transports.local)
@@ -194,7 +311,7 @@ struct PTZClientTests {
 
     @Test("Bonjour ne trouve rien : Tailscale seul, sans message")
     func noLocalService() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         scheduler.advance(by: PTZClient.discoveryWindow)
         #expect(!browser.isRunning)
         tailscale.emit(.opened)
@@ -206,7 +323,7 @@ struct PTZClientTests {
 
     @Test("Tailscale coupé à la maison : pas d'échec tant que Bonjour cherche")
     func tailscaleDownAtHome() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         tailscale.emit(.closed)
         #expect(client.link == .connecting)
         #expect(!client.isUnreachable)
@@ -220,37 +337,17 @@ struct PTZClientTests {
 
     @Test("Un seul service local par tentative")
     func oneLocalCandidate() {
-        client.start(url: url)
+        client.start(settings: settings)
         browser.find(service)
-        browser.find(.service(name: "Nacelle", type: "_nacelle._tcp", domain: "local.", interface: nil))
+        browser.find(.service(name: "PTZBot sur Mac", type: "_nacelle._tcp", domain: "local.", interface: nil))
         #expect(transports.all.count == 2)
-    }
-
-    @Test("Nouvel appairage avec deux chemins : la locale, première au défi, n'envoie jamais le code ; elle s'authentifie après paired")
-    func pairingWithTwoPaths() throws {
-        client.start(url: url)
-        client.pair(code: "042917")
-        browser.find(service)
-        let local = try #require(transports.local)
-        try emit(.challenge(nonce: nonce), on: local)
-        #expect(decoded(local).isEmpty)
-        try emit(.challenge(nonce: nonce), on: tailscale)
-        let key = try #require(keys.key)
-        #expect(decoded(tailscale) == [.pair(pairingID: "042917", publicKey: key.publicKeyX963, name: "iPhone", proof: Data())])
-        #expect(decoded(local).isEmpty)
-        // Un faux « paired » venu du réseau local ne compte pas.
-        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: local)
-        #expect(decoded(local).isEmpty)
-        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: tailscale)
-        #expect(decoded(local).contains { if case .auth = $0 { true } else { false } })
-        #expect(decoded(tailscale).contains { if case .auth = $0 { true } else { false } })
     }
 
     @Test("Erreur « non appairé » d'un service local : seule sa connexion est fermée, Tailscale s'authentifie")
     func localErrorClosesOnlyLocal() throws {
         try connect()
         client.stop()
-        client.start(url: url)
+        client.start(settings: settings)
         browser.find(service)
         let local = try #require(transports.local)
         try emit(.challenge(nonce: nonce), on: local)
@@ -269,7 +366,7 @@ struct PTZClientTests {
 
     @Test("Erreur d'un service local seul : problème affiché, reconnexions espacées maintenues")
     func localErrorOnlyCandidate() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         browser.find(service)
         let local = try #require(transports.local)
         tailscale.emit(.closed)
@@ -283,37 +380,12 @@ struct PTZClientTests {
         scheduler.advance(by: 1)
         #expect(transports.all.count == before + 1)
         #expect(client.link == .connecting)
-    }
-
-    @Test("Code en attente sans Tailscale : « active Tailscale », puis le code part dès que Tailscale répond")
-    func needsTailscale() throws {
-        client.start(url: url)
-        client.pair(code: "042917")
-        browser.find(service)
-        let local = try #require(transports.local)
-        tailscale.emit(.closed)
-        try emit(.challenge(nonce: nonce), on: local)
-        #expect(decoded(local).isEmpty)
-        local.emit(.closed)
-        scheduler.advance(by: PTZClient.discoveryWindow)
-        #expect(client.authIssue == .needsTailscale)
-        #expect(client.link == .waitingToRetry)
-        let before = transports.all.count
-        scheduler.advance(by: 1)
-        #expect(transports.all.count == before + 1)
-        tailscale.emit(.opened)
-        try emit(.challenge(nonce: nonce), on: tailscale)
-        let key = try #require(keys.key)
-        #expect(decoded(tailscale) == [.pair(pairingID: "042917", publicKey: key.publicKeyX963, name: "iPhone", proof: Data())])
-        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: tailscale)
-        try emit(.authenticated, on: tailscale)
-        #expect(client.link == .connected)
         #expect(client.authIssue == nil)
     }
 
     @Test("« authenticated » d'une connexion qui n'a pas envoyé auth : fermée, Tailscale peut encore gagner")
     func unsolicitedAuthenticated() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         browser.find(service)
         let local = try #require(transports.local)
         try emit(.authenticated, on: local)
@@ -328,7 +400,7 @@ struct PTZClientTests {
 
     @Test("Service local muet : fermé après 10 s, la tentative échoue et une nouvelle est planifiée")
     func silentLocalService() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         browser.find(service)
         let local = try #require(transports.local)
         tailscale.emit(.closed)
@@ -356,7 +428,7 @@ struct PTZClientTests {
     @Test("Sans secret du réseau local : pas de recherche Bonjour, Tailscale seul")
     func noLocalPathWithoutLANKey() throws {
         keys.storedLANKey = nil
-        client.start(url: url)
+        client.start(settings: settings)
         #expect(browser.startCount == 0)
         browser.find(service)
         #expect(transports.local == nil)
@@ -364,62 +436,36 @@ struct PTZClientTests {
 
     @Test("Avec un secret : le service local est joint en TLS, identité = deviceID")
     func localPathUsesTLSCredentials() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         #expect(browser.isRunning)
         browser.find(service)
         let key = try #require(keys.key)
-        #expect(transports.local?.opened == [.service(service, LANCredentials(identity: key.deviceID, key: lanKey))])
+        #expect(transports.local?.opened == [.tls(service, LANCredentials(identity: key.deviceID, key: lanKey))])
     }
 
-    @Test("Appairage : le secret reçu dans paired est gardé ; « Oublier » l'efface")
-    func lanKeyLifecycle() throws {
-        keys.storedLANKey = nil
-        client.start(url: url)
-        client.pair(code: "042917")
-        try emit(.challenge(nonce: nonce), on: tailscale)
-        let newKey = Data(repeating: 3, count: 32)
-        try emit(.paired(deviceID: try #require(keys.key).deviceID, lanKey: newKey), on: tailscale)
-        #expect(keys.storedLANKey == newKey)
-        client.forgetPairing()
-        #expect(keys.storedLANKey == nil)
-    }
-
-    @Test("Secret du réseau local non enregistré (trousseau) : l'appairage reste valable, Tailscale s'authentifie")
+    @Test("Secret du réseau local non enregistré (trousseau) : l'appairage reste valable, auth sur la même connexion")
     func lanKeySaveFailure() throws {
+        keys.key = nil
         keys.storedLANKey = nil
         keys.saveLANKeyError = CocoaError(.fileWriteUnknown)
-        client.start(url: url)
-        client.pair(code: "042917")
-        try emit(.challenge(nonce: nonce), on: tailscale)
-        try emit(.paired(deviceID: try #require(keys.key).deviceID, lanKey: lanKey), on: tailscale)
+        client.start(settings: settings)
+        client.pair(with: link)
+        let first = try #require(qr("192.0.2.30"))
+        try emit(.challenge(nonce: nonce), on: first)
+        try emit(.paired(deviceID: try #require(keys.key).deviceID, lanKey: lanKey), on: first)
         #expect(client.isPaired)
         #expect(keys.storedLANKey == nil)
-        try emit(.authenticated, on: tailscale)
+        try emit(.authenticated, on: first)
         #expect(client.link == .connected)
-    }
-
-    @Test("Problème d'une tentative précédente : effacé au début de la suivante, sauf s'il arrête les reconnexions")
-    func authIssueClearedPerAttempt() throws {
-        client.start(url: url)
-        client.pair(code: "042917")
-        browser.find(service)
-        let local = try #require(transports.local)
-        tailscale.emit(.closed)
-        local.emit(.closed)
-        scheduler.advance(by: PTZClient.discoveryWindow)
-        #expect(client.authIssue == .needsTailscale)
-        scheduler.advance(by: 1)
-        #expect(client.link == .connecting)
-        #expect(client.authIssue == nil)
     }
 
     @Test("Problème qui arrête les reconnexions : conservé quand l'app relance une tentative")
     func blockingIssueKept() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         try emit(.challenge(nonce: nonce), on: tailscale)
         try emit(.error(code: .authFailed, message: "x"), on: tailscale)
         #expect(client.authIssue == .rejected)
-        client.start(url: url)
+        client.start(settings: settings)
         #expect(client.authIssue == .rejected)
     }
 
@@ -427,7 +473,7 @@ struct PTZClientTests {
 
     @Test("Échec des deux chemins : Mac injoignable, nouvel essai après 1, 2, 4 puis 8 s")
     func retryBackoff() {
-        client.start(url: url)
+        client.start(settings: settings)
         tailscale.emit(.closed)
         scheduler.advance(by: PTZClient.discoveryWindow)
         #expect(client.isUnreachable)
@@ -445,7 +491,7 @@ struct PTZClientTests {
 
     @Test("Une connexion réussie efface « injoignable » et remet l'espacement à 1 s")
     func recovery() throws {
-        client.start(url: url)
+        client.start(settings: settings)
         tailscale.emit(.closed)
         scheduler.advance(by: PTZClient.discoveryWindow + 1)
         let second = try #require(transports.last)
@@ -463,13 +509,13 @@ struct PTZClientTests {
 
     @Test("Arrêt ou nouveau départ : « injoignable » est effacé jusqu'au prochain échec")
     func unreachableResetOnStopAndStart() {
-        client.start(url: url)
+        client.start(settings: settings)
         tailscale.emit(.closed)
         scheduler.advance(by: PTZClient.discoveryWindow)
         #expect(client.isUnreachable)
         client.stop()
         #expect(!client.isUnreachable)
-        client.start(url: url)
+        client.start(settings: settings)
         #expect(!client.isUnreachable)
         #expect(client.link == .connecting)
     }
@@ -540,7 +586,7 @@ struct PTZClientTests {
 
     @Test("Avant l'authentification, rien n'est envoyé")
     func noSendBeforeAuth() {
-        client.start(url: url)
+        client.start(settings: settings)
         tailscale.emit(.opened)
         client.setZoom(40)
         client.setPrivacy(true)
@@ -568,7 +614,7 @@ struct PTZClientTests {
 
     @Test("Négociation avant la connexion : l'offre part dès l'authentification")
     func negotiationWaitsForLink() async throws {
-        client.start(url: url)
+        client.start(settings: settings)
         let pending = Task { try await client.negotiate(offer: "v=0 offre") }
         await settle()
         #expect(tailscale.sent.isEmpty)
@@ -596,7 +642,7 @@ struct PTZClientTests {
 
     @Test("Sans connexion ni réponse : échec après 10 s")
     func negotiationTimeouts() async throws {
-        client.start(url: url)
+        client.start(settings: settings)
         let waiting = Task { try await client.negotiate(offer: "a") }
         await settle()
         scheduler.advance(by: PTZClient.negotiationTimeout)

@@ -29,14 +29,15 @@ final class BonjourServiceBrowser: ServiceBrowser {
     }
 }
 
-/// WebSocket sur NWConnection, pour joindre un service Bonjour (URLSessionWebSocketTask ne prend
-/// qu'une URL). Une seule connexion à la fois ; vivacité par `Heartbeat`, comme l'autre transport.
+/// WebSocket sur NWConnection, pour joindre le réseau local en TLS à clé pré-partagée (URLSessionWebSocketTask
+/// ne fait pas ce TLS). Une seule connexion à la fois ; vivacité par `Heartbeat`, comme l'autre transport.
 @MainActor
 final class NWWebSocketTransport: WebSocketTransport {
     /// Délai d'ouverture, comme `URLSessionWebSocketTransport.openTimeout`.
     static let openTimeout: TimeInterval = 10
 
     var onEvent: ((TransportEvent) -> Void)?
+    private(set) var remoteAddress: String?
     private let scheduler: any Scheduler
     private var connection: NWConnection?
     private var heartbeat: Heartbeat?
@@ -54,7 +55,7 @@ final class NWWebSocketTransport: WebSocketTransport {
         case let .url(url):
             target = .url(url)
             tls = nil
-        case let .service(service, credentials):
+        case let .tls(service, credentials):
             target = service
             tls = NacelleTLS.client(identity: credentials.identity, key: credentials.key)
         }
@@ -71,6 +72,7 @@ final class NWWebSocketTransport: WebSocketTransport {
                 case .ready:
                     self.openDeadline?.cancel()
                     self.openDeadline = nil
+                    self.remoteAddress = connection.currentPath?.remoteEndpoint.flatMap(Self.ipv4)
                     self.startHeartbeat(for: connection)
                     self.onEvent?(.opened)
                 case .failed, .cancelled, .waiting:
@@ -96,7 +98,14 @@ final class NWWebSocketTransport: WebSocketTransport {
         connection?.send(content: Data(text.utf8), contentContext: context, isComplete: true, completion: .idempotent)
     }
 
+    /// L'adresse IPv4 d'un point d'arrivée résolu, sans zone ; nil pour IPv6 ou un nom.
+    nonisolated static func ipv4(_ endpoint: NWEndpoint) -> String? {
+        guard case let .hostPort(.ipv4(address), _) = endpoint else { return nil }
+        return address.rawValue.map(String.init).joined(separator: ".")
+    }
+
     func close() {
+        remoteAddress = nil
         openDeadline?.cancel()
         openDeadline = nil
         heartbeat?.stop()

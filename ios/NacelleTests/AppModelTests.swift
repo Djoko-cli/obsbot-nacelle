@@ -34,15 +34,47 @@ struct AppModelTests {
         transports.all.flatMap(\.opened).compactMap { if case let .url(url) = $0 { url.port } else { nil } }
     }
 
-    @Test("Premier lancement : les réglages enregistrés au premier plan connectent tout de suite")
-    func firstLaunch() {
+    @Test("Champ vide : connexion lancée quand même (Bonjour) ; une adresse saisie reconnecte tout de suite")
+    func emptyField() {
         let model = makeModel()
         model.activate()
+        #expect(model.isActive)
         #expect(openedPorts.isEmpty)
-        #expect(model.bannerText == nil)
+        #expect(model.bannerText == "Connexion…")
         model.settings = complete
         #expect(openedPorts.count == 1)
-        #expect(model.isActive)
+        model.deactivate()
+    }
+
+    @Test("Appairage par QR : l'adresse du Mac va dans le champ vide, sans reconnexion")
+    func addressRemembered() throws {
+        let model = makeModel()
+        model.activate()
+        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.0.2.30&p=1985"))
+        model.pair(with: link)
+        let transport = try #require(transports.last)
+        transport.remoteAddress = "192.0.2.30"
+        transport.emit(.message(try NacelleCodec.encode(ServerMessage.challenge(nonce: Data(count: 32)))))
+        transport.emit(.message(try NacelleCodec.encode(ServerMessage.paired(deviceID: "x", lanKey: Data(count: 32)))))
+        #expect(model.settings.host == "192.0.2.30")
+        #expect(SettingsStore(defaults: defaults).load().host == "192.0.2.30")
+        #expect(transport.closeCount == 0)
+        #expect(transports.all.count == 1)
+        model.deactivate()
+    }
+
+    @Test("Appairage par QR : un champ déjà rempli n'est pas modifié")
+    func addressKept() throws {
+        SettingsStore(defaults: defaults).save(complete)
+        let model = makeModel()
+        model.activate()
+        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.0.2.30&p=1985"))
+        model.pair(with: link)
+        let transport = try #require(transports.last)
+        transport.remoteAddress = "192.0.2.30"
+        transport.emit(.message(try NacelleCodec.encode(ServerMessage.challenge(nonce: Data(count: 32)))))
+        transport.emit(.message(try NacelleCodec.encode(ServerMessage.paired(deviceID: "x", lanKey: Data(count: 32)))))
+        #expect(model.settings == complete)
         model.deactivate()
     }
 
