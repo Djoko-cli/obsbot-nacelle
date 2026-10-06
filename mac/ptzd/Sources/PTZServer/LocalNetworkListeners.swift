@@ -32,6 +32,8 @@ final class LocalNetworkListeners {
     /// Interfaces dont l'écoute se ferme : la même adresse et le même port ne se relient qu'après `.cancelled`.
     private var cancelling: Set<String> = []
     private var serviceHolder: String?
+    /// Interfaces en échec récent : pas de nouvel essai avant `reconcileInterval`.
+    private var cooling: Set<String> = []
     private var timer: (any Cancellable)?
 
     init(port: UInt16, makeParameters: @escaping () -> NWParameters, onConnection: @escaping (NWConnection) -> Void, scheduler: any Scheduler, log: @escaping LogSink) {
@@ -71,7 +73,7 @@ final class LocalNetworkListeners {
                 wanted[interface.name] = address
             }
         }
-        let changes = Self.changes(bound: bound.mapValues(\.address), wanted: wanted, cancelling: cancelling)
+        let changes = Self.changes(bound: bound.mapValues(\.address), wanted: wanted, cancelling: cancelling.union(cooling))
         for name in changes.retire {
             log("Écoute locale sur \(name) retirée (adresse changée ou perdue).")
             retire(name)
@@ -129,7 +131,7 @@ final class LocalNetworkListeners {
                     self.log("Écoute locale sur \(name) (\(address)):\(self.port).")
                 case let .failed(error), let .waiting(error):
                     self.log("Écoute locale sur \(name) en échec (\(error)).")
-                    self.retire(name)
+                    self.coolDown(name)
                 default:
                     break
                 }
@@ -137,6 +139,17 @@ final class LocalNetworkListeners {
         }
         bound[name] = Bound(address: address, isWired: interface.type == .wiredEthernet, listener: listener)
         listener.start(queue: .main)
+    }
+
+    /// Après un échec, l'interface attend `reconcileInterval` avant d'être reliée : sans cela, une écoute
+    /// refusée (accès au réseau local refusé par macOS, adresse occupée) se relierait sans fin.
+    private func coolDown(_ name: String) {
+        cooling.insert(name)
+        retire(name)
+        _ = scheduler.schedule(after: Self.reconcileInterval) { [weak self] in
+            self?.cooling.remove(name)
+            self?.reconcile()
+        }
     }
 
     private func retire(_ name: String) {

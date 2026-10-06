@@ -18,6 +18,10 @@ struct LocalNetworkListenersTests {
 
         let stable = LocalNetworkListeners.changes(bound: ["en0": "192.0.2.43"], wanted: ["en0": "192.0.2.43"], cancelling: [])
         #expect(stable.retire.isEmpty && stable.bind.isEmpty)
+
+        // Une interface en échec récent est exclue comme une écoute en cours de fermeture.
+        let cooling = LocalNetworkListeners.changes(bound: [:], wanted: ["en0": "192.0.2.43", "en18": "192.0.2.30"], cancelling: ["en18"])
+        #expect(cooling.bind == ["en0"])
     }
 
     @Test("Annonce : garde son interface, sinon une filaire, sinon la première par nom")
