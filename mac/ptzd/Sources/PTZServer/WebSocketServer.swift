@@ -4,11 +4,18 @@ import Network
 import PTZCore
 
 /// Serveur WebSocket de ptzd : quelques adresses précises (jamais 0.0.0.0),
-/// 4 clients au plus en tout (spec § 6.1 et § 6.10).
+/// 4 clients au plus en tout (spec § 6.1 et § 6.10). Une place n'est jamais gardée par
+/// une connexion morte : délai de poignée de main, connexion en attente, ping toutes les 10 s.
 @MainActor
 public final class WebSocketServer {
     public static let maxClients = 4
     public static let retryDelay: TimeInterval = 5
+    /// Une connexion acceptée qui n'est pas prête après ce délai libère sa place.
+    public static let handshakeTimeout: TimeInterval = 10
+    /// Intervalle des pings envoyés à chaque client prêt.
+    public static let pingInterval: TimeInterval = 10
+    /// Un client sans pong depuis ce délai libère sa place.
+    public static let pongTimeout: TimeInterval = 25
     /// Marque une poignée de main refusée. Network n'envoie alors aucune réponse, garde la
     /// connexion ouverte et la signale même prête (constaté avec le SDK de macOS 27) : on
     /// retrouve la marque dans ses métadonnées pour la fermer nous-mêmes.
@@ -24,8 +31,27 @@ public final class WebSocketServer {
     private let scheduler: any Scheduler
     private let log: LogSink
     private var listeners: [String: NWListener] = [:]
-    private var connections: [ClientID: NWConnection] = [:]
+    private var clients: [ClientID: Client] = [:]
     private var nextID: ClientID = 1
+
+    /// Une place occupée : la connexion et ses minuteries, toutes annulées par `drop`.
+    private struct Client {
+        let connection: NWConnection
+        var handshake: (any Cancellable)?
+        var ping: (any Cancellable)?
+        var pongDeadline: (any Cancellable)?
+
+        func cancelTimers() {
+            handshake?.cancel()
+            ping?.cancel()
+            pongDeadline?.cancel()
+        }
+    }
+
+    /// Nombre de places occupées (tests).
+    var clientCount: Int {
+        clients.count
+    }
 
     /// Les adresses en double ne sont écoutées qu'une fois (config.json peut déjà contenir 127.0.0.1).
     public init(hosts: [String], port: UInt16, controller: PTZController, scheduler: any Scheduler, log: @escaping LogSink) {
@@ -113,14 +139,18 @@ public final class WebSocketServer {
     }
 
     private func accept(_ connection: NWConnection) {
-        guard connections.count < Self.maxClients else {
+        guard clients.count < Self.maxClients else {
             log("Connexion refusée : déjà \(Self.maxClients) clients.")
             connection.cancel()
             return
         }
         let id = nextID
         nextID += 1
-        connections[id] = connection
+        var client = Client(connection: connection)
+        client.handshake = scheduler.schedule(after: Self.handshakeTimeout) { [weak self] in
+            self?.release(id, reason: "poignée de main non terminée en \(Int(Self.handshakeTimeout)) s")
+        }
+        clients[id] = client
         connection.stateUpdateHandler = { [weak self] state in
             MainActor.assumeIsolated { self?.connectionChanged(id, state) }
         }
@@ -128,14 +158,22 @@ public final class WebSocketServer {
         receive(on: connection, id: id)
     }
 
-    private func connectionChanged(_ id: ClientID, _ state: NWConnection.State) {
+    func connectionChanged(_ id: ClientID, _ state: NWConnection.State) {
         switch state {
         case .ready:
+            clients[id]?.handshake?.cancel()
+            clients[id]?.handshake = nil
             if wasRejected(id) {
                 drop(id)
                 return
             }
             send(.state(controller.snapshot), to: id)
+            armPongDeadline(id)
+            schedulePing(id)
+        case let .waiting(error):
+            // Chemin réseau perdu (Wi-Fi/4G, Tailscale coupé) : une connexion entrante
+            // n'atteint alors pas toujours .failed et garderait sa place.
+            release(id, reason: "connexion en attente (\(error))")
         case .failed, .cancelled:
             drop(id)
         default:
@@ -144,14 +182,14 @@ public final class WebSocketServer {
     }
 
     private func wasRejected(_ id: ClientID) -> Bool {
-        let metadata = connections[id]?.metadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
+        let metadata = clients[id]?.connection.metadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
         return metadata?.additionalServerHeaders?.contains { $0 == Self.rejectionMarker } ?? false
     }
 
     private func receive(on connection: NWConnection, id: ClientID) {
         connection.receiveMessage { [weak self] content, context, _, error in
             MainActor.assumeIsolated {
-                guard let self, self.connections[id] != nil else { return }
+                guard let self, self.clients[id] != nil else { return }
                 if error != nil || context?.isFinal == true {
                     self.drop(id)
                     return
@@ -182,22 +220,68 @@ public final class WebSocketServer {
         }
     }
 
+    private func schedulePing(_ id: ClientID) {
+        clients[id]?.ping = scheduler.schedule(after: Self.pingInterval) { [weak self] in
+            self?.ping(id)
+        }
+    }
+
+    /// Envoie un ping. Le client y répond seul : URLSessionWebSocketTask le fait tant qu'une
+    /// réception est en attente, ce qui est toujours le cas dans l'app iOS et nacelle-ws.
+    private func ping(_ id: ClientID) {
+        guard let connection = clients[id]?.connection else { return }
+        let metadata = NWProtocolWebSocket.Metadata(opcode: .ping)
+        metadata.setPongHandler(.main) { [weak self] error in
+            guard error == nil else { return }
+            MainActor.assumeIsolated { self?.armPongDeadline(id) }
+        }
+        let context = NWConnection.ContentContext(identifier: "ping", metadata: [metadata])
+        connection.send(content: Data(), contentContext: context, isComplete: true, completion: sendCompletion(id))
+        schedulePing(id)
+    }
+
+    /// (Ré)arme l'échéance du pong : à la connexion, puis à chaque pong reçu.
+    private func armPongDeadline(_ id: ClientID) {
+        guard clients[id] != nil else { return }
+        clients[id]?.pongDeadline?.cancel()
+        clients[id]?.pongDeadline = scheduler.schedule(after: Self.pongTimeout) { [weak self] in
+            self?.release(id, reason: "pas de pong depuis \(Int(Self.pongTimeout)) s")
+        }
+    }
+
+    /// Libération anormale : une ligne de journal avec la raison, puis `drop`.
+    private func release(_ id: ClientID, reason: String) {
+        guard clients[id] != nil else { return }
+        log("Client \(id) libéré : \(reason).")
+        drop(id)
+    }
+
+    /// Seul chemin de libération d'une place.
     private func drop(_ id: ClientID) {
-        guard let connection = connections.removeValue(forKey: id) else { return }
-        connection.cancel()
+        guard let client = clients.removeValue(forKey: id) else { return }
+        client.cancelTimers()
+        client.connection.cancel()
         controller.clientDisconnected(id)
     }
 
     private func broadcast(_ message: ServerMessage) {
-        for id in connections.keys {
+        for id in clients.keys {
             send(message, to: id)
         }
     }
 
     private func send(_ message: ServerMessage, to id: ClientID) {
-        guard let connection = connections[id], let text = try? NacelleCodec.encode(message) else { return }
+        guard let connection = clients[id]?.connection, let text = try? NacelleCodec.encode(message) else { return }
         let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
         let context = NWConnection.ContentContext(identifier: "nacelle", metadata: [metadata])
-        connection.send(content: Data(text.utf8), contentContext: context, isComplete: true, completion: .contentProcessed { _ in })
+        connection.send(content: Data(text.utf8), contentContext: context, isComplete: true, completion: sendCompletion(id))
+    }
+
+    /// Un envoi qui échoue libère la place (sans effet si elle l'est déjà).
+    private func sendCompletion(_ id: ClientID) -> NWConnection.SendCompletion {
+        .contentProcessed { [weak self] error in
+            guard let error else { return }
+            MainActor.assumeIsolated { self?.release(id, reason: "échec d'envoi (\(error))") }
+        }
     }
 }

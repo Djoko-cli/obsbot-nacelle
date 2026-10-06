@@ -92,7 +92,7 @@ Le protocole utilise des messages JSON, un par trame WebSocket texte, avec un ch
 |---|---|---|
 | `UVCCamera` | Trouve la Tiny 2 (VID `0x3564`, PID `0xFEF8`). Envoie les requêtes UVC par `DeviceRequestTO`, **sans ouvrir la caméra en exclusivité**. Borne les ordres absolus à la course réellement acceptée (amendement A2). Signale les branchements et débranchements (notifications IOKit). | IOKit |
 | `PTZController` | Toute la logique : vitesse, arrêt automatique, zoom, vie privée, prise en main, persistance. Il ne voit la caméra, l'horloge, le lanceur d'utilitaire et le stockage qu'à travers des protocoles. | `NacelleProtocol` |
-| `Server` | Le serveur WebSocket, sur `NWListener`, à l'écoute sur l'adresse Tailscale et sur 127.0.0.1 (amendement A1). Il décode les messages, appelle le contrôleur et diffuse l'état. Il accepte 4 clients au plus ; s'il y en a plusieurs, la dernière commande l'emporte. | Network.framework |
+| `Server` | Le serveur WebSocket, sur `NWListener`, à l'écoute sur l'adresse Tailscale et sur 127.0.0.1 (amendement A1). Il décode les messages, appelle le contrôleur et diffuse l'état. Il accepte 4 clients au plus ; s'il y en a plusieurs, la dernière commande l'emporte. Une place morte est libérée : connexion pas prête 10 s après l'acceptation, connexion en attente (réseau perdu), échec d'envoi, ou pas de pong 25 s durant (le serveur envoie un ping toutes les 10 s) ; chaque cas est journalisé. | Network.framework |
 | `Config` | Lit le fichier `config.json` décrit en § 6.7 | Foundation |
 
 ### 6.2 Mouvement
