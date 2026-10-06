@@ -254,6 +254,22 @@ struct AppModelTests {
         model.deactivate()
     }
 
+    @Test("Expulsé en session : le son se coupe (l'état de ptzd est effacé)")
+    func soundCutWhenBlocked() throws {
+        SettingsStore(defaults: defaults).save(complete)
+        let model = makeModel()
+        model.soundWanted = true
+        model.activate()
+        let transport = try connect(privacy: false)
+        #expect(model.soundPlaying)
+        #expect(model.video.playsAudio)
+        transport.emit(.message(try NacelleCodec.encode(ServerMessage.error(code: .blocked, message: "x"))))
+        #expect(model.ptz.state == nil)
+        #expect(!model.soundPlaying)
+        #expect(!model.video.playsAudio)
+        model.deactivate()
+    }
+
     @Test("Inactif (Centre de contrôle, appel) : la nacelle s'arrête, la connexion reste ouverte")
     func pauseStopsMovement() throws {
         SettingsStore(defaults: defaults).save(complete)
