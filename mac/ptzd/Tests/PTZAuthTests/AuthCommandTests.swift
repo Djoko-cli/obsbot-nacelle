@@ -18,7 +18,7 @@ struct AuthCommandTests {
         #expect(result.status == 0)
         let code = try #require(result.output.split(separator: "\n").first?.split(separator: " ").last.map(String.init))
         let key = P256.Signing.PrivateKey().publicKey.x963Representation
-        #expect(authority.pair(code: code, publicKey: key, name: "iPhone") == .paired(deviceID: NacelleAuth.deviceID(publicKeyX963: key)))
+        #expect(authority.pair(code: code, publicKey: key, name: "iPhone").deviceID == NacelleAuth.deviceID(publicKeyX963: key))
     }
 
     @Test("devices : vide, puis une ligne par appareil")

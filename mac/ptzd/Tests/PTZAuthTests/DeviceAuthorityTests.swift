@@ -24,7 +24,29 @@ struct DeviceAuthorityTests {
 
     func pairDevice(name: String = "iPhone de test") throws {
         let code = try authority.pairing.open()
-        #expect(authority.pair(code: code, publicKey: publicKey, name: name) == .paired(deviceID: deviceID))
+        #expect(authority.pair(code: code, publicKey: publicKey, name: name).deviceID == deviceID)
+    }
+
+    @Test("Secret du réseau local : 32 octets, gardé avec l'appareil, oublié au retrait")
+    func lanKey() throws {
+        let code = try authority.pairing.open()
+        guard case let .paired(_, lanKey) = authority.pair(code: code, publicKey: publicKey, name: "iPhone") else {
+            Issue.record("appairage attendu")
+            return
+        }
+        #expect(lanKey.count == 32)
+        #expect(authority.lanKey(for: deviceID) == lanKey)
+        #expect(authority.lanKeys() == [deviceID: lanKey])
+        try authority.devices.remove(prefix: String(deviceID.prefix(8)))
+        #expect(authority.lanKey(for: deviceID) == nil)
+        #expect(authority.lanKeys().isEmpty)
+    }
+
+    @Test("Appareil appairé avant le canal chiffré : relu sans secret")
+    func legacyDevice() throws {
+        try authority.devices.add(PairedDevice(deviceID: "abcd0000", name: "ancien", publicKey: Data([4]), pairedAt: Date(timeIntervalSince1970: 0)))
+        #expect(authority.lanKey(for: "abcd0000") == nil)
+        #expect(authority.lanKeys().isEmpty)
     }
 
     @Test("Défi : 32 octets, différent à chaque fois")
@@ -70,7 +92,7 @@ struct DeviceAuthorityTests {
         let wrong = code == "000000" ? "000001" : "000000"
         #expect(authority.pair(code: wrong, publicKey: publicKey, name: "x") == .badCode)
         #expect(authority.pair(code: code, publicKey: Data([4, 1, 2]), name: "x") == .invalidKey)
-        #expect(authority.pair(code: code, publicKey: publicKey, name: "x") == .paired(deviceID: deviceID))
+        #expect(authority.pair(code: code, publicKey: publicKey, name: "x").deviceID == deviceID)
     }
 
     @Test("Nom nettoyé : espaces retirés, 40 caractères au plus, « appareil » si vide")

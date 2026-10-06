@@ -352,9 +352,9 @@ public final class WebSocketServer {
     /// Code d'appairage : un code faux laisse la connexion ouverte pour un nouvel essai.
     private func pair(_ id: ClientID, code: String, publicKey: Data, name: String) {
         switch authority.pair(code: code, publicKey: publicKey, name: name) {
-        case let .paired(deviceID):
+        case let .paired(deviceID, lanKey):
             log("Appareil appairé : \(deviceID.prefix(8)) (\(name)).")
-            send(.paired(deviceID: deviceID), to: id)
+            send(.paired(deviceID: deviceID, lanKey: lanKey), to: id)
         case .badCode:
             log("Client \(id) : code d'appairage faux (\(endpoint(id))).")
             send(.error(code: .badCode, message: "Code d'appairage faux."), to: id)

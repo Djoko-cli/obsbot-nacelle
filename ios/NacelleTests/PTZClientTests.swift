@@ -17,6 +17,7 @@ struct PTZClientTests {
     let url = URL(string: "ws://mac.exemple.ts.net:1985")!
     let service = NWEndpoint.service(name: "Nacelle", type: "_nacelle._tcp", domain: "local.", interface: nil)
     let nonce = Data(repeating: 7, count: 32)
+    let lanKey = Data(repeating: 9, count: 32)
 
     init() {
         let transports = transports
@@ -127,7 +128,7 @@ struct PTZClientTests {
         try emit(.challenge(nonce: nonce), on: tailscale)
         let key = try #require(keys.key)
         #expect(decoded(tailscale) == [.pair(code: "042917", publicKey: key.publicKeyX963, name: "iPhone")])
-        try emit(.paired(deviceID: key.deviceID), on: tailscale)
+        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: tailscale)
         #expect(client.isPaired)
         guard case .auth = decoded(tailscale).last else {
             Issue.record("auth attendu après paired")
@@ -238,9 +239,9 @@ struct PTZClientTests {
         #expect(decoded(tailscale) == [.pair(code: "042917", publicKey: key.publicKeyX963, name: "iPhone")])
         #expect(decoded(local).isEmpty)
         // Un faux « paired » venu du réseau local ne compte pas.
-        try emit(.paired(deviceID: key.deviceID), on: local)
+        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: local)
         #expect(decoded(local).isEmpty)
-        try emit(.paired(deviceID: key.deviceID), on: tailscale)
+        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: tailscale)
         #expect(decoded(local).contains { if case .auth = $0 { true } else { false } })
         #expect(decoded(tailscale).contains { if case .auth = $0 { true } else { false } })
     }
@@ -304,7 +305,7 @@ struct PTZClientTests {
         try emit(.challenge(nonce: nonce), on: tailscale)
         let key = try #require(keys.key)
         #expect(decoded(tailscale) == [.pair(code: "042917", publicKey: key.publicKeyX963, name: "iPhone")])
-        try emit(.paired(deviceID: key.deviceID), on: tailscale)
+        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: tailscale)
         try emit(.authenticated, on: tailscale)
         #expect(client.link == .connected)
         #expect(client.authIssue == nil)

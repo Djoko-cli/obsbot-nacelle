@@ -75,7 +75,7 @@ struct ServerMessageTests {
         .error(code: .unpaired, message: "Appareil inconnu."),
         .challenge(nonce: Data(repeating: 7, count: 32)),
         .authenticated,
-        .paired(deviceID: "00112233445566778899aabbccddeeff"),
+        .paired(deviceID: "00112233445566778899aabbccddeeff", lanKey: Data(repeating: 9, count: 32)),
         .webrtcAnswer(id: 3, sdp: "v=0\r\n"),
         .webrtcError(id: 3, message: "go2rtc ne répond pas."),
     ])
