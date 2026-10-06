@@ -3,17 +3,17 @@ import Testing
 @testable import PTZCore
 
 @MainActor
-@Suite("Lancement de obsbot-ai-off")
-struct AIOffRunnerTests {
-    private func run(_ path: String, _ arguments: [String] = [], timeout: TimeInterval = 5) async -> AIOffResult {
-        let runner = ProcessAIOffRunner(
+@Suite("Lancement de obsbot-ai")
+struct AIRunnerTests {
+    private func run(_ path: String, _ arguments: [String] = [], timeout: TimeInterval = 5) async -> AIResult {
+        let runner = ProcessAIRunner(
             executableURL: URL(fileURLWithPath: path),
             arguments: arguments,
             timeout: timeout,
             scheduler: DispatchScheduler()
         )
         return await withCheckedContinuation { continuation in
-            runner.run { continuation.resume(returning: $0) }
+            runner.run(on: false) { continuation.resume(returning: $0) }
         }
     }
 
@@ -35,38 +35,38 @@ struct AIOffRunnerTests {
 
     @Test("Délai dépassé : le processus est arrêté")
     func timeout() async {
-        #expect(await run("/bin/sleep", ["5"], timeout: 0.3) == .timeout)
+        #expect(await run("/bin/sh", ["-c", "sleep 5"], timeout: 0.3) == .timeout)
     }
 
-    @Test("La sortie de l'utilitaire est ajoutée au fichier choisi")
+    @Test("La sortie de l'utilitaire est ajoutée au fichier choisi ; le mode (on ou off) vient en dernier argument")
     func outputFile() async throws {
-        let url = FileManager.default.temporaryDirectory.appending(path: "ai-off-\(UUID().uuidString)/out.log")
-        for word in ["un", "deux"] {
-            let runner = ProcessAIOffRunner(
+        let url = FileManager.default.temporaryDirectory.appending(path: "ai-\(UUID().uuidString)/out.log")
+        for (word, on) in [("un", true), ("deux", false)] {
+            let runner = ProcessAIRunner(
                 executableURL: URL(fileURLWithPath: "/bin/echo"),
                 arguments: [word],
                 outputURL: url,
                 scheduler: DispatchScheduler()
             )
             let result = await withCheckedContinuation { continuation in
-                runner.run { continuation.resume(returning: $0) }
+                runner.run(on: on) { continuation.resume(returning: $0) }
             }
             #expect(result == .success)
         }
-        #expect(try String(contentsOf: url, encoding: .utf8) == "un\ndeux\n")
+        #expect(try String(contentsOf: url, encoding: .utf8) == "un on\ndeux off\n")
     }
 
     @Test("Exécutable absent")
     func launchFailure() async {
-        guard case .launchFailed = await run("/nonexistent/obsbot-ai-off") else {
+        guard case .launchFailed = await run("/nonexistent/obsbot-ai") else {
             Issue.record("launchFailed attendu")
             return
         }
     }
 
-    private func runOnce(_ runner: ProcessAIOffRunner) async -> AIOffResult {
+    private func runOnce(_ runner: ProcessAIRunner) async -> AIResult {
         await withCheckedContinuation { continuation in
-            runner.run { continuation.resume(returning: $0) }
+            runner.run(on: false) { continuation.resume(returning: $0) }
         }
     }
 
@@ -93,7 +93,7 @@ struct AIOffRunnerTests {
     @Test("30 exécutions avec fichier de sortie : aucun descripteur ne fuit")
     func noDescriptorLeak() async {
         let url = FileManager.default.temporaryDirectory.appending(path: "ai-off-\(UUID().uuidString)/out.log")
-        let runner = ProcessAIOffRunner(
+        let runner = ProcessAIRunner(
             executableURL: URL(fileURLWithPath: "/usr/bin/true"),
             outputURL: url,
             scheduler: DispatchScheduler()
@@ -111,7 +111,7 @@ struct AIOffRunnerTests {
 
     @Test("Les processus terminés sont libérés")
     func processReleased() async throws {
-        let runner = ProcessAIOffRunner(executableURL: URL(fileURLWithPath: "/usr/bin/true"), scheduler: DispatchScheduler())
+        let runner = ProcessAIRunner(executableURL: URL(fileURLWithPath: "/usr/bin/true"), scheduler: DispatchScheduler())
         #expect(await runOnce(runner) == .success)
         weak let first = runner.current
         #expect(first != nil)
@@ -125,7 +125,7 @@ struct AIOffRunnerTests {
     @Test("SIGTERM ignoré : SIGKILL 2 s plus tard, puis un nouveau lancement est possible")
     func killAfterTimeout() async throws {
         // exec : sleep hérite du SIGTERM ignoré, et le SIGKILL ne laisse pas d'orphelin.
-        let stubborn = ProcessAIOffRunner(
+        let stubborn = ProcessAIRunner(
             executableURL: URL(fileURLWithPath: "/bin/sh"),
             arguments: ["-c", "trap '' TERM; exec sleep 30"],
             timeout: 0.3,
@@ -148,9 +148,9 @@ struct AIOffRunnerTests {
 
     @Test("Exécution précédente encore en cours : launchFailed, rien n'est lancé")
     func noOverlap() async {
-        let runner = ProcessAIOffRunner(
-            executableURL: URL(fileURLWithPath: "/bin/sleep"),
-            arguments: ["0.5"],
+        let runner = ProcessAIRunner(
+            executableURL: URL(fileURLWithPath: "/bin/sh"),
+            arguments: ["-c", "sleep 0.5"],
             scheduler: DispatchScheduler()
         )
         let first = Task { await runOnce(runner) }
@@ -158,7 +158,7 @@ struct AIOffRunnerTests {
             await Task.yield()
         }
         let running = runner.current
-        #expect(await runOnce(runner) == .launchFailed("obsbot-ai-off précédent encore en cours"))
+        #expect(await runOnce(runner) == .launchFailed("obsbot-ai précédent encore en cours"))
         #expect(runner.current === running)
         #expect(await first.value == .success)
         #expect(await runOnce(runner) == .success)

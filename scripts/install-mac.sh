@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installe ptzd et obsbot-ai-off sur ce Mac, puis charge l'agent launchd (spec § 6.8).
+# Installe ptzd et obsbot-ai sur ce Mac, puis charge l'agent launchd (spec § 6.8).
 # Usage : scripts/install-mac.sh [--no-load]
 #   --no-load : installe les fichiers sans charger l'agent.
 set -euo pipefail
@@ -34,12 +34,14 @@ fi
 
 echo "Compilation de ptzd…"
 (cd "$ROOT/mac/ptzd" && swift build -c release)
-echo "Compilation de obsbot-ai-off…"
-"$ROOT/mac/ai-off/build.sh" >/dev/null
+echo "Compilation de obsbot-ai…"
+"$ROOT/mac/ai/build.sh" >/dev/null
 
 mkdir -p "$SUPPORT/bin" "$SUPPORT/lib" "$LOGS" "$HOME/Library/LaunchAgents"
 install -m 755 "$ROOT/mac/ptzd/.build/release/ptzd" "$SUPPORT/bin/ptzd"
-install -m 755 "$ROOT/mac/ai-off/build/bin/obsbot-ai-off" "$SUPPORT/bin/obsbot-ai-off"
+install -m 755 "$ROOT/mac/ai/build/bin/obsbot-ai" "$SUPPORT/bin/obsbot-ai"
+# L'ancien utilitaire (coupure seule) ne sert plus.
+rm -f "$SUPPORT/bin/obsbot-ai-off"
 install -m 644 "$LIB" "$SUPPORT/lib/libdev.dylib"
 
 if [ ! -f "$SUPPORT/config.json" ]; then

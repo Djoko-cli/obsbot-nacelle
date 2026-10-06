@@ -19,6 +19,8 @@ public final class PTZController {
     public private(set) var snapshot: StateSnapshot
     /// Appelé à chaque changement d'état, pour diffusion à tous les clients.
     public var onStateChange: ((StateSnapshot) -> Void)?
+    /// Erreur à transmettre plus tard à ce client (ordre de suivi IA échoué).
+    public var onClientError: ((ClientID, ErrorCode, String) -> Void)?
 
     private let camera: any CameraDevice
     private let scheduler: any Scheduler
@@ -34,7 +36,7 @@ public final class PTZController {
     public init(
         camera: any CameraDevice,
         scheduler: any Scheduler,
-        aiOff: any AIOffRunner,
+        ai: any AIRunner,
         store: any StateStore,
         settings: MotionSettings,
         isObsbotCenterRunning: @escaping @MainActor () -> Bool,
@@ -46,7 +48,7 @@ public final class PTZController {
         motion = MotionDriver(camera: camera, scheduler: scheduler, settings: settings, log: log)
         zoom = ZoomDriver(camera: camera, scheduler: scheduler, log: log)
         privacy = PrivacyKeeper(camera: camera, store: store, log: log)
-        control = ControlTaker(runner: aiOff, scheduler: scheduler, isObsbotCenterRunning: isObsbotCenterRunning, log: log)
+        control = ControlTaker(runner: ai, scheduler: scheduler, isObsbotCenterRunning: isObsbotCenterRunning, log: log)
         snapshot = StateSnapshot(
             camera: camera.isPresent ? .connected : .absent,
             control: .idle,
@@ -64,7 +66,7 @@ public final class PTZController {
     public func handle(_ message: ClientMessage, from client: ClientID) -> (code: ErrorCode, message: String)? {
         switch message {
         case .takeControl:
-            control.take()
+            // N'allume ni ne coupe le suivi IA : c'est le premier mouvement qui le coupe (spec app Mac § 7.5).
             return nil
         case let .move(pan, tilt):
             if privacy.isActive, pan == 0, tilt == 0 {
@@ -72,6 +74,10 @@ public final class PTZController {
             }
             if let refusal = refusal() {
                 return refusal
+            }
+            // Le suivi IA contrerait le joystick : coupé au premier mouvement, s'il n'est pas déjà coupé.
+            if pan != 0 || tilt != 0, control.tracking != .off {
+                control.take()
             }
             verifyTarget = false
             return attempt { try motion.move(pan: pan, tilt: tilt, from: client) }
@@ -85,6 +91,10 @@ public final class PTZController {
                 return (.cameraAbsent, "Caméra débranchée.")
             }
             if on {
+                // Le suivi IA ramènerait l'objectif vers la personne.
+                if control.tracking != .off {
+                    control.take()
+                }
                 return attempt {
                     try? motion.stop()
                     try privacy.enter(currentPosition: motion.position, currentZoom: zoom.value)
@@ -95,12 +105,18 @@ public final class PTZController {
                 try privacy.exit()
                 refreshAfterSettling()
             }
+        case let .aiTracking(on):
+            if let refusal = refusal() {
+                return refusal
+            }
+            control.setTracking(on: on) { [weak self] result in
+                guard result != .success else { return }
+                self?.onClientError?(client, .uvcFailed, "Suivi IA non modifié (\(result)).")
+            }
+            return nil
         case .pair, .openPairing, .auth, .webrtcOffer, .adminWatch, .revoke, .kick, .unblock, .closePairing:
             // Messages de session et d'administration : le serveur les traite et ne les transmet jamais.
             return (.badMessage, "Message de session inattendu.")
-        case .aiTracking:
-            // Transition (plan app Mac, tâche 1) : la tâche 3 branche le suivi IA.
-            return (.badMessage, "Suivi IA pas encore pris en charge.")
         }
     }
 
@@ -123,6 +139,9 @@ public final class PTZController {
                     log("Vie privée non réappliquée : \(error)")
                 }
                 control.take()
+            } else {
+                // La caméra a pu redémarrer avec son propre réglage : le dernier ordre ne vaut plus.
+                control.forget()
             }
         } else {
             log("Caméra débranchée.")
@@ -261,7 +280,8 @@ public final class PTZController {
             pan: motion.position?.pan,
             tilt: motion.position?.tilt,
             zoom: zoom.value,
-            moving: motion.isMoving
+            moving: motion.isMoving,
+            aiTracking: control.tracking
         )
         guard next != snapshot else { return }
         snapshot = next

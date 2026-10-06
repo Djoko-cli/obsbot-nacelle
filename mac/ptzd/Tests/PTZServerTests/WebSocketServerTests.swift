@@ -23,7 +23,7 @@ struct WebSocketServerTests {
         controller = PTZController(
             camera: camera,
             scheduler: DispatchScheduler(),
-            aiOff: StubAIOff(),
+            ai: StubAI(),
             store: StubStore(),
             settings: MotionSettings(),
             isObsbotCenterRunning: { false },
@@ -1076,8 +1076,8 @@ final class StubCamera: CameraDevice {
 }
 
 @MainActor
-final class StubAIOff: AIOffRunner {
-    func run(completion: @escaping @MainActor @Sendable (AIOffResult) -> Void) {
+final class StubAI: AIRunner {
+    func run(on: Bool, completion: @escaping @MainActor @Sendable (AIResult) -> Void) {
         completion(.success)
     }
 }
