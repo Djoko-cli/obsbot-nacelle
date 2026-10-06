@@ -40,6 +40,7 @@
 ## Ordre et présence de Majid
 
 - Tâches 1 à 9 : du code et des tests, sans toucher au système en service.
+- Tâches 13 à 15 (amendement TLS, plus bas) : du code et des tests, avant la tâche 10.
 - Tâche 10 : mise en service de `ptzd` et de l'app, appairage et essais, **avec Majid**.
 - Tâche 11 : go2rtc fermé au réseau local, Homebridge mis à jour, **avec Majid**.
 - Tâche 12 : retrait du secours vidéo direct, README, réinstallation de l'app, **avec Majid** (iPhone déverrouillé).
@@ -5167,6 +5168,1593 @@ git push
 
 Attendu : « Aucune donnée locale. » avant le commit.
 
+## Amendement TLS : tâches 13 à 15, à faire avant la tâche 10
+
+Décidé par Majid le 2026-10-06 (spec accès local § 14), après la relecture de sécurité de la tâche 8 : sur le réseau local, un faux service pouvait relayer le défi du vrai `ptzd`. Toute connexion locale passe désormais en TLS à clé pré-partagée, avec un secret propre à chaque iPhone, remis à l'appairage par Tailscale. Les comptes de tests donnés tiennent compte des correctifs déjà faits sur les tâches 1 à 9.
+
+### Tâche 13 : Secret du canal chiffré : protocole, réglages TLS partagés, `PTZAuth`
+
+**But :** `paired` porte désormais le secret du réseau local (`lanKey`) ; `NacelleTLS` regroupe dans le paquet partagé les réglages TLS à clé pré-partagée (TLS 1.2, `TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256`, reprise de session et tickets coupés, clé factice côté serveur) ; `PTZAuth` crée le secret à l'appairage et le garde avec l'appareil (spec accès local § 14).
+
+**Fichiers :**
+- Modifier : `Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift`
+- Modifier : `Packages/NacelleProtocol/Sources/NacelleProtocol/Messages.swift`
+- Créer : `Packages/NacelleProtocol/Sources/NacelleProtocol/NacelleTLS.swift`
+- Modifier : `Packages/NacelleProtocol/Tests/NacelleProtocolTests/CodecTests.swift`
+- Créer : `Packages/NacelleProtocol/Tests/NacelleProtocolTests/NacelleTLSTests.swift`
+- Modifier : `ios/NacelleTests/PTZClientTests.swift`
+- Modifier : `mac/ptzd/Sources/PTZAuth/DeviceAuthority.swift`
+- Modifier : `mac/ptzd/Sources/PTZAuth/PairedDevices.swift`
+- Modifier : `mac/ptzd/Sources/PTZServer/WebSocketServer.swift`
+- Modifier : `mac/ptzd/Tests/PTZAuthTests/AuthCommandTests.swift`
+- Modifier : `mac/ptzd/Tests/PTZAuthTests/DeviceAuthorityTests.swift`
+- Modifier : `mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift`
+
+**Interfaces :**
+- Consomme : protocole des tâches 1 et 4, `DeviceAuthority` (tâche 2).
+- Produit :
+  - `ServerMessage.paired(deviceID: String, lanKey: Data)` (champ JSON `lanKey`, base64) ;
+  - `NacelleTLS.keyLength` (32), `NacelleTLS.makeKey() -> Data`, `NacelleTLS.client(identity:key:) -> NWProtocolTLS.Options`, `NacelleTLS.server(identities:keyFor:) -> NWProtocolTLS.Options` (clés figées à la création de l'écoute ; `keyFor` relu à chaque poignée de main, ce qui refuse tout de suite un appareil retiré) ;
+  - `PairedDevice.lanKey: Data?` (absent pour un appareil appairé avant le canal chiffré) ; `PairResult.paired(deviceID:lanKey:)` et `PairResult.deviceID` ; `DeviceAuthority.lanKeys() -> [String: Data]`, `DeviceAuthority.lanKey(for:) -> Data?`.
+- Faits vérifiés (macOS 27, simulateur iOS 27) : TLS 1.3 n'accepte pas les clés pré-partagées ; sans couper la reprise de session, une mauvaise clé ou un appareil retiré peut reprendre une session ; sans aucune clé, le serveur n'offre aucune suite PSK, d'où la clé factice ; les API utilisées ne sont pas dépréciées.
+
+- [ ] **Étape 1 : Écrire les tests**
+
+Modifier `Packages/NacelleProtocol/Tests/NacelleProtocolTests/CodecTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/Packages/NacelleProtocol/Tests/NacelleProtocolTests/CodecTests.swift b/Packages/NacelleProtocol/Tests/NacelleProtocolTests/CodecTests.swift
+index b84267f..3521ac0 100644
+--- a/Packages/NacelleProtocol/Tests/NacelleProtocolTests/CodecTests.swift
++++ b/Packages/NacelleProtocol/Tests/NacelleProtocolTests/CodecTests.swift
+@@ -75,7 +75,7 @@ struct ServerMessageTests {
+         .error(code: .unpaired, message: "Appareil inconnu."),
+         .challenge(nonce: Data(repeating: 7, count: 32)),
+         .authenticated,
+-        .paired(deviceID: "00112233445566778899aabbccddeeff"),
++        .paired(deviceID: "00112233445566778899aabbccddeeff", lanKey: Data(repeating: 9, count: 32)),
+         .webrtcAnswer(id: 3, sdp: "v=0\r\n"),
+         .webrtcError(id: 3, message: "go2rtc ne répond pas."),
+     ])
+PATCH
+```
+
+Créer `Packages/NacelleProtocol/Tests/NacelleProtocolTests/NacelleTLSTests.swift` :
+
+```swift
+import Foundation
+import Network
+import Testing
+@testable import NacelleProtocol
+
+/// Échanges réels sur 127.0.0.1 : écoute TLS-PSK + WebSocket, client TLS-PSK + WebSocket.
+@Suite("Canal TLS à clé pré-partagée", .serialized, .timeLimit(.minutes(1)))
+struct NacelleTLSTests {
+    final class Keys: @unchecked Sendable {
+        private let lock = NSLock()
+        private var keys: [String: Data]
+
+        init(_ keys: [String: Data]) {
+            self.keys = keys
+        }
+
+        func key(for identity: String) -> Data? {
+            lock.withLock { keys[identity] }
+        }
+
+        func remove(_ identity: String) {
+            lock.withLock { _ = keys.removeValue(forKey: identity) }
+        }
+    }
+
+    final class Box<Value>: @unchecked Sendable {
+        var value: Value
+
+        init(_ value: Value) {
+            self.value = value
+        }
+    }
+
+    static let alice = "0123456789abcdef0123456789abcdef"
+
+    private func webSocket(_ tls: NWProtocolTLS.Options) -> NWParameters {
+        let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
+        let options = NWProtocolWebSocket.Options()
+        options.autoReplyPing = true
+        options.setClientRequestHandler(.main) { _, _ in NWProtocolWebSocket.Response(status: .accept, subprotocol: nil) }
+        parameters.defaultProtocolStack.applicationProtocols.insert(options, at: 0)
+        return parameters
+    }
+
+    /// Écoute d'écho ; renvoie l'écoute et son port.
+    private func startEchoServer(_ keys: Keys) async throws -> (NWListener, UInt16) {
+        let tls = NacelleTLS.server(identities: [Self.alice]) { keys.key(for: $0) }
+        let parameters = webSocket(tls)
+        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        let listener = try NWListener(using: parameters)
+        listener.newConnectionHandler = { connection in
+            connection.start(queue: .main)
+            @Sendable func echo() {
+                connection.receiveMessage { content, context, _, error in
+                    guard error == nil, let content, let context else { return }
+                    connection.send(content: content, contentContext: context, isComplete: true, completion: .idempotent)
+                    echo()
+                }
+            }
+            echo()
+        }
+        let port: UInt16 = await withCheckedContinuation { continuation in
+            let resumed = Box(false)
+            listener.stateUpdateHandler = { state in
+                if case .ready = state, !resumed.value {
+                    resumed.value = true
+                    continuation.resume(returning: listener.port?.rawValue ?? 0)
+                }
+            }
+            listener.start(queue: .main)
+        }
+        return (listener, port)
+    }
+
+    /// Envoie « bonjour » et attend l'écho, 3 s au plus ; vrai si l'écho revient.
+    private func roundTrip(port: UInt16, identity: String, key: Data) async -> Bool {
+        let parameters = webSocket(NacelleTLS.client(identity: identity, key: key))
+        let connection = NWConnection(to: .url(URL(string: "ws://127.0.0.1:\(port)")!), using: parameters)
+        defer { connection.cancel() }
+        return await withCheckedContinuation { continuation in
+            let done = Box(false)
+            @Sendable func finish(_ result: Bool) {
+                guard !done.value else { return }
+                done.value = true
+                continuation.resume(returning: result)
+            }
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
+                    let context = NWConnection.ContentContext(identifier: "essai", metadata: [metadata])
+                    connection.send(content: Data("bonjour".utf8), contentContext: context, isComplete: true, completion: .idempotent)
+                    connection.receiveMessage { content, _, _, _ in
+                        finish(content == Data("bonjour".utf8))
+                    }
+                case .failed, .waiting, .cancelled:
+                    finish(false)
+                default:
+                    break
+                }
+            }
+            connection.start(queue: .main)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { finish(false) }
+        }
+    }
+
+    @Test("Secret de 32 octets, différent à chaque fois")
+    func makeKey() {
+        #expect(NacelleTLS.makeKey().count == 32)
+        #expect(NacelleTLS.makeKey() != NacelleTLS.makeKey())
+    }
+
+    @Test("Bonne clé : échange ; mauvaise clé, même juste après un succès : refus")
+    func rightAndWrongKey() async throws {
+        let key = NacelleTLS.makeKey()
+        let (listener, port) = try await startEchoServer(Keys([Self.alice: key]))
+        defer { listener.cancel() }
+        #expect(await roundTrip(port: port, identity: Self.alice, key: key))
+        #expect(await !roundTrip(port: port, identity: Self.alice, key: NacelleTLS.makeKey()))
+    }
+
+    @Test("Identité inconnue : refus")
+    func unknownIdentity() async throws {
+        let (listener, port) = try await startEchoServer(Keys([Self.alice: NacelleTLS.makeKey()]))
+        defer { listener.cancel() }
+        #expect(await !roundTrip(port: port, identity: "ffffffffffffffffffffffffffffffff", key: NacelleTLS.makeKey()))
+    }
+
+    @Test("Appareil retiré : refusé dès la poignée de main suivante, sans relancer l'écoute")
+    func revocation() async throws {
+        let key = NacelleTLS.makeKey()
+        let keys = Keys([Self.alice: key])
+        let (listener, port) = try await startEchoServer(keys)
+        defer { listener.cancel() }
+        #expect(await roundTrip(port: port, identity: Self.alice, key: key))
+        keys.remove(Self.alice)
+        #expect(await !roundTrip(port: port, identity: Self.alice, key: key))
+    }
+}
+```
+
+Modifier `ios/NacelleTests/PTZClientTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/ios/NacelleTests/PTZClientTests.swift b/ios/NacelleTests/PTZClientTests.swift
+index 3873181..2351d9e 100644
+--- a/ios/NacelleTests/PTZClientTests.swift
++++ b/ios/NacelleTests/PTZClientTests.swift
+@@ -17,6 +17,7 @@ struct PTZClientTests {
+     let url = URL(string: "ws://mac.exemple.ts.net:1985")!
+     let service = NWEndpoint.service(name: "Nacelle", type: "_nacelle._tcp", domain: "local.", interface: nil)
+     let nonce = Data(repeating: 7, count: 32)
++    let lanKey = Data(repeating: 9, count: 32)
+ 
+     init() {
+         let transports = transports
+@@ -127,7 +128,7 @@ struct PTZClientTests {
+         try emit(.challenge(nonce: nonce), on: tailscale)
+         let key = try #require(keys.key)
+         #expect(decoded(tailscale) == [.pair(code: "042917", publicKey: key.publicKeyX963, name: "iPhone")])
+-        try emit(.paired(deviceID: key.deviceID), on: tailscale)
++        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: tailscale)
+         #expect(client.isPaired)
+         guard case .auth = decoded(tailscale).last else {
+             Issue.record("auth attendu après paired")
+@@ -238,9 +239,9 @@ struct PTZClientTests {
+         #expect(decoded(tailscale) == [.pair(code: "042917", publicKey: key.publicKeyX963, name: "iPhone")])
+         #expect(decoded(local).isEmpty)
+         // Un faux « paired » venu du réseau local ne compte pas.
+-        try emit(.paired(deviceID: key.deviceID), on: local)
++        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: local)
+         #expect(decoded(local).isEmpty)
+-        try emit(.paired(deviceID: key.deviceID), on: tailscale)
++        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: tailscale)
+         #expect(decoded(local).contains { if case .auth = $0 { true } else { false } })
+         #expect(decoded(tailscale).contains { if case .auth = $0 { true } else { false } })
+     }
+@@ -304,7 +305,7 @@ struct PTZClientTests {
+         try emit(.challenge(nonce: nonce), on: tailscale)
+         let key = try #require(keys.key)
+         #expect(decoded(tailscale) == [.pair(code: "042917", publicKey: key.publicKeyX963, name: "iPhone")])
+-        try emit(.paired(deviceID: key.deviceID), on: tailscale)
++        try emit(.paired(deviceID: key.deviceID, lanKey: lanKey), on: tailscale)
+         try emit(.authenticated, on: tailscale)
+         #expect(client.link == .connected)
+         #expect(client.authIssue == nil)
+PATCH
+```
+
+Modifier `mac/ptzd/Tests/PTZAuthTests/AuthCommandTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/mac/ptzd/Tests/PTZAuthTests/AuthCommandTests.swift b/mac/ptzd/Tests/PTZAuthTests/AuthCommandTests.swift
+index 573d97b..fa0fee7 100644
+--- a/mac/ptzd/Tests/PTZAuthTests/AuthCommandTests.swift
++++ b/mac/ptzd/Tests/PTZAuthTests/AuthCommandTests.swift
+@@ -18,7 +18,7 @@ struct AuthCommandTests {
+         #expect(result.status == 0)
+         let code = try #require(result.output.split(separator: "\n").first?.split(separator: " ").last.map(String.init))
+         let key = P256.Signing.PrivateKey().publicKey.x963Representation
+-        #expect(authority.pair(code: code, publicKey: key, name: "iPhone") == .paired(deviceID: NacelleAuth.deviceID(publicKeyX963: key)))
++        #expect(authority.pair(code: code, publicKey: key, name: "iPhone").deviceID == NacelleAuth.deviceID(publicKeyX963: key))
+     }
+ 
+     @Test("devices : vide, puis une ligne par appareil")
+PATCH
+```
+
+Modifier `mac/ptzd/Tests/PTZAuthTests/DeviceAuthorityTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/mac/ptzd/Tests/PTZAuthTests/DeviceAuthorityTests.swift b/mac/ptzd/Tests/PTZAuthTests/DeviceAuthorityTests.swift
+index b17d56c..d38c317 100644
+--- a/mac/ptzd/Tests/PTZAuthTests/DeviceAuthorityTests.swift
++++ b/mac/ptzd/Tests/PTZAuthTests/DeviceAuthorityTests.swift
+@@ -24,7 +24,29 @@ struct DeviceAuthorityTests {
+ 
+     func pairDevice(name: String = "iPhone de test") throws {
+         let code = try authority.pairing.open()
+-        #expect(authority.pair(code: code, publicKey: publicKey, name: name) == .paired(deviceID: deviceID))
++        #expect(authority.pair(code: code, publicKey: publicKey, name: name).deviceID == deviceID)
++    }
++
++    @Test("Secret du réseau local : 32 octets, gardé avec l'appareil, oublié au retrait")
++    func lanKey() throws {
++        let code = try authority.pairing.open()
++        guard case let .paired(_, lanKey) = authority.pair(code: code, publicKey: publicKey, name: "iPhone") else {
++            Issue.record("appairage attendu")
++            return
++        }
++        #expect(lanKey.count == 32)
++        #expect(authority.lanKey(for: deviceID) == lanKey)
++        #expect(authority.lanKeys() == [deviceID: lanKey])
++        try authority.devices.remove(prefix: String(deviceID.prefix(8)))
++        #expect(authority.lanKey(for: deviceID) == nil)
++        #expect(authority.lanKeys().isEmpty)
++    }
++
++    @Test("Appareil appairé avant le canal chiffré : relu sans secret")
++    func legacyDevice() throws {
++        try authority.devices.add(PairedDevice(deviceID: "abcd0000", name: "ancien", publicKey: Data([4]), pairedAt: Date(timeIntervalSince1970: 0)))
++        #expect(authority.lanKey(for: "abcd0000") == nil)
++        #expect(authority.lanKeys().isEmpty)
+     }
+ 
+     @Test("Défi : 32 octets, différent à chaque fois")
+@@ -70,7 +92,7 @@ struct DeviceAuthorityTests {
+         let wrong = code == "000000" ? "000001" : "000000"
+         #expect(authority.pair(code: wrong, publicKey: publicKey, name: "x") == .badCode)
+         #expect(authority.pair(code: code, publicKey: Data([4, 1, 2]), name: "x") == .invalidKey)
+-        #expect(authority.pair(code: code, publicKey: publicKey, name: "x") == .paired(deviceID: deviceID))
++        #expect(authority.pair(code: code, publicKey: publicKey, name: "x").deviceID == deviceID)
+     }
+ 
+     @Test("Nom nettoyé : espaces retirés, 40 caractères au plus, « appareil » si vide")
+PATCH
+```
+
+Modifier `mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift b/mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift
+index 4059906..e0b1b5c 100644
+--- a/mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift
++++ b/mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift
+@@ -329,7 +329,13 @@ struct WebSocketServerTests {
+         try await send(.pair(code: wrong, publicKey: publicKey, name: "iPhone"), on: task)
+         #expect(try await next(task) { _ in true } == .error(code: .badCode, message: "Code d'appairage faux."))
+         try await send(.pair(code: code, publicKey: publicKey, name: "iPhone"), on: task)
+-        #expect(try await next(task) { _ in true } == .paired(deviceID: deviceID))
++        guard case let .paired(pairedID, lanKey) = try await next(task, where: { _ in true }) else {
++            Issue.record("paired attendu")
++            return
++        }
++        #expect(pairedID == deviceID)
++        #expect(lanKey.count == NacelleTLS.keyLength)
++        #expect(authority.lanKey(for: deviceID) == lanKey)
+         try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: task)
+         #expect(try await next(task) { _ in true } == .authenticated)
+         #expect(try authority.devices.device(id: deviceID)?.name == "iPhone")
+PATCH
+```
+
+- [ ] **Étape 2 : Lancer les tests**
+
+```bash
+(cd Packages/NacelleProtocol && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
+(cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
+(cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
+```
+
+Attendu : échec — la compilation des tests échoue : `NacelleTLS` et le champ `lanKey` de `paired` n'existent pas encore.
+
+- [ ] **Étape 3 : Écrire le code**
+
+Modifier `Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift b/Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift
+index c202d17..c26e5e3 100644
+--- a/Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift
++++ b/Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift
+@@ -136,7 +136,7 @@ extension StateSnapshot: Codable {
+ 
+ extension ServerMessage: Codable {
+     private enum CodingKeys: String, CodingKey {
+-        case type, code, message, nonce, deviceID, id, sdp
++        case type, code, message, nonce, deviceID, id, sdp, lanKey
+     }
+ 
+     public init(from decoder: any Decoder) throws {
+@@ -155,7 +155,7 @@ extension ServerMessage: Codable {
+         case "authenticated":
+             self = .authenticated
+         case "paired":
+-            self = .paired(deviceID: try container.decode(String.self, forKey: .deviceID))
++            self = .paired(deviceID: try container.decode(String.self, forKey: .deviceID), lanKey: try container.decode(Data.self, forKey: .lanKey))
+         case "webrtcAnswer":
+             self = .webrtcAnswer(id: try container.decode(Int.self, forKey: .id), sdp: try container.decode(String.self, forKey: .sdp))
+         case "webrtcError":
+@@ -180,9 +180,10 @@ extension ServerMessage: Codable {
+             try container.encode(nonce, forKey: .nonce)
+         case .authenticated:
+             try container.encode("authenticated", forKey: .type)
+-        case let .paired(deviceID):
++        case let .paired(deviceID, lanKey):
+             try container.encode("paired", forKey: .type)
+             try container.encode(deviceID, forKey: .deviceID)
++            try container.encode(lanKey, forKey: .lanKey)
+         case let .webrtcAnswer(id, sdp):
+             try container.encode("webrtcAnswer", forKey: .type)
+             try container.encode(id, forKey: .id)
+PATCH
+```
+
+Modifier `Packages/NacelleProtocol/Sources/NacelleProtocol/Messages.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/Packages/NacelleProtocol/Sources/NacelleProtocol/Messages.swift b/Packages/NacelleProtocol/Sources/NacelleProtocol/Messages.swift
+index f1ceeb8..3b56b1f 100644
+--- a/Packages/NacelleProtocol/Sources/NacelleProtocol/Messages.swift
++++ b/Packages/NacelleProtocol/Sources/NacelleProtocol/Messages.swift
+@@ -90,8 +90,9 @@ public enum ServerMessage: Equatable, Sendable {
+     case challenge(nonce: Data)
+     /// Connexion authentifiée ; l'état suit aussitôt.
+     case authenticated
+-    /// L'appareil vient d'être enregistré.
+-    case paired(deviceID: String)
++    /// L'appareil vient d'être enregistré ; `lanKey` est son secret du canal chiffré du réseau local
++    /// (spec accès local § 14), remis seulement par Tailscale.
++    case paired(deviceID: String, lanKey: Data)
+     /// Réponse de go2rtc à l'offre `id`.
+     case webrtcAnswer(id: Int, sdp: String)
+     /// go2rtc injoignable ou en erreur pour l'offre `id`.
+PATCH
+```
+
+Créer `Packages/NacelleProtocol/Sources/NacelleProtocol/NacelleTLS.swift` :
+
+```swift
+import Foundation
+import Network
+import Security
+
+/// Canal chiffré du réseau local (spec accès local § 14) : TLS 1.2 à clé pré-partagée, une clé par appareil,
+/// identité TLS = `deviceID`. Réglages communs à ptzd et à l'app. Vérifié sur macOS 27 et iOS 27 :
+/// TLS 1.3 n'accepte pas les clés pré-partagées ; sans couper la reprise de session, une mauvaise clé ou un
+/// appareil retiré pourrait reprendre une session ; sans clé du tout, le serveur n'offre aucune suite PSK.
+public enum NacelleTLS {
+    /// Échange ECDHE en plus de la clé : confidentialité persistante.
+    static let cipherSuite = tls_ciphersuite_t(rawValue: TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256)!
+    /// Longueur du secret remis à l'appairage, en octets.
+    public static let keyLength = 32
+
+    /// Un secret neuf.
+    public static func makeKey() -> Data {
+        var generator = SystemRandomNumberGenerator()
+        return Data((0..<keyLength).map { _ in UInt8.random(in: 0...255, using: &generator) })
+    }
+
+    /// Côté app : une seule clé, sous l'identité de l'appareil.
+    public static func client(identity: String, key: Data) -> NWProtocolTLS.Options {
+        let (tls, options) = base()
+        sec_protocol_options_add_pre_shared_key(options, dispatchData(key), dispatchData(Data(identity.utf8)))
+        return tls
+    }
+
+    /// Côté ptzd. Les clés de `identities` sont figées dans l'écoute : relancer l'écoute pour en ajouter.
+    /// `keyFor` est relu à chaque poignée de main : un appareil retiré est refusé tout de suite.
+    public static func server(identities: [String], keyFor: @escaping @Sendable (String) -> Data?) -> NWProtocolTLS.Options {
+        let (tls, options) = base()
+        // Une clé factice garde les suites PSK actives quand aucun appareil n'est appairé.
+        sec_protocol_options_add_pre_shared_key(options, dispatchData(makeKey()), dispatchData(Data("aucun-appareil".utf8)))
+        for identity in identities {
+            if let key = keyFor(identity) {
+                sec_protocol_options_add_pre_shared_key(options, dispatchData(key), dispatchData(Data(identity.utf8)))
+            }
+        }
+        sec_protocol_options_set_pre_shared_key_selection_block(options, { _, identityData, complete in
+            guard let identityData,
+                  let identity = String(bytes: identityData as DispatchData, encoding: .utf8),
+                  keyFor(identity) != nil else {
+                complete(nil)
+                return
+            }
+            complete(identityData)
+        }, DispatchQueue(label: "io.github.djoko-cli.nacelle.psk"))
+        return tls
+    }
+
+    private static func base() -> (NWProtocolTLS.Options, sec_protocol_options_t) {
+        let tls = NWProtocolTLS.Options()
+        let options = tls.securityProtocolOptions
+        sec_protocol_options_set_min_tls_protocol_version(options, .TLSv12)
+        sec_protocol_options_set_max_tls_protocol_version(options, .TLSv12)
+        sec_protocol_options_append_tls_ciphersuite(options, cipherSuite)
+        sec_protocol_options_set_tls_resumption_enabled(options, false)
+        sec_protocol_options_set_tls_tickets_enabled(options, false)
+        return (tls, options)
+    }
+
+    private static func dispatchData(_ data: Data) -> __DispatchData {
+        data.withUnsafeBytes { DispatchData(bytes: $0) as __DispatchData }
+    }
+}
+```
+
+Modifier `mac/ptzd/Sources/PTZAuth/DeviceAuthority.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/mac/ptzd/Sources/PTZAuth/DeviceAuthority.swift b/mac/ptzd/Sources/PTZAuth/DeviceAuthority.swift
+index a48478b..fd20ef3 100644
+--- a/mac/ptzd/Sources/PTZAuth/DeviceAuthority.swift
++++ b/mac/ptzd/Sources/PTZAuth/DeviceAuthority.swift
+@@ -13,7 +13,8 @@ public enum AuthCheck: Equatable, Sendable {
+ 
+ /// Issue d'un appairage.
+ public enum PairResult: Equatable, Sendable {
+-    case paired(deviceID: String)
++    /// Appareil enregistré, avec son secret du réseau local.
++    case paired(deviceID: String, lanKey: Data)
+     case badCode
+     case closed
+     /// La clé publique n'est pas une clé P-256 x963.
+@@ -68,13 +69,37 @@ public struct DeviceAuthority: Sendable {
+         case .accepted:
+             let deviceID = NacelleAuth.deviceID(publicKeyX963: publicKey)
+             let cleanName = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
+-            let device = PairedDevice(deviceID: deviceID, name: cleanName.isEmpty ? "appareil" : cleanName, publicKey: publicKey, pairedAt: now())
++            let lanKey = NacelleTLS.makeKey()
++            let device = PairedDevice(
++                deviceID: deviceID, name: cleanName.isEmpty ? "appareil" : cleanName,
++                publicKey: publicKey, pairedAt: now(), lanKey: lanKey
++            )
+             do {
+                 try devices.add(device)
+             } catch {
+                 return .closed
+             }
+-            return .paired(deviceID: deviceID)
++            return .paired(deviceID: deviceID, lanKey: lanKey)
+         }
+     }
++
++    /// Les secrets du réseau local, par appareil (fichier illisible : aucun).
++    public func lanKeys() -> [String: Data] {
++        let all = (try? devices.all()) ?? []
++        return all.reduce(into: [:]) { keys, device in
++            keys[device.deviceID] = device.lanKey
++        }
++    }
++
++    /// Le secret d'un appareil encore appairé, relu dans `devices.json`.
++    public func lanKey(for deviceID: String) -> Data? {
++        (try? devices.device(id: deviceID))?.flatMap(\.lanKey)
++    }
++}
++
++extension PairResult {
++    /// L'appareil enregistré, s'il y en a un.
++    public var deviceID: String? {
++        if case let .paired(deviceID, _) = self { deviceID } else { nil }
++    }
+ }
+\ No newline at end of file
+PATCH
+```
+
+Modifier `mac/ptzd/Sources/PTZAuth/PairedDevices.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/mac/ptzd/Sources/PTZAuth/PairedDevices.swift b/mac/ptzd/Sources/PTZAuth/PairedDevices.swift
+index 63c9ed6..fb8704d 100644
+--- a/mac/ptzd/Sources/PTZAuth/PairedDevices.swift
++++ b/mac/ptzd/Sources/PTZAuth/PairedDevices.swift
+@@ -1,18 +1,22 @@
+ import Foundation
+ 
+-/// Un appareil appairé : sa clé publique seulement (spec accès local § 6.4).
++/// Un appareil appairé : sa clé publique, et le secret du canal chiffré du réseau local
++/// (spec accès local § 6.4 et § 14).
+ public struct PairedDevice: Codable, Equatable, Sendable {
+     public var deviceID: String
+     public var name: String
+     /// Clé publique P-256, format x963.
+     public var publicKey: Data
+     public var pairedAt: Date
++    /// Secret TLS du réseau local ; absent pour un appareil appairé avant le canal chiffré.
++    public var lanKey: Data?
+ 
+-    public init(deviceID: String, name: String, publicKey: Data, pairedAt: Date) {
++    public init(deviceID: String, name: String, publicKey: Data, pairedAt: Date, lanKey: Data? = nil) {
+         self.deviceID = deviceID
+         self.name = name
+         self.publicKey = publicKey
+         self.pairedAt = pairedAt
++        self.lanKey = lanKey
+     }
+ }
+ 
+PATCH
+```
+
+Modifier `mac/ptzd/Sources/PTZServer/WebSocketServer.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/mac/ptzd/Sources/PTZServer/WebSocketServer.swift b/mac/ptzd/Sources/PTZServer/WebSocketServer.swift
+index 59a01a6..8fa71ff 100644
+--- a/mac/ptzd/Sources/PTZServer/WebSocketServer.swift
++++ b/mac/ptzd/Sources/PTZServer/WebSocketServer.swift
+@@ -352,9 +352,9 @@ public final class WebSocketServer {
+     /// Code d'appairage : un code faux laisse la connexion ouverte pour un nouvel essai.
+     private func pair(_ id: ClientID, code: String, publicKey: Data, name: String) {
+         switch authority.pair(code: code, publicKey: publicKey, name: name) {
+-        case let .paired(deviceID):
++        case let .paired(deviceID, lanKey):
+             log("Appareil appairé : \(deviceID.prefix(8)) (\(name)).")
+-            send(.paired(deviceID: deviceID), to: id)
++            send(.paired(deviceID: deviceID, lanKey: lanKey), to: id)
+         case .badCode:
+             log("Client \(id) : code d'appairage faux (\(endpoint(id))).")
+             send(.error(code: .badCode, message: "Code d'appairage faux."), to: id)
+PATCH
+```
+
+- [ ] **Étape 4 : Relancer les tests**
+
+```bash
+(cd Packages/NacelleProtocol && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
+(cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
+(cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
+```
+
+Attendu : tout passe (protocole : 19 tests, Mac : 140 tests, iOS : 68 tests), aucun avertissement ni erreur.
+
+- [ ] **Étape 5 : Commiter et pousser**
+
+```bash
+git add Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift \
+    Packages/NacelleProtocol/Sources/NacelleProtocol/Messages.swift \
+    Packages/NacelleProtocol/Sources/NacelleProtocol/NacelleTLS.swift \
+    Packages/NacelleProtocol/Tests/NacelleProtocolTests/CodecTests.swift \
+    Packages/NacelleProtocol/Tests/NacelleProtocolTests/NacelleTLSTests.swift \
+    ios/NacelleTests/PTZClientTests.swift \
+    mac/ptzd/Sources/PTZAuth/DeviceAuthority.swift \
+    mac/ptzd/Sources/PTZAuth/PairedDevices.swift \
+    mac/ptzd/Sources/PTZServer/WebSocketServer.swift \
+    mac/ptzd/Tests/PTZAuthTests/AuthCommandTests.swift \
+    mac/ptzd/Tests/PTZAuthTests/DeviceAuthorityTests.swift \
+    mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift
+git diff --cached --name-only -z | xargs -0 grep -n -E '([0-9]{1,3}\.){3}[0-9]{1,3}|\.ts\.net|/Users/[A-Za-z]|/private/tmp/' | grep -v -E '127\.0\.0\.1|0\.0\.0\.0|192\.0\.2\.|169\.254\.|100\.64\.0\.0|mac\.exemple\.ts\.net|mon-mac\.tailnet\.ts\.net' || echo "Aucune donnée locale."
+git commit -F - <<'EOF'
+Canal chiffré : secret remis à l'appairage, réglages TLS partagés
+
+Co-Authored-By: <modèle qui commite> <noreply@anthropic.com>
+EOF
+git push
+```
+
+Attendu : « Aucune donnée locale. » avant le commit.
+
+### Tâche 14 : `ptzd` : écoute du réseau local en TLS, appairage refusé sur le réseau local
+
+**But :** Les écoutes du réseau local passent en TLS à clé pré-partagée (identité = `deviceID`) ; elles sont relancées après chaque appairage pour connaître le nouveau secret ; `pair` y est refusé (« Appairage par Tailscale seulement. ») ; Tailscale et 127.0.0.1 ne changent pas (spec accès local § 14).
+
+**Fichiers :**
+- Modifier : `mac/ptzd/Sources/PTZServer/LocalNetworkListeners.swift`
+- Modifier : `mac/ptzd/Sources/PTZServer/WebSocketServer.swift`
+- Créer : `mac/ptzd/Tests/PTZServerTests/TLSClient.swift`
+- Modifier : `mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift`
+
+**Interfaces :**
+- Consomme : `NacelleTLS`, `DeviceAuthority.lanKeys()` et `lanKey(for:)` (tâche 13).
+- Produit : `WebSocketServer(…, localHosts: Set<String> = [])` — adresses écoutées comme le réseau local, pour les tests seulement (le vrai réseau local passe par `LocalNetworkListeners`) ; `LocalNetworkListeners.rebuild()`.
+- Les tests ouvrent un vrai canal TLS sur ::1 avec `TLSClient` (fichier de test) : bonne clé, mauvaise clé, sans TLS, appairage refusé, écoute relancée après un appairage par la voie « Tailscale » (127.0.0.1 sans confiance), appareil retiré.
+
+- [ ] **Étape 1 : Écrire les tests**
+
+Créer `mac/ptzd/Tests/PTZServerTests/TLSClient.swift` :
+
+```swift
+import Foundation
+import NacelleProtocol
+import Network
+
+enum TLSClientError: Error {
+    /// Pas de canal : poignée de main TLS refusée, ou connexion fermée.
+    case noChannel
+}
+
+/// Client WebSocket en TLS à clé pré-partagée, comme l'app sur le réseau local (tests).
+@MainActor
+final class TLSClient {
+    let connection: NWConnection
+
+    init(host: String, port: UInt16, identity: String, key: Data) {
+        let parameters = NWParameters(tls: NacelleTLS.client(identity: identity, key: key), tcp: NWProtocolTCP.Options())
+        let webSocket = NWProtocolWebSocket.Options()
+        webSocket.autoReplyPing = true
+        parameters.defaultProtocolStack.applicationProtocols.insert(webSocket, at: 0)
+        let authority = host.contains(":") ? "[\(host)]" : host
+        connection = NWConnection(to: .url(URL(string: "ws://\(authority):\(port)")!), using: parameters)
+    }
+
+    /// Ouvre le canal ; échoue si la poignée de main TLS n'aboutit pas en 3 s.
+    func open() async throws {
+        let connection = connection
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            let once = Once(continuation)
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    once.finish(nil)
+                case .waiting, .failed, .cancelled:
+                    once.finish(TLSClientError.noChannel)
+                default:
+                    break
+                }
+            }
+            connection.start(queue: .main)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { once.finish(TLSClientError.noChannel) }
+        }
+    }
+
+    /// Reprend une attente une seule fois (rappels de Network et minuterie, tous sur la file principale).
+    private final class Once: @unchecked Sendable {
+        private var continuation: CheckedContinuation<Void, any Error>?
+
+        init(_ continuation: CheckedContinuation<Void, any Error>) {
+            self.continuation = continuation
+        }
+
+        func finish(_ error: (any Error)?) {
+            guard let continuation else { return }
+            self.continuation = nil
+            if let error {
+                continuation.resume(throwing: error)
+            } else {
+                continuation.resume()
+            }
+        }
+    }
+
+    func send(_ message: ClientMessage) throws {
+        let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
+        let context = NWConnection.ContentContext(identifier: "test", metadata: [metadata])
+        connection.send(content: Data(try NacelleCodec.encode(message).utf8), contentContext: context, isComplete: true, completion: .idempotent)
+    }
+
+    /// Le message suivant du serveur.
+    func receive() async throws -> ServerMessage {
+        let connection = connection
+        let text: String = try await withCheckedThrowingContinuation { continuation in
+            connection.receiveMessage { content, _, _, error in
+                if error == nil, let content, let text = String(data: content, encoding: .utf8) {
+                    continuation.resume(returning: text)
+                } else {
+                    continuation.resume(throwing: TLSClientError.noChannel)
+                }
+            }
+        }
+        return try NacelleCodec.decodeServer(text)
+    }
+
+    func close() {
+        connection.cancel()
+    }
+}
+```
+
+Modifier `mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift b/mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift
+index e0b1b5c..8a97972 100644
+--- a/mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift
++++ b/mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift
+@@ -38,11 +38,12 @@ struct WebSocketServerTests {
+         scheduler: any Scheduler = DispatchScheduler(),
+         log: @escaping LogSink = { _ in },
+         trustLoopback: Bool = true,
+-        relay: any WebRTCRelay = FakeRelay { "v=0 réponse à \($0)" }
++        relay: any WebRTCRelay = FakeRelay { "v=0 réponse à \($0)" },
++        localHosts: Set<String> = []
+     ) async -> (WebSocketServer, [String: UInt16]) {
+         let server = WebSocketServer(
+             hosts: hosts, port: 0, controller: controller, authority: authority, relay: relay,
+-            scheduler: scheduler, log: log, trustLoopback: trustLoopback
++            scheduler: scheduler, log: log, trustLoopback: trustLoopback, localHosts: localHosts
+         )
+         let ports = await withCheckedContinuation { continuation in
+             var ready: [String: UInt16] = [:]
+@@ -97,8 +98,24 @@ struct WebSocketServerTests {
+         NacelleAuth.deviceID(publicKeyX963: key.publicKey.x963Representation)
+     }
+ 
+-    private func pairTestDevice() throws {
+-        try authority.devices.add(PairedDevice(deviceID: deviceID, name: "iPhone de test", publicKey: key.publicKey.x963Representation, pairedAt: Date()))
++    private func pairTestDevice(lanKey: Data? = nil) throws {
++        try authority.devices.add(PairedDevice(
++            deviceID: deviceID, name: "iPhone de test", publicKey: key.publicKey.x963Representation,
++            pairedAt: Date(), lanKey: lanKey
++        ))
++    }
++
++    /// Ouvre le canal TLS du « réseau local » (::1 dans les tests), reçoit le défi, le signe ;
++    /// renvoie le client et la réponse du serveur.
++    private func authenticateOverTLS(port: UInt16, lanKey: Data) async throws -> (TLSClient, ServerMessage) {
++        let client = TLSClient(host: "::1", port: port, identity: deviceID, key: lanKey)
++        try await client.open()
++        guard case let .challenge(nonce) = try await client.receive() else {
++            Issue.record("défi attendu")
++            return (client, .authenticated)
++        }
++        try client.send(.auth(deviceID: deviceID, signature: try signature(for: nonce)))
++        return (client, try await client.receive())
+     }
+ 
+     private func send(_ message: ClientMessage, on task: URLSessionWebSocketTask) async throws {
+@@ -417,6 +434,81 @@ struct WebSocketServerTests {
+         withExtendedLifetime(server) {}
+     }
+ 
++    @Test("Réseau local : appareil appairé en TLS avec son secret, puis défi et authentification")
++    func localTLS() async throws {
++        let lanKey = NacelleTLS.makeKey()
++        try pairTestDevice(lanKey: lanKey)
++        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
++        let (client, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
++        defer { client.close() }
++        #expect(reply == .authenticated)
++        withExtendedLifetime(server) {}
++    }
++
++    @Test("Réseau local : sans TLS, ou avec une mauvaise clé, aucun canal")
++    func localRequiresTLS() async throws {
++        try pairTestDevice(lanKey: NacelleTLS.makeKey())
++        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
++        let wrong = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: NacelleTLS.makeKey())
++        await #expect(throws: TLSClientError.noChannel) { try await wrong.open() }
++        wrong.close()
++        let plain = connect("::1", ports["::1"]!)
++        defer { plain.cancel(with: .goingAway, reason: nil) }
++        await #expect(throws: (any Error).self) { _ = try await plain.receive() }
++        withExtendedLifetime(server) {}
++    }
++
++    @Test("Réseau local : appairage refusé, même pour un appareil appairé")
++    func noPairingOnLocalNetwork() async throws {
++        let lanKey = NacelleTLS.makeKey()
++        try pairTestDevice(lanKey: lanKey)
++        _ = try authority.pairing.open()
++        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
++        let client = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: lanKey)
++        defer { client.close() }
++        try await client.open()
++        _ = try await client.receive()
++        try client.send(.pair(code: "123456", publicKey: key.publicKey.x963Representation, name: "iPhone"))
++        #expect(try await client.receive() == .error(code: .pairingClosed, message: "Appairage par Tailscale seulement."))
++        withExtendedLifetime(server) {}
++    }
++
++    @Test("Appairage par Tailscale : l'écoute locale est relancée et accepte le nouveau secret")
++    func rebuildAfterPairing() async throws {
++        let code = try authority.pairing.open()
++        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
++        let rebuilt = PortBox()
++        server.onReady = { host, port in
++            if host == "::1" {
++                rebuilt.port = port
++            }
++        }
++        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
++        defer { task.cancel(with: .goingAway, reason: nil) }
++        _ = try await challenge(task)
++        try await send(.pair(code: code, publicKey: key.publicKey.x963Representation, name: "iPhone"), on: task)
++        guard case let .paired(_, lanKey) = try await next(task, where: { _ in true }) else {
++            Issue.record("paired attendu")
++            return
++        }
++        try await waitUntil { rebuilt.port != nil }
++        let (client, reply) = try await authenticateOverTLS(port: rebuilt.port!, lanKey: lanKey)
++        defer { client.close() }
++        #expect(reply == .authenticated)
++    }
++
++    @Test("Appareil retiré : refusé dès la poignée de main TLS suivante")
++    func localRevocation() async throws {
++        let lanKey = NacelleTLS.makeKey()
++        try pairTestDevice(lanKey: lanKey)
++        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
++        try authority.devices.remove(prefix: String(deviceID.prefix(8)))
++        let client = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: lanKey)
++        defer { client.close() }
++        await #expect(throws: TLSClientError.noChannel) { try await client.open() }
++        withExtendedLifetime(server) {}
++    }
++
+     @Test("L'état n'est diffusé qu'aux clients authentifiés")
+     func broadcastOnlyToAuthenticated() async throws {
+         try pairTestDevice()
+@@ -595,6 +687,12 @@ final class LineBox {
+     var values: [String] = []
+ }
+ 
++/// Port d'une écoute relancée (tests).
++@MainActor
++final class PortBox {
++    var port: UInt16?
++}
++
+ /// Relais WebRTC de test : la réponse est calculée à partir de l'offre.
+ struct FakeRelay: WebRTCRelay {
+     let handler: @Sendable (String) async throws -> String
+PATCH
+```
+
+- [ ] **Étape 2 : Lancer les tests**
+
+```bash
+(cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
+```
+
+Attendu : échec — la compilation des tests échoue : `WebSocketServer` ne prend pas encore `localHosts:`.
+
+- [ ] **Étape 3 : Écrire le code**
+
+Modifier `mac/ptzd/Sources/PTZServer/LocalNetworkListeners.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/mac/ptzd/Sources/PTZServer/LocalNetworkListeners.swift b/mac/ptzd/Sources/PTZServer/LocalNetworkListeners.swift
+index 7505154..3112729 100644
+--- a/mac/ptzd/Sources/PTZServer/LocalNetworkListeners.swift
++++ b/mac/ptzd/Sources/PTZServer/LocalNetworkListeners.swift
+@@ -59,6 +59,16 @@ final class LocalNetworkListeners {
+         scheduleReconcile()
+     }
+ 
++    /// Relance toutes les écoutes (nouveaux réglages TLS) : chacune se relie après `.cancelled`.
++    func rebuild() {
++        let names = Array(bound.keys)
++        guard !names.isEmpty else { return }
++        log("Écoutes locales relancées (nouvel appareil appairé).")
++        for name in names {
++            retire(name)
++        }
++    }
++
+     private func scheduleReconcile() {
+         timer = scheduler.schedule(after: Self.reconcileInterval) { [weak self] in
+             self?.reconcile()
+PATCH
+```
+
+Modifier `mac/ptzd/Sources/PTZServer/WebSocketServer.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/mac/ptzd/Sources/PTZServer/WebSocketServer.swift b/mac/ptzd/Sources/PTZServer/WebSocketServer.swift
+index 8fa71ff..4a5e03e 100644
+--- a/mac/ptzd/Sources/PTZServer/WebSocketServer.swift
++++ b/mac/ptzd/Sources/PTZServer/WebSocketServer.swift
+@@ -9,7 +9,8 @@ import PTZCore
+ /// 127.0.0.1 (spec accès local § 6.3). Les connexions anonymes ont leurs propres réserves, bornées
+ /// en tout et par adresse : un appareil du Wi-Fi ne peut pas occuper les places des clients.
+ /// Une place n'est jamais gardée par une connexion morte ou anonyme : 10 s pour s'authentifier,
+-/// connexion en attente, ping toutes les 10 s.
++/// connexion en attente, ping toutes les 10 s. Sur le réseau local, tout passe en TLS à clé
++/// pré-partagée (spec accès local § 14) et l'appairage est refusé.
+ @MainActor
+ public final class WebSocketServer {
+     /// Clients authentifiés ou de confiance (127.0.0.1 compris).
+@@ -43,6 +44,9 @@ public final class WebSocketServer {
+     private let log: LogSink
+     private let trustLoopback: Bool
+     private let localNetwork: Bool
++    /// Adresses écoutées comme le réseau local (TLS, pas d'appairage) : pour les tests seulement,
++    /// le vrai réseau local passant par `LocalNetworkListeners`.
++    private let localHosts: Set<String>
+     private var listeners: [String: NWListener] = [:]
+     private var localListeners: LocalNetworkListeners?
+     private var clients: [ClientID: Client] = [:]
+@@ -55,6 +59,8 @@ public final class WebSocketServer {
+         let trusted: Bool
+         /// Adresse distante, pour la réserve des connexions anonymes.
+         let address: String
++        /// Arrivée par le réseau local (canal TLS) : l'appairage y est refusé.
++        let local: Bool
+         var authenticated = false
+         /// Défi en cours ; consommé par le premier `auth`.
+         var nonce: Data?
+@@ -78,7 +84,8 @@ public final class WebSocketServer {
+     }
+ 
+     /// Les adresses en double ne sont écoutées qu'une fois (config.json peut déjà contenir 127.0.0.1).
+-    /// `trustLoopback` à faux (tests) impose l'authentification aussi sur 127.0.0.1.
++    /// `trustLoopback` à faux (tests) impose l'authentification aussi sur 127.0.0.1 ; `localHosts` (tests)
++    /// fait écouter ces adresses comme le réseau local.
+     public init(
+         hosts: [String],
+         port: UInt16,
+@@ -88,7 +95,8 @@ public final class WebSocketServer {
+         scheduler: any Scheduler,
+         log: @escaping LogSink,
+         trustLoopback: Bool = true,
+-        localNetwork: Bool = false
++        localNetwork: Bool = false,
++        localHosts: Set<String> = []
+     ) {
+         self.hosts = hosts.reduce(into: []) { unique, host in
+             if !unique.contains(host) {
+@@ -103,6 +111,7 @@ public final class WebSocketServer {
+         self.log = log
+         self.trustLoopback = trustLoopback
+         self.localNetwork = localNetwork
++        self.localHosts = localHosts
+         controller.onStateChange = { [weak self] snapshot in
+             self?.broadcast(.state(snapshot))
+         }
+@@ -112,14 +121,17 @@ public final class WebSocketServer {
+     /// encore là), réessaie toutes les 5 s pour cette adresse. Puis, si demandé, sur le
+     /// réseau local, où chaque connexion doit s'authentifier.
+     public func start() {
+-        for host in hosts {
++        for host in hosts.filter({ !localHosts.contains($0) }) {
++            listen(on: host)
++        }
++        for host in localHosts.sorted() {
+             listen(on: host)
+         }
+         if localNetwork {
+             let local = LocalNetworkListeners(
+                 port: port,
+-                makeParameters: { [unowned self] in self.makeParameters() },
+-                onConnection: { [weak self] connection in self?.accept(connection, trusted: false) },
++                makeParameters: { [unowned self] in self.makeParameters(tls: self.localTLS()) },
++                onConnection: { [weak self] connection in self?.accept(connection, trusted: false, local: true) },
+                 scheduler: scheduler,
+                 log: log
+             )
+@@ -128,8 +140,24 @@ public final class WebSocketServer {
+         }
+     }
+ 
+-    /// TCP avec keepalive et WebSocket, sans adresse locale : chaque écoute ajoute la sienne.
+-    private func makeParameters() -> NWParameters {
++    /// TLS à clé pré-partagée du réseau local : les secrets des appareils appairés à cet instant,
++    /// et le veto d'un appareil retiré depuis, relu à chaque poignée de main.
++    private func localTLS() -> NWProtocolTLS.Options {
++        let authority = authority
++        return NacelleTLS.server(identities: Array(authority.lanKeys().keys)) { authority.lanKey(for: $0) }
++    }
++
++    /// Relance les écoutes du réseau local, pour qu'elles connaissent le secret d'un nouvel appareil.
++    private func rebuildLocalListeners() {
++        localListeners?.rebuild()
++        for host in localHosts {
++            listeners.removeValue(forKey: host)?.cancel()
++            listen(on: host)
++        }
++    }
++
++    /// TCP avec keepalive, TLS si donné, et WebSocket, sans adresse locale : chaque écoute ajoute la sienne.
++    private func makeParameters(tls: NWProtocolTLS.Options? = nil) -> NWParameters {
+         // Keepalive TCP : une connexion morte (iPhone suspendu, réseau coupé) est fermée
+         // après environ 25 s au lieu de garder une des 4 places indéfiniment.
+         let tcp = NWProtocolTCP.Options()
+@@ -137,7 +165,7 @@ public final class WebSocketServer {
+         tcp.keepaliveIdle = 10
+         tcp.keepaliveInterval = 5
+         tcp.keepaliveCount = 3
+-        let parameters = NWParameters(tls: nil, tcp: tcp)
++        let parameters = NWParameters(tls: tls, tcp: tcp)
+         let webSocket = NWProtocolWebSocket.Options()
+         webSocket.autoReplyPing = true
+         // Un navigateur envoie toujours Origin, nos clients (app iOS, nacelle-ws) jamais :
+@@ -154,7 +182,8 @@ public final class WebSocketServer {
+     }
+ 
+     private func listen(on host: String) {
+-        let parameters = makeParameters()
++        let local = localHosts.contains(host)
++        let parameters = makeParameters(tls: local ? localTLS() : nil)
+         parameters.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port) ?? .any)
+         parameters.allowLocalEndpointReuse = true
+         let listener: NWListener
+@@ -167,9 +196,9 @@ public final class WebSocketServer {
+         listener.stateUpdateHandler = { [weak self] state in
+             MainActor.assumeIsolated { self?.listenerChanged(host, state) }
+         }
+-        let trusted = trustLoopback && Self.isLoopback(host)
++        let trusted = !local && trustLoopback && Self.isLoopback(host)
+         listener.newConnectionHandler = { [weak self] connection in
+-            MainActor.assumeIsolated { self?.accept(connection, trusted: trusted) }
++            MainActor.assumeIsolated { self?.accept(connection, trusted: trusted, local: local) }
+         }
+         listeners[host] = listener
+         listener.start(queue: .main)
+@@ -233,7 +262,7 @@ public final class WebSocketServer {
+         clients.values.filter { $0.authenticated || $0.trusted }.count
+     }
+ 
+-    private func accept(_ connection: NWConnection, trusted: Bool) {
++    private func accept(_ connection: NWConnection, trusted: Bool, local: Bool = false) {
+         let address = Self.address(of: connection.endpoint)
+         let pending = clients.values.filter { !$0.authenticated && !$0.trusted }.map(\.address)
+         guard Self.admits(trusted: trusted, address: address, authenticated: reservedCount, pendingAddresses: pending) else {
+@@ -247,7 +276,7 @@ public final class WebSocketServer {
+         }
+         let id = nextID
+         nextID += 1
+-        var client = Client(connection: connection, trusted: trusted, address: address)
++        var client = Client(connection: connection, trusted: trusted, address: address, local: local)
+         client.deadline = scheduler.schedule(after: Self.authTimeout) { [weak self] in
+             self?.release(id, reason: "pas authentifié en \(Int(Self.authTimeout)) s")
+         }
+@@ -328,6 +357,11 @@ public final class WebSocketServer {
+                 send(.error(code: .badMessage, message: "Déjà authentifié."), to: id)
+                 return
+             }
++            // Le secret du canal chiffré ne doit jamais partir sur le réseau local (spec accès local § 14).
++            guard !client.local else {
++                send(.error(code: .pairingClosed, message: "Appairage par Tailscale seulement."), to: id)
++                return
++            }
+             pair(id, code: code, publicKey: publicKey, name: name)
+         case let .auth(deviceID, signature):
+             guard !client.authenticated else { return }
+@@ -355,6 +389,7 @@ public final class WebSocketServer {
+         case let .paired(deviceID, lanKey):
+             log("Appareil appairé : \(deviceID.prefix(8)) (\(name)).")
+             send(.paired(deviceID: deviceID, lanKey: lanKey), to: id)
++            rebuildLocalListeners()
+         case .badCode:
+             log("Client \(id) : code d'appairage faux (\(endpoint(id))).")
+             send(.error(code: .badCode, message: "Code d'appairage faux."), to: id)
+PATCH
+```
+
+- [ ] **Étape 4 : Relancer les tests**
+
+```bash
+(cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
+```
+
+Attendu : tout passe (Mac : 145 tests), aucun avertissement ni erreur.
+
+- [ ] **Étape 5 : Commiter et pousser**
+
+```bash
+git add mac/ptzd/Sources/PTZServer/LocalNetworkListeners.swift \
+    mac/ptzd/Sources/PTZServer/WebSocketServer.swift \
+    mac/ptzd/Tests/PTZServerTests/TLSClient.swift \
+    mac/ptzd/Tests/PTZServerTests/WebSocketServerTests.swift
+git diff --cached --name-only -z | xargs -0 grep -n -E '([0-9]{1,3}\.){3}[0-9]{1,3}|\.ts\.net|/Users/[A-Za-z]|/private/tmp/' | grep -v -E '127\.0\.0\.1|0\.0\.0\.0|192\.0\.2\.|169\.254\.|100\.64\.0\.0|mac\.exemple\.ts\.net|mon-mac\.tailnet\.ts\.net' || echo "Aucune donnée locale."
+git commit -F - <<'EOF'
+ptzd : réseau local en TLS, appairage par Tailscale seulement
+
+Co-Authored-By: <modèle qui commite> <noreply@anthropic.com>
+EOF
+git push
+```
+
+Attendu : « Aucune donnée locale. » avant le commit.
+
+### Tâche 15 : App : réseau local en TLS
+
+**But :** L'app range le secret reçu dans `paired` avec sa clé (trousseau), ne cherche `ptzd` sur le réseau local que si elle a ce secret, et joint le service Bonjour en TLS à clé pré-partagée ; « Oublier cet appairage » efface aussi le secret (spec accès local § 14).
+
+**Fichiers :**
+- Modifier : `ios/Nacelle/PTZ/LocalNetwork.swift`
+- Modifier : `ios/Nacelle/PTZ/PTZClient.swift`
+- Modifier : `ios/Nacelle/PTZ/WebSocketTransport.swift`
+- Modifier : `ios/Nacelle/Pairing/DeviceKey.swift`
+- Modifier : `ios/NacelleTests/DeviceKeyTests.swift`
+- Modifier : `ios/NacelleTests/FakeTransport.swift`
+- Modifier : `ios/NacelleTests/PTZClientTests.swift`
+
+**Interfaces :**
+- Consomme : `NacelleTLS.client(identity:key:)` (tâche 13), `PTZClient` et `NWWebSocketTransport` (tâche 8 et ses correctifs).
+- Produit : `LANCredentials(identity:key:)` ; `WebSocketEndpoint.service(NWEndpoint, LANCredentials)` ; `DeviceKeyStoring.lanKey() -> Data?` et `saveLANKey(_:) throws` ; `KeychainDeviceKeyStore` garde le secret sous le compte `lan-key` et l'efface avec la clé.
+
+- [ ] **Étape 1 : Écrire les tests**
+
+Modifier `ios/NacelleTests/DeviceKeyTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/ios/NacelleTests/DeviceKeyTests.swift b/ios/NacelleTests/DeviceKeyTests.swift
+index d9ec2b6..6469246 100644
+--- a/ios/NacelleTests/DeviceKeyTests.swift
++++ b/ios/NacelleTests/DeviceKeyTests.swift
+@@ -23,6 +23,16 @@ struct DeviceKeyTests {
+         #expect(store.load() == nil)
+     }
+ 
++    @Test("Secret du réseau local : enregistré, relu, effacé avec la clé")
++    func lanKey() throws {
++        #expect(store.lanKey() == nil)
++        let secret = Data(repeating: 5, count: 32)
++        try store.saveLANKey(secret)
++        #expect(store.lanKey() == secret)
++        store.delete()
++        #expect(store.lanKey() == nil)
++    }
++
+     @Test("La réponse au défi se vérifie comme le fera ptzd")
+     func challengeVerifies() throws {
+         let key = try store.loadOrCreate()
+PATCH
+```
+
+Modifier `ios/NacelleTests/FakeTransport.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/ios/NacelleTests/FakeTransport.swift b/ios/NacelleTests/FakeTransport.swift
+index 75c07da..cb92d47 100644
+--- a/ios/NacelleTests/FakeTransport.swift
++++ b/ios/NacelleTests/FakeTransport.swift
+@@ -47,6 +47,13 @@ final class FakeTransports {
+     func to(_ endpoint: WebSocketEndpoint) -> FakeTransport? {
+         all.last { $0.opened == [endpoint] }
+     }
++
++    /// Le dernier transport ouvert vers un service du réseau local.
++    var local: FakeTransport? {
++        all.last { transport in
++            transport.opened.contains { if case .service = $0 { true } else { false } }
++        }
++    }
+ }
+ 
+ /// Bonjour simulé.
+@@ -90,7 +97,18 @@ final class FakeKeyStore: DeviceKeyStoring {
+         return created
+     }
+ 
++    var storedLANKey: Data?
++
+     func delete() {
+         key = nil
++        storedLANKey = nil
++    }
++
++    func lanKey() -> Data? {
++        storedLANKey
++    }
++
++    func saveLANKey(_ key: Data) throws {
++        storedLANKey = key
+     }
+ }
+PATCH
+```
+
+Modifier `ios/NacelleTests/PTZClientTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/ios/NacelleTests/PTZClientTests.swift b/ios/NacelleTests/PTZClientTests.swift
+index 2351d9e..ed7267c 100644
+--- a/ios/NacelleTests/PTZClientTests.swift
++++ b/ios/NacelleTests/PTZClientTests.swift
+@@ -29,6 +29,7 @@ struct PTZClientTests {
+             scheduler: scheduler
+         )
+         keys.key = SoftwareDeviceKey(key: P256.Signing.PrivateKey())
++        keys.storedLANKey = lanKey
+     }
+ 
+     private var tailscale: FakeTransport {
+@@ -178,7 +179,7 @@ struct PTZClientTests {
+         client.start(url: url)
+         #expect(browser.isRunning)
+         browser.find(service)
+-        let local = try #require(transports.to(.service(service)))
++        let local = try #require(transports.local)
+         try emit(.challenge(nonce: nonce), on: local)
+         try emit(.challenge(nonce: nonce), on: tailscale)
+         try emit(.authenticated, on: local)
+@@ -210,7 +211,7 @@ struct PTZClientTests {
+         #expect(client.link == .connecting)
+         #expect(!client.isUnreachable)
+         browser.find(service)
+-        let local = try #require(transports.to(.service(service)))
++        let local = try #require(transports.local)
+         local.emit(.opened)
+         try emit(.challenge(nonce: nonce), on: local)
+         try emit(.authenticated, on: local)
+@@ -225,13 +226,12 @@ struct PTZClientTests {
+         #expect(transports.all.count == 2)
+     }
+ 
+-    @Test("Appairage avec deux chemins : la locale, première au défi, n'envoie jamais le code ; elle s'authentifie après paired")
++    @Test("Nouvel appairage avec deux chemins : la locale, première au défi, n'envoie jamais le code ; elle s'authentifie après paired")
+     func pairingWithTwoPaths() throws {
+-        keys.key = nil
+         client.start(url: url)
+         client.pair(code: "042917")
+         browser.find(service)
+-        let local = try #require(transports.to(.service(service)))
++        let local = try #require(transports.local)
+         try emit(.challenge(nonce: nonce), on: local)
+         #expect(decoded(local).isEmpty)
+         try emit(.challenge(nonce: nonce), on: tailscale)
+@@ -252,7 +252,7 @@ struct PTZClientTests {
+         client.stop()
+         client.start(url: url)
+         browser.find(service)
+-        let local = try #require(transports.to(.service(service)))
++        let local = try #require(transports.local)
+         try emit(.challenge(nonce: nonce), on: local)
+         try emit(.error(code: .unpaired, message: "x"), on: local)
+         #expect(local.closeCount >= 1)
+@@ -271,7 +271,7 @@ struct PTZClientTests {
+     func localErrorOnlyCandidate() throws {
+         client.start(url: url)
+         browser.find(service)
+-        let local = try #require(transports.to(.service(service)))
++        let local = try #require(transports.local)
+         tailscale.emit(.closed)
+         try emit(.challenge(nonce: nonce), on: local)
+         try emit(.error(code: .unpaired, message: "x"), on: local)
+@@ -290,7 +290,7 @@ struct PTZClientTests {
+         client.start(url: url)
+         client.pair(code: "042917")
+         browser.find(service)
+-        let local = try #require(transports.to(.service(service)))
++        let local = try #require(transports.local)
+         tailscale.emit(.closed)
+         try emit(.challenge(nonce: nonce), on: local)
+         #expect(decoded(local).isEmpty)
+@@ -315,7 +315,7 @@ struct PTZClientTests {
+     func unsolicitedAuthenticated() throws {
+         client.start(url: url)
+         browser.find(service)
+-        let local = try #require(transports.to(.service(service)))
++        let local = try #require(transports.local)
+         try emit(.authenticated, on: local)
+         #expect(local.closeCount >= 1)
+         #expect(client.link == .connecting)
+@@ -330,7 +330,7 @@ struct PTZClientTests {
+     func silentLocalService() throws {
+         client.start(url: url)
+         browser.find(service)
+-        let local = try #require(transports.to(.service(service)))
++        let local = try #require(transports.local)
+         tailscale.emit(.closed)
+         local.emit(.opened)
+         try emit(.challenge(nonce: nonce), on: local)
+@@ -353,12 +353,43 @@ struct PTZClientTests {
+         #expect(tailscale.closeCount == 0)
+     }
+ 
++    @Test("Sans secret du réseau local : pas de recherche Bonjour, Tailscale seul")
++    func noLocalPathWithoutLANKey() throws {
++        keys.storedLANKey = nil
++        client.start(url: url)
++        #expect(browser.startCount == 0)
++        browser.find(service)
++        #expect(transports.local == nil)
++    }
++
++    @Test("Avec un secret : le service local est joint en TLS, identité = deviceID")
++    func localPathUsesTLSCredentials() throws {
++        client.start(url: url)
++        #expect(browser.isRunning)
++        browser.find(service)
++        let key = try #require(keys.key)
++        #expect(transports.local?.opened == [.service(service, LANCredentials(identity: key.deviceID, key: lanKey))])
++    }
++
++    @Test("Appairage : le secret reçu dans paired est gardé ; « Oublier » l'efface")
++    func lanKeyLifecycle() throws {
++        keys.storedLANKey = nil
++        client.start(url: url)
++        client.pair(code: "042917")
++        try emit(.challenge(nonce: nonce), on: tailscale)
++        let newKey = Data(repeating: 3, count: 32)
++        try emit(.paired(deviceID: try #require(keys.key).deviceID, lanKey: newKey), on: tailscale)
++        #expect(keys.storedLANKey == newKey)
++        client.forgetPairing()
++        #expect(keys.storedLANKey == nil)
++    }
++
+     @Test("Problème d'une tentative précédente : effacé au début de la suivante, sauf s'il arrête les reconnexions")
+     func authIssueClearedPerAttempt() throws {
+         client.start(url: url)
+         client.pair(code: "042917")
+         browser.find(service)
+-        let local = try #require(transports.to(.service(service)))
++        let local = try #require(transports.local)
+         tailscale.emit(.closed)
+         local.emit(.closed)
+         scheduler.advance(by: PTZClient.discoveryWindow)
+PATCH
+```
+
+- [ ] **Étape 2 : Lancer les tests**
+
+```bash
+(cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
+```
+
+Attendu : échec — la compilation des tests échoue : `LANCredentials`, `lanKey()` et `saveLANKey(_:)` n'existent pas encore.
+
+- [ ] **Étape 3 : Écrire le code**
+
+Modifier `ios/Nacelle/PTZ/LocalNetwork.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/ios/Nacelle/PTZ/LocalNetwork.swift b/ios/Nacelle/PTZ/LocalNetwork.swift
+index 964bacd..c92e4fb 100644
+--- a/ios/Nacelle/PTZ/LocalNetwork.swift
++++ b/ios/Nacelle/PTZ/LocalNetwork.swift
+@@ -1,4 +1,5 @@
+ import Foundation
++import NacelleProtocol
+ import Network
+ 
+ /// Recherche Bonjour de ptzd sur le réseau local (spec accès local § 8.3).
+@@ -48,13 +49,16 @@ final class NWWebSocketTransport: WebSocketTransport {
+     func open(_ endpoint: WebSocketEndpoint) {
+         close()
+         let target: NWEndpoint
++        let tls: NWProtocolTLS.Options?
+         switch endpoint {
+         case let .url(url):
+             target = .url(url)
+-        case let .service(service):
++            tls = nil
++        case let .service(service, credentials):
+             target = service
++            tls = NacelleTLS.client(identity: credentials.identity, key: credentials.key)
+         }
+-        let parameters = NWParameters.tcp
++        let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
+         let webSocket = NWProtocolWebSocket.Options()
+         webSocket.autoReplyPing = true
+         parameters.defaultProtocolStack.applicationProtocols.insert(webSocket, at: 0)
+PATCH
+```
+
+Modifier `ios/Nacelle/PTZ/PTZClient.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/ios/Nacelle/PTZ/PTZClient.swift b/ios/Nacelle/PTZ/PTZClient.swift
+index 3aeaea4..3139b8b 100644
+--- a/ios/Nacelle/PTZ/PTZClient.swift
++++ b/ios/Nacelle/PTZ/PTZClient.swift
+@@ -265,16 +265,20 @@ final class PTZClient {
+             authIssue = nil
+         }
+         open(.url(url))
+-        browser.start()
++        // Le réseau local passe en TLS : sans secret remis à l'appairage, pas d'essai local.
++        if keys.load() != nil, keys.lanKey() != nil {
++            browser.start()
++        }
+         discovery = scheduler.schedule(after: Self.discoveryWindow) { [weak self] in
+             self?.discoveryEnded()
+         }
+     }
+ 
+     private func found(_ endpoint: NWEndpoint) {
+-        guard link == .connecting, active == nil, !foundLocal else { return }
++        guard link == .connecting, active == nil, !foundLocal,
++              let key = keys.load(), let lanKey = keys.lanKey() else { return }
+         foundLocal = true
+-        open(.service(endpoint))
++        open(.service(endpoint, LANCredentials(identity: key.deviceID, key: lanKey)))
+     }
+ 
+     private func discoveryEnded() {
+@@ -371,9 +375,10 @@ final class PTZClient {
+         switch message {
+         case let .challenge(nonce):
+             answer(nonce, on: candidate)
+-        case .paired:
++        case let .paired(_, lanKey):
+             // Seule la connexion qui a envoyé le code (Tailscale) peut confirmer l'appairage.
+             guard candidate === pairingCandidate else { return }
++            try? keys.saveLANKey(lanKey)
+             pendingCode = nil
+             pairingCandidate = nil
+             setPaired(true)
+PATCH
+```
+
+Modifier `ios/Nacelle/PTZ/WebSocketTransport.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/ios/Nacelle/PTZ/WebSocketTransport.swift b/ios/Nacelle/PTZ/WebSocketTransport.swift
+index 0651fb0..7b9072a 100644
+--- a/ios/Nacelle/PTZ/WebSocketTransport.swift
++++ b/ios/Nacelle/PTZ/WebSocketTransport.swift
+@@ -5,8 +5,16 @@ import Network
+ enum WebSocketEndpoint: Equatable, Sendable {
+     /// Le nom Tailscale du Mac.
+     case url(URL)
+-    /// Le service Bonjour `_nacelle._tcp` trouvé sur le réseau local.
+-    case service(NWEndpoint)
++    /// Le service Bonjour `_nacelle._tcp` trouvé sur le réseau local, joint en TLS avec ce secret
++    /// (spec accès local § 14).
++    case service(NWEndpoint, LANCredentials)
++}
++
++/// Identité et secret du canal chiffré du réseau local, remis à l'appairage.
++struct LANCredentials: Equatable, Sendable {
++    /// Le `deviceID` de l'iPhone, identité TLS.
++    var identity: String
++    var key: Data
+ }
+ 
+ /// Découverte de ptzd sur le réseau local (Bonjour). Les résultats arrivent sur le MainActor.
+PATCH
+```
+
+Modifier `ios/Nacelle/Pairing/DeviceKey.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
+
+```bash
+git apply <<'PATCH'
+diff --git a/ios/Nacelle/Pairing/DeviceKey.swift b/ios/Nacelle/Pairing/DeviceKey.swift
+index e37a534..1256414 100644
+--- a/ios/Nacelle/Pairing/DeviceKey.swift
++++ b/ios/Nacelle/Pairing/DeviceKey.swift
+@@ -54,8 +54,11 @@ protocol DeviceKeyStoring: AnyObject {
+     func load() -> (any DeviceKey)?
+     /// La clé existante, ou une nouvelle, enregistrée.
+     func loadOrCreate() throws -> any DeviceKey
+-    /// Oublie la clé.
++    /// Oublie la clé et le secret du réseau local.
+     func delete()
++    /// Le secret du canal chiffré du réseau local, remis à l'appairage, ou nil.
++    func lanKey() -> Data?
++    func saveLANKey(_ key: Data) throws
+ }
+ 
+ enum DeviceKeyError: Error, Equatable {
+@@ -70,6 +73,7 @@ final class KeychainDeviceKeyStore: DeviceKeyStoring {
+     static let service = "io.github.djoko-cli.nacelle.device-key"
+     private static let secureEnclaveAccount = "secure-enclave"
+     private static let softwareAccount = "software"
++    private static let lanKeyAccount = "lan-key"
+ 
+     private let useSecureEnclave: Bool
+ 
+@@ -107,8 +111,16 @@ final class KeychainDeviceKeyStore: DeviceKeyStoring {
+         return nil
+     }
+ 
++    func lanKey() -> Data? {
++        (try? Self.read(Self.lanKeyAccount)) ?? nil
++    }
++
++    func saveLANKey(_ key: Data) throws {
++        try Self.write(key, account: Self.lanKeyAccount)
++    }
++
+     func delete() {
+-        for account in [Self.secureEnclaveAccount, Self.softwareAccount] {
++        for account in [Self.secureEnclaveAccount, Self.softwareAccount, Self.lanKeyAccount] {
+             SecItemDelete(Self.query(account) as CFDictionary)
+         }
+     }
+PATCH
+```
+
+- [ ] **Étape 4 : Relancer les tests**
+
+```bash
+(cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
+```
+
+Attendu : tout passe (iOS : 72 tests), aucun avertissement ni erreur.
+
+- [ ] **Étape 5 : Commiter et pousser**
+
+```bash
+git add ios/Nacelle/PTZ/LocalNetwork.swift \
+    ios/Nacelle/PTZ/PTZClient.swift \
+    ios/Nacelle/PTZ/WebSocketTransport.swift \
+    ios/Nacelle/Pairing/DeviceKey.swift \
+    ios/NacelleTests/DeviceKeyTests.swift \
+    ios/NacelleTests/FakeTransport.swift \
+    ios/NacelleTests/PTZClientTests.swift
+git diff --cached --name-only -z | xargs -0 grep -n -E '([0-9]{1,3}\.){3}[0-9]{1,3}|\.ts\.net|/Users/[A-Za-z]|/private/tmp/' | grep -v -E '127\.0\.0\.1|0\.0\.0\.0|192\.0\.2\.|169\.254\.|100\.64\.0\.0|mac\.exemple\.ts\.net|mon-mac\.tailnet\.ts\.net' || echo "Aucune donnée locale."
+git commit -F - <<'EOF'
+App : réseau local en TLS avec le secret de l'appairage
+
+Co-Authored-By: <modèle qui commite> <noreply@anthropic.com>
+EOF
+git push
+```
+
+Attendu : « Aucune donnée locale. » avant le commit.
+
 ### Tâche 10 : Mise en service et essais avec Majid
 
 **But :** installer le nouveau `ptzd` et la nouvelle app ensemble, appairer l'iPhone de Majid, puis vérifier le pilotage et la vidéo en Wi-Fi sans Tailscale et en 4G par Tailscale (spec accès local § 10 et § 11, étapes 1 et 2). La vidéo passe déjà par `ptzd` ; le `POST` direct vers go2rtc reste en secours.
@@ -5199,7 +6787,7 @@ Attendu : `{"type":"authenticated"}` puis l'état : 127.0.0.1 reste dispensé.
 L=$(ipconfig getifaddr en0 || ipconfig getifaddr en1); swift mac/tools/nacelle-ws.swift ws://$L:1985 '{"type":"zoom","value":10}' wait 12 | sed -E 's/"nonce":"[^"]*"/"nonce":"…"/'
 ```
 
-Attendu : un `challenge`, puis l'erreur `notAuthenticated` ; la connexion est fermée après 10 s, et `ptzd.log` contient « Client N libéré : pas authentifié en 10 s. ». Aucune commande n'atteint la caméra.
+Attendu : aucun échange — le réseau local exige TLS (spec accès local § 14) : le client reste sans réponse puis s'arrête, et aucune commande n'atteint la caméra.
 
 - [ ] **Étape 3 : Compiler et installer l'app sur l'iPhone (déverrouillé)**
 
@@ -5222,19 +6810,19 @@ xcrun devicectl device install app --device <UDID> ios/.build/Build/Products/Deb
 ~/Library/Application\ Support/ObsbotNacelle/bin/ptzd pair
 ```
 
-3. Majid le saisit dans Réglages › Appairage et touche **Enregistrer** ; iOS demande l'accès au réseau local : **Autoriser**. Prévenir : la caméra peut bouger à la connexion (prise en main).
+3. Majid active **Tailscale** sur l'iPhone (l'appairage ne passe que par Tailscale), saisit le code dans Réglages › Appairage et touche **Enregistrer** ; iOS demande l'accès au réseau local : **Autoriser**. Prévenir : la caméra peut bouger à la connexion (prise en main).
 4. Vérifier :
 
 ```bash
 ~/Library/Application\ Support/ObsbotNacelle/bin/ptzd devices; grep -E "appairé|authentifié" ~/Library/Logs/obsbot-nacelle/ptzd.log | tail -3
 ```
 
-Attendu : une ligne pour l'iPhone, « Appareil appairé : … » et « Client N authentifié : iPhone (…). »
+Attendu : une ligne pour l'iPhone, « Appareil appairé : … », « Écoutes locales relancées (nouvel appareil appairé). » et « Client N authentifié : iPhone (…). »
 
 - [ ] **Étape 5 : Essais (Majid ; la caméra bouge)**
 
 Noter le résultat de chaque point dans le rapport :
-1. **Wi-Fi, Tailscale coupé sur l'iPhone** : vidéo en moins de 10 s, joystick, zoom, vie privée.
+1. **Wi-Fi, Tailscale coupé sur l'iPhone** : vidéo en moins de 10 s, joystick, zoom, vie privée (la connexion passe par le canal TLS du réseau local).
 2. **4G (Wi-Fi coupé), Tailscale actif** : vidéo, joystick, zoom, vie privée.
 3. **Arrière-plan 10 s puis retour**, en Wi-Fi puis en 4G : tout revient seul.
 4. **Wi-Fi, Tailscale coupé, et accès au réseau local refusé** dans Réglages › Confidentialité › Réseau local : « Mac injoignable » ; puis rétablir l'accès.
@@ -5598,7 +7186,7 @@ PATCH
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
 ```
 
-Attendu : tout passe (iOS : 58 tests), aucun avertissement ni erreur.
+Attendu : tout passe (iOS : 70 tests), aucun avertissement ni erreur.
 
 - [ ] **Étape 5 : Mettre à jour le README**
 
@@ -5607,7 +7195,7 @@ Modifier `README.md` en appliquant ce correctif depuis la racine du dépôt (il 
 ````bash
 git apply <<'PATCH'
 diff --git a/README.md b/README.md
-index bc830e2..fac4c45 100644
+index bc830e2..c11dddb 100644
 --- a/README.md
 +++ b/README.md
 @@ -11,26 +11,26 @@ La caméra est branchée en USB sur un Mac qui la diffuse déjà avec [go2rtc](h
@@ -5640,7 +7228,7 @@ index bc830e2..fac4c45 100644
  ```
  
 -- **`ptzd`** : un service macOS en Swift, lancé par launchd. C'est le seul à envoyer des commandes de nacelle à la caméra, en UVC. Il ne touche jamais au flux vidéo. Il écoute sur l'adresse Tailscale du Mac et sur 127.0.0.1, jamais sur le réseau local.
-+- **`ptzd`** : un service macOS en Swift, lancé par launchd. C'est le seul à envoyer des commandes de nacelle à la caméra, en UVC. Il écoute sur l'adresse Tailscale du Mac, sur 127.0.0.1, et sur ses interfaces Wi-Fi et Ethernet, où il s'annonce par Bonjour (`_nacelle._tcp`). Chaque iPhone doit être appairé une fois ; ensuite, il signe un défi à chaque connexion. Seules les connexions venues de 127.0.0.1 en sont dispensées.
++- **`ptzd`** : un service macOS en Swift, lancé par launchd. C'est le seul à envoyer des commandes de nacelle à la caméra, en UVC. Il écoute sur l'adresse Tailscale du Mac, sur 127.0.0.1, et sur ses interfaces Wi-Fi et Ethernet, où il s'annonce par Bonjour (`_nacelle._tcp`). Chaque iPhone doit être appairé une fois, par Tailscale ; ensuite, il signe un défi à chaque connexion. Sur le réseau local, tout passe en plus dans un canal TLS dont la clé, propre à chaque iPhone, est remise à l'appairage. Seules les connexions venues de 127.0.0.1 sont dispensées du défi.
  - **`obsbot-ai-off`** : un petit utilitaire qui coupe le suivi IA de la caméra avec le SDK OBSBOT, puis se termine. `ptzd` le lance à chaque prise en main.
 -- **go2rtc** : la vidéo arrive dans l'app directement en WebRTC. Aucun changement de configuration n'est nécessaire.
 +- **go2rtc** : `ptzd` lui relaie l'offre WebRTC de l'app ; les images vont ensuite directement de go2rtc à l'iPhone. Voir « go2rtc » plus bas pour le fermer au réseau local.
@@ -5678,7 +7266,7 @@ index bc830e2..fac4c45 100644
 +   ~/Library/Application\ Support/ObsbotNacelle/bin/ptzd pair
 +   ```
 +
-+   Puis, dans l'app, le saisir dans Réglages › Appairage et toucher **Enregistrer**. La clé de l'iPhone reste dans sa Secure Enclave ; le Mac ne garde que sa clé publique, dans `devices.json`.
++   Puis, avec Tailscale actif sur l'iPhone (l'appairage ne passe que par Tailscale), le saisir dans Réglages › Appairage et toucher **Enregistrer**. La clé de l'iPhone reste dans sa Secure Enclave ; le Mac garde sa clé publique et le secret du canal chiffré du réseau local, dans `devices.json` (droits 600).
 +6. À la maison, l'app trouve le Mac sur le Wi-Fi, sans Tailscale : au premier essai, iOS demande l'accès au réseau local, répondre **Autoriser**.
 +
 +Retirer un iPhone : `ptzd devices` donne le début de son identifiant, puis `ptzd revoke <début>`. Ses connexions déjà ouvertes durent jusqu'à leur fin ; relancer le service pour les couper tout de suite.
