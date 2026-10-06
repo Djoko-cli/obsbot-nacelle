@@ -13,7 +13,8 @@ public enum AuthCheck: Equatable, Sendable {
 
 /// Issue d'un appairage.
 public enum PairResult: Equatable, Sendable {
-    case paired(deviceID: String)
+    /// Appareil enregistré, avec son secret du réseau local.
+    case paired(deviceID: String, lanKey: Data)
     case badCode
     case closed
     /// La clé publique n'est pas une clé P-256 x963.
@@ -68,13 +69,37 @@ public struct DeviceAuthority: Sendable {
         case .accepted:
             let deviceID = NacelleAuth.deviceID(publicKeyX963: publicKey)
             let cleanName = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
-            let device = PairedDevice(deviceID: deviceID, name: cleanName.isEmpty ? "appareil" : cleanName, publicKey: publicKey, pairedAt: now())
+            let lanKey = NacelleTLS.makeKey()
+            let device = PairedDevice(
+                deviceID: deviceID, name: cleanName.isEmpty ? "appareil" : cleanName,
+                publicKey: publicKey, pairedAt: now(), lanKey: lanKey
+            )
             do {
                 try devices.add(device)
             } catch {
                 return .closed
             }
-            return .paired(deviceID: deviceID)
+            return .paired(deviceID: deviceID, lanKey: lanKey)
         }
+    }
+
+    /// Les secrets du réseau local, par appareil (fichier illisible : aucun).
+    public func lanKeys() -> [String: Data] {
+        let all = (try? devices.all()) ?? []
+        return all.reduce(into: [:]) { keys, device in
+            keys[device.deviceID] = device.lanKey
+        }
+    }
+
+    /// Le secret d'un appareil encore appairé, relu dans `devices.json`.
+    public func lanKey(for deviceID: String) -> Data? {
+        (try? devices.device(id: deviceID))?.flatMap(\.lanKey)
+    }
+}
+
+extension PairResult {
+    /// L'appareil enregistré, s'il y en a un.
+    public var deviceID: String? {
+        if case let .paired(deviceID, _) = self { deviceID } else { nil }
     }
 }

@@ -136,7 +136,7 @@ extension StateSnapshot: Codable {
 
 extension ServerMessage: Codable {
     private enum CodingKeys: String, CodingKey {
-        case type, code, message, nonce, deviceID, id, sdp
+        case type, code, message, nonce, deviceID, id, sdp, lanKey
     }
 
     public init(from decoder: any Decoder) throws {
@@ -155,7 +155,7 @@ extension ServerMessage: Codable {
         case "authenticated":
             self = .authenticated
         case "paired":
-            self = .paired(deviceID: try container.decode(String.self, forKey: .deviceID))
+            self = .paired(deviceID: try container.decode(String.self, forKey: .deviceID), lanKey: try container.decode(Data.self, forKey: .lanKey))
         case "webrtcAnswer":
             self = .webrtcAnswer(id: try container.decode(Int.self, forKey: .id), sdp: try container.decode(String.self, forKey: .sdp))
         case "webrtcError":
@@ -180,9 +180,10 @@ extension ServerMessage: Codable {
             try container.encode(nonce, forKey: .nonce)
         case .authenticated:
             try container.encode("authenticated", forKey: .type)
-        case let .paired(deviceID):
+        case let .paired(deviceID, lanKey):
             try container.encode("paired", forKey: .type)
             try container.encode(deviceID, forKey: .deviceID)
+            try container.encode(lanKey, forKey: .lanKey)
         case let .webrtcAnswer(id, sdp):
             try container.encode("webrtcAnswer", forKey: .type)
             try container.encode(id, forKey: .id)

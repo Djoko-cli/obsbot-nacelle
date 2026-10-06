@@ -329,7 +329,13 @@ struct WebSocketServerTests {
         try await send(.pair(code: wrong, publicKey: publicKey, name: "iPhone"), on: task)
         #expect(try await next(task) { _ in true } == .error(code: .badCode, message: "Code d'appairage faux."))
         try await send(.pair(code: code, publicKey: publicKey, name: "iPhone"), on: task)
-        #expect(try await next(task) { _ in true } == .paired(deviceID: deviceID))
+        guard case let .paired(pairedID, lanKey) = try await next(task, where: { _ in true }) else {
+            Issue.record("paired attendu")
+            return
+        }
+        #expect(pairedID == deviceID)
+        #expect(lanKey.count == NacelleTLS.keyLength)
+        #expect(authority.lanKey(for: deviceID) == lanKey)
         try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: task)
         #expect(try await next(task) { _ in true } == .authenticated)
         #expect(try authority.devices.device(id: deviceID)?.name == "iPhone")

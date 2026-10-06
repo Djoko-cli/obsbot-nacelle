@@ -1,18 +1,22 @@
 import Foundation
 
-/// Un appareil appairé : sa clé publique seulement (spec accès local § 6.4).
+/// Un appareil appairé : sa clé publique, et le secret du canal chiffré du réseau local
+/// (spec accès local § 6.4 et § 14).
 public struct PairedDevice: Codable, Equatable, Sendable {
     public var deviceID: String
     public var name: String
     /// Clé publique P-256, format x963.
     public var publicKey: Data
     public var pairedAt: Date
+    /// Secret TLS du réseau local ; absent pour un appareil appairé avant le canal chiffré.
+    public var lanKey: Data?
 
-    public init(deviceID: String, name: String, publicKey: Data, pairedAt: Date) {
+    public init(deviceID: String, name: String, publicKey: Data, pairedAt: Date, lanKey: Data? = nil) {
         self.deviceID = deviceID
         self.name = name
         self.publicKey = publicKey
         self.pairedAt = pairedAt
+        self.lanKey = lanKey
     }
 }
 

@@ -90,8 +90,9 @@ public enum ServerMessage: Equatable, Sendable {
     case challenge(nonce: Data)
     /// Connexion authentifiée ; l'état suit aussitôt.
     case authenticated
-    /// L'appareil vient d'être enregistré.
-    case paired(deviceID: String)
+    /// L'appareil vient d'être enregistré ; `lanKey` est son secret du canal chiffré du réseau local
+    /// (spec accès local § 14), remis seulement par Tailscale.
+    case paired(deviceID: String, lanKey: Data)
     /// Réponse de go2rtc à l'offre `id`.
     case webrtcAnswer(id: Int, sdp: String)
     /// go2rtc injoignable ou en erreur pour l'offre `id`.
