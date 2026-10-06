@@ -5,12 +5,19 @@ import PTZAuth
 import PTZCore
 
 /// Serveur WebSocket de ptzd : quelques adresses précises (jamais 0.0.0.0),
-/// 4 clients au plus en tout (spec § 6.1 et § 6.10). Chaque connexion s'authentifie, sauf sur
-/// 127.0.0.1 (spec accès local § 6.3). Une place n'est jamais gardée par une connexion morte ou
-/// anonyme : 10 s pour s'authentifier, connexion en attente, ping toutes les 10 s.
+/// 4 clients authentifiés au plus (spec § 6.1 et § 6.10). Chaque connexion s'authentifie, sauf sur
+/// 127.0.0.1 (spec accès local § 6.3). Les connexions anonymes ont leurs propres réserves, bornées
+/// en tout et par adresse : un appareil du Wi-Fi ne peut pas occuper les places des clients.
+/// Une place n'est jamais gardée par une connexion morte ou anonyme : 10 s pour s'authentifier,
+/// connexion en attente, ping toutes les 10 s.
 @MainActor
 public final class WebSocketServer {
-    public static let maxClients = 4
+    /// Clients authentifiés ou de confiance (127.0.0.1 compris).
+    public nonisolated static let maxClients = 4
+    /// Connexions anonymes en attente d'authentification, en tout.
+    public nonisolated static let maxPending = 8
+    /// Connexions anonymes en attente d'authentification, par adresse distante.
+    public nonisolated static let maxPendingPerAddress = 2
     public static let retryDelay: TimeInterval = 5
     /// Une connexion acceptée qui n'est pas authentifiée après ce délai libère sa place.
     public static let authTimeout: TimeInterval = 10
@@ -44,6 +51,8 @@ public final class WebSocketServer {
         let connection: NWConnection
         /// Arrivée par une écoute en boucle locale (127.0.0.1, ::1) : authentifiée d'office.
         let trusted: Bool
+        /// Adresse distante, pour la réserve des connexions anonymes.
+        let address: String
         var authenticated = false
         /// Défi en cours ; consommé par le premier `auth`.
         var nonce: Data?
@@ -170,15 +179,53 @@ public final class WebSocketServer {
         host == "127.0.0.1" || host == "::1"
     }
 
+    /// Adresse distante d'une connexion : l'hôte, sans le port.
+    nonisolated static func address(of endpoint: NWEndpoint) -> String {
+        if case let .hostPort(host, _) = endpoint {
+            return "\(host)"
+        }
+        return "\(endpoint)"
+    }
+
+    /// Décide d'admettre une nouvelle connexion, sans toucher au réseau. `authenticated` compte
+    /// les clients authentifiés ou de confiance, `pendingAddresses` les connexions anonymes en
+    /// attente (une adresse par connexion). Une connexion de confiance ne dépend que de la
+    /// première réserve ; une anonyme que de la seconde.
+    nonisolated static func admits(trusted: Bool, address: String, authenticated: Int, pendingAddresses: [String]) -> Bool {
+        if trusted {
+            return authenticated < maxClients
+        }
+        return pendingAddresses.count < maxPending
+            && pendingAddresses.filter { $0 == address }.count < maxPendingPerAddress
+    }
+
+    /// Un identifiant d'appareil reçu d'un client anonyme n'entre dans le journal que s'il est
+    /// hexadécimal (32 caractères au plus) : jamais de saut de ligne ni de texte forgé.
+    nonisolated static func logID(_ deviceID: String) -> String {
+        guard deviceID.count <= 32, deviceID.allSatisfy(\.isHexDigit) else { return "invalide" }
+        return String(deviceID.prefix(8))
+    }
+
+    /// Clients authentifiés ou de confiance : ceux qui occupent les `maxClients` places.
+    private var reservedCount: Int {
+        clients.values.filter { $0.authenticated || $0.trusted }.count
+    }
+
     private func accept(_ connection: NWConnection, trusted: Bool) {
-        guard clients.count < Self.maxClients else {
-            log("Connexion refusée : déjà \(Self.maxClients) clients.")
+        let address = Self.address(of: connection.endpoint)
+        let pending = clients.values.filter { !$0.authenticated && !$0.trusted }.map(\.address)
+        guard Self.admits(trusted: trusted, address: address, authenticated: reservedCount, pendingAddresses: pending) else {
+            if trusted {
+                log("Connexion refusée : déjà \(Self.maxClients) clients.")
+            } else {
+                log("Connexion refusée : trop de connexions anonymes (\(address)).")
+            }
             connection.cancel()
             return
         }
         let id = nextID
         nextID += 1
-        var client = Client(connection: connection, trusted: trusted)
+        var client = Client(connection: connection, trusted: trusted, address: address)
         client.deadline = scheduler.schedule(after: Self.authTimeout) { [weak self] in
             self?.release(id, reason: "pas authentifié en \(Int(Self.authTimeout)) s")
         }
@@ -302,12 +349,19 @@ public final class WebSocketServer {
         clients[id]?.nonce = nil
         switch authority.check(deviceID: deviceID, signature: signature, nonce: nonce) {
         case let .accepted(device):
-            log("Client \(id) authentifié : \(device.name) (\(deviceID.prefix(8))).")
+            // Les 4 places sont aux clients authentifiés : un anonyme qui s'authentifie
+            // alors qu'elles sont prises est refusé.
+            guard reservedCount < Self.maxClients else {
+                log("Connexion refusée : déjà \(Self.maxClients) clients.")
+                drop(id)
+                return
+            }
+            log("Client \(id) authentifié : \(device.name) (\(Self.logID(deviceID))).")
             authenticate(id)
         case .unknownDevice:
-            refuse(id, .unpaired, "Appareil inconnu : l'appairer avec ptzd pair.", reason: "appareil inconnu \(deviceID.prefix(8))")
+            refuse(id, .unpaired, "Appareil inconnu : l'appairer avec ptzd pair.", reason: "appareil inconnu \(Self.logID(deviceID))")
         case .badSignature:
-            refuse(id, .authFailed, "Signature refusée.", reason: "signature refusée pour \(deviceID.prefix(8))")
+            refuse(id, .authFailed, "Signature refusée.", reason: "signature refusée pour \(Self.logID(deviceID))")
         case .registryUnreadable:
             log("devices.json illisible : aucun appareil accepté.")
             refuse(id, .unpaired, "Liste des appareils illisible sur le Mac.", reason: "devices.json illisible")
