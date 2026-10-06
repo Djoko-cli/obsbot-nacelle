@@ -543,6 +543,23 @@ struct WebSocketServerTests {
         #expect(WebSocketServer.admits(trusted: false, address: "192.0.2.9", authenticated: 0, pendingAddresses: Array(eight.dropLast())))
     }
 
+    @Test("Écoute Tailscale : seules les adresses 100.64.0.0/10 et fd7a:115c:a1e0::/48 sont admises")
+    func tailscaleAddresses() {
+        #expect(WebSocketServer.isTailscaleAddress("100.64.0.0"))
+        #expect(!WebSocketServer.isTailscaleAddress("192.0.2.1"))
+        #expect(!WebSocketServer.isTailscaleAddress("169.254.1.1"))
+        #expect(!WebSocketServer.isTailscaleAddress("127.0.0.1"))
+        #expect(WebSocketServer.isTailscaleAddress("fd7a:115c:a1e0::1"))
+        #expect(WebSocketServer.isTailscaleAddress("fd7a:115c:a1e0:ffff:ffff:ffff:ffff:ffff"))
+        #expect(WebSocketServer.isTailscaleAddress("fd7a:115c:a1e0::1%utun4"))
+        #expect(!WebSocketServer.isTailscaleAddress("fd7a:115c:a1e1::1"))
+        #expect(!WebSocketServer.isTailscaleAddress("fe80::1%en0"))
+        #expect(!WebSocketServer.isTailscaleAddress("::1"))
+        #expect(!WebSocketServer.isTailscaleAddress(""))
+        #expect(!WebSocketServer.isTailscaleAddress("mac.exemple.ts.net"))
+        #expect(!WebSocketServer.isTailscaleAddress("100.64.0"))
+    }
+
     @Test("Réseau : 2 connexions anonymes par adresse, la 3e est fermée sans défi, journalisée")
     func pendingPerAddress() async throws {
         let lines = LineBox()
