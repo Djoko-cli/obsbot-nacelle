@@ -79,10 +79,17 @@ struct PTZConfigTests {
         #expect(try !decode(#"{"listenAddress":"127.0.0.1","localNetwork":false}"#).localNetwork)
     }
 
-    @Test("Chemin de obsbot-ai-off : relatif au dossier de travail, ou absolu")
-    func aiOffURL() {
+    @Test("Chemin de obsbot-ai : relatif au dossier de travail, ou absolu")
+    func aiURL() {
         let base = URL(fileURLWithPath: "/tmp/ObsbotNacelle")
-        #expect(PTZConfig(listenAddress: "127.0.0.1").aiOffURL(relativeTo: base).path == "/tmp/ObsbotNacelle/bin/obsbot-ai-off")
-        #expect(PTZConfig(listenAddress: "127.0.0.1", aiOffPath: "/opt/x").aiOffURL(relativeTo: base).path == "/opt/x")
+        #expect(PTZConfig(listenAddress: "127.0.0.1").aiURL(relativeTo: base).path == "/tmp/ObsbotNacelle/bin/obsbot-ai")
+        #expect(PTZConfig(listenAddress: "127.0.0.1", aiPath: "/opt/x").aiURL(relativeTo: base).path == "/opt/x")
+    }
+
+    @Test("aiPath l'emporte ; l'ancienne clé aiOffPath est lue si elle manque")
+    func legacyAIOffPath() throws {
+        #expect(try decode(#"{"listenAddress":"127.0.0.1","aiOffPath":"/usr/bin/true"}"#).aiPath == "/usr/bin/true")
+        #expect(try decode(#"{"listenAddress":"127.0.0.1","aiOffPath":"/a","aiPath":"/b"}"#).aiPath == "/b")
+        #expect(try decode(#"{"listenAddress":"127.0.0.1"}"#).aiPath == "bin/obsbot-ai")
     }
 }

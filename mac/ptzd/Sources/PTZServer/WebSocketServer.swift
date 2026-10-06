@@ -140,6 +140,9 @@ public final class WebSocketServer {
         controller.onStateChange = { [weak self] snapshot in
             self?.broadcast(.state(snapshot))
         }
+        controller.onClientError = { [weak self] id, code, message in
+            self?.send(.error(code: code, message: message), to: id)
+        }
     }
 
     /// Ouvre l'écoute sur chaque adresse. En cas d'échec (adresse Tailscale pas

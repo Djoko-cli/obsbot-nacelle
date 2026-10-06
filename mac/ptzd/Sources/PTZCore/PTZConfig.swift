@@ -15,7 +15,8 @@ public struct PTZConfig: Codable, Equatable, Sendable {
     public var tiltMaxSpeed: Int
     public var panDirection: Int
     public var tiltDirection: Int
-    public var aiOffPath: String
+    /// Chemin de `obsbot-ai` (spec app Mac § 7.5).
+    public var aiPath: String
     /// API locale de go2rtc, pour relayer les offres WebRTC (spec accès local § 6.5).
     public var go2rtcAPI: String
     /// Flux go2rtc relayé.
@@ -24,7 +25,12 @@ public struct PTZConfig: Codable, Equatable, Sendable {
     public var localNetwork: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case listenAddress, port, panMaxSpeed, tiltMaxSpeed, panDirection, tiltDirection, aiOffPath, go2rtcAPI, streamName, localNetwork
+        case listenAddress, port, panMaxSpeed, tiltMaxSpeed, panDirection, tiltDirection, aiPath, go2rtcAPI, streamName, localNetwork
+    }
+
+    /// Clés anciennes, lues seulement.
+    private enum LegacyKeys: String, CodingKey {
+        case aiOffPath
     }
 
     public init(
@@ -34,7 +40,7 @@ public struct PTZConfig: Codable, Equatable, Sendable {
         tiltMaxSpeed: Int = 60,
         panDirection: Int = 1,
         tiltDirection: Int = 1,
-        aiOffPath: String = "bin/obsbot-ai-off",
+        aiPath: String = "bin/obsbot-ai",
         go2rtcAPI: String = "http://127.0.0.1:1984",
         streamName: String = "obsbot",
         localNetwork: Bool = true
@@ -45,7 +51,7 @@ public struct PTZConfig: Codable, Equatable, Sendable {
         self.tiltMaxSpeed = tiltMaxSpeed
         self.panDirection = panDirection
         self.tiltDirection = tiltDirection
-        self.aiOffPath = aiOffPath
+        self.aiPath = aiPath
         self.go2rtcAPI = go2rtcAPI
         self.streamName = streamName
         self.localNetwork = localNetwork
@@ -53,6 +59,7 @@ public struct PTZConfig: Codable, Equatable, Sendable {
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try decoder.container(keyedBy: LegacyKeys.self)
         guard let address = try c.decodeIfPresent(String.self, forKey: .listenAddress), !address.isEmpty else {
             throw ConfigError.missingListenAddress
         }
@@ -63,7 +70,9 @@ public struct PTZConfig: Codable, Equatable, Sendable {
             tiltMaxSpeed: try c.decodeIfPresent(Int.self, forKey: .tiltMaxSpeed) ?? 60,
             panDirection: try c.decodeIfPresent(Int.self, forKey: .panDirection) ?? 1,
             tiltDirection: try c.decodeIfPresent(Int.self, forKey: .tiltDirection) ?? 1,
-            aiOffPath: try c.decodeIfPresent(String.self, forKey: .aiOffPath) ?? "bin/obsbot-ai-off",
+            // L'ancienne clé `aiOffPath` reste lue si la nouvelle manque.
+            aiPath: try c.decodeIfPresent(String.self, forKey: .aiPath)
+                ?? legacy.decodeIfPresent(String.self, forKey: .aiOffPath) ?? "bin/obsbot-ai",
             go2rtcAPI: try c.decodeIfPresent(String.self, forKey: .go2rtcAPI) ?? "http://127.0.0.1:1984",
             streamName: try c.decodeIfPresent(String.self, forKey: .streamName) ?? "obsbot",
             localNetwork: try c.decodeIfPresent(Bool.self, forKey: .localNetwork) ?? true
@@ -123,8 +132,8 @@ public struct PTZConfig: Codable, Equatable, Sendable {
         )
     }
 
-    /// Chemin absolu de obsbot-ai-off ; un chemin relatif part du dossier de travail.
-    public func aiOffURL(relativeTo base: URL) -> URL {
-        aiOffPath.hasPrefix("/") ? URL(fileURLWithPath: aiOffPath) : base.appending(path: aiOffPath)
+    /// Chemin absolu de obsbot-ai ; un chemin relatif part du dossier de travail.
+    public func aiURL(relativeTo base: URL) -> URL {
+        aiPath.hasPrefix("/") ? URL(fileURLWithPath: aiPath) : base.appending(path: aiPath)
     }
 }
