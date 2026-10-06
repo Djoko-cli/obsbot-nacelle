@@ -49,6 +49,8 @@ public final class WebSocketServer {
     private let localHosts: Set<String>
     private var listeners: [String: NWListener] = [:]
     private var localListeners: LocalNetworkListeners?
+    /// Échéance de l'appairage en cours.
+    private var expiry: (any Cancellable)?
     private var clients: [ClientID: Client] = [:]
     private var nextID: ClientID = 1
 
@@ -140,19 +142,19 @@ public final class WebSocketServer {
         }
     }
 
-    /// TLS à clé pré-partagée du réseau local : les secrets des appareils appairés à cet instant,
+    /// TLS à clé pré-partagée du réseau local : les secrets des appareils appairés et de l'appairage en cours,
     /// et le veto d'un appareil retiré depuis, relu à chaque poignée de main. `devices.json` illisible :
     /// aucun appareil, et une ligne de journal (spec accès local § 9).
     private func localTLS() -> NWProtocolTLS.Options {
         let authority = authority
-        let keys: [String: Data]
+        let identities: [String]
         do {
-            keys = try authority.readLANKeys()
+            identities = try authority.tlsIdentities()
         } catch {
             log("devices.json illisible : aucun appareil sur le réseau local.")
-            keys = [:]
+            identities = []
         }
-        return NacelleTLS.server(identities: Array(keys.keys)) { authority.lanKey(for: $0) }
+        return NacelleTLS.server(identities: identities) { authority.tlsKey(for: $0) }
     }
 
     /// Relance les écoutes du réseau local, pour qu'elles connaissent le secret d'un nouvel appareil.
@@ -387,19 +389,24 @@ public final class WebSocketServer {
         }
         guard let client = clients[id] else { return }
         switch message {
-        // Transition (plan découverte et QR, tâche 1) : l'identifiant porte encore le code à 6 chiffres ;
-        // la tâche 2 remplace ce passage par l'appairage du QR code.
-        case let .pair(code, publicKey, name, _):
+        case .openPairing:
+            // Seul un programme du Mac (ptzd pair) ouvre un appairage (spec découverte et QR § 7.1).
+            guard client.trusted else {
+                send(.error(code: .notLocal, message: "Ouverture d'appairage depuis le Mac seulement."), to: id)
+                return
+            }
+            openPairing(id)
+        case let .pair(pairingID, publicKey, name, proof):
             guard !client.authenticated else {
                 send(.error(code: .badMessage, message: "Déjà authentifié."), to: id)
                 return
             }
-            // Le secret du canal chiffré ne doit jamais partir sur le réseau local (spec accès local § 14).
-            guard !client.local else {
-                send(.error(code: .pairingClosed, message: "Appairage par Tailscale seulement."), to: id)
+            // Le QR code ne sert que sur le réseau local, dans le canal TLS ouvert avec son secret.
+            guard client.local else {
+                send(.error(code: .notLocal, message: "Appairage par QR code sur le réseau local seulement."), to: id)
                 return
             }
-            pair(id, code: code, publicKey: publicKey, name: name)
+            pair(id, pairingID: pairingID, publicKey: publicKey, name: name, proof: proof)
         case let .auth(deviceID, signature):
             guard !client.authenticated else { return }
             verify(id, deviceID: deviceID, signature: signature)
@@ -420,21 +427,57 @@ public final class WebSocketServer {
         }
     }
 
-    /// Code d'appairage : un code faux laisse la connexion ouverte pour un nouvel essai.
-    private func pair(_ id: ClientID, code: String, publicKey: Data, name: String) {
-        switch authority.pair(code: code, publicKey: publicKey, name: name) {
+    /// Ouvre un appairage, l'annonce aux écoutes du réseau local et renvoie de quoi faire le QR code.
+    private func openPairing(_ id: ClientID) {
+        let opened = authority.pairing.open()
+        expiry?.cancel()
+        expiry = scheduler.schedule(after: PairingWindow.lifetime) { [weak self] in
+            self?.pairingExpired(opened.pairingID)
+        }
+        log("Appairage ouvert (\(opened.pairingID)), valable \(Int(PairingWindow.lifetime / 60)) min.")
+        let invitation = PairingInvitation(
+            pairingID: opened.pairingID, secret: opened.secret, expiresAt: opened.expiresAt,
+            hosts: (localListeners?.addresses ?? []) + localHosts.sorted(), port: Int(port)
+        )
+        send(.pairingOpened(invitation), to: id)
+        rebuildLocalListeners()
+    }
+
+    private func pairingExpired(_ pairingID: String) {
+        expiry = nil
+        guard authority.pairing.current?.pairingID == pairingID else { return }
+        authority.pairing.close(pairingID)
+        log("Appairage \(pairingID) expiré.")
+        rebuildLocalListeners()
+    }
+
+    /// Preuve du QR code sur le défi de la connexion : une preuve fausse laisse la connexion ouverte.
+    private func pair(_ id: ClientID, pairingID: String, publicKey: Data, name: String, proof: Data) {
+        guard let nonce = clients[id]?.nonce else { return }
+        let wasOpen = authority.pairing.current?.pairingID == pairingID
+        switch authority.pair(pairingID: pairingID, publicKey: publicKey, name: name, proof: proof, nonce: nonce) {
         case let .paired(deviceID, lanKey):
-            log("Appareil appairé : \(deviceID.prefix(8)) (\(name)).")
+            expiry?.cancel()
+            expiry = nil
+            log("Appareil appairé : \(deviceID.prefix(8)) (\(Self.logName(name))).")
             send(.paired(deviceID: deviceID, lanKey: lanKey), to: id)
             rebuildLocalListeners()
         case .badCode:
-            log("Client \(id) : code d'appairage faux (\(endpoint(id))).")
-            send(.error(code: .badCode, message: "Code d'appairage faux."), to: id)
+            log("Appairage \(Self.logID(pairingID)) : preuve fausse (\(clients[id]?.address ?? "?")).")
+            send(.error(code: .badCode, message: "QR code refusé."), to: id)
+            if wasOpen, authority.pairing.current == nil {
+                rebuildLocalListeners()
+            }
         case .closed:
-            send(.error(code: .pairingClosed, message: "Aucun appairage en cours : lancer ptzd pair sur le Mac."), to: id)
+            send(.error(code: .pairingClosed, message: "QR code expiré ou déjà utilisé : relancer ptzd pair."), to: id)
         case .invalidKey:
             send(.error(code: .badMessage, message: "Clé publique illisible."), to: id)
         }
+    }
+
+    /// Un nom d'appareil n'entre dans le journal que sans caractère de contrôle, 40 caractères au plus.
+    nonisolated static func logName(_ name: String) -> String {
+        String(name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.prefix(40))
     }
 
     /// Réponse au défi. Le défi ne sert qu'une fois ; un échec ferme la connexion.

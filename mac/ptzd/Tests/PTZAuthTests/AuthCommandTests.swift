@@ -4,21 +4,12 @@ import NacelleProtocol
 import Testing
 @testable import PTZAuth
 
-@Suite("Commandes pair, devices et revoke")
+@Suite("Commandes devices et revoke")
 struct AuthCommandTests {
     let authority: DeviceAuthority
 
     init() throws {
         authority = DeviceAuthority(directory: try makeTemporaryDirectory())
-    }
-
-    @Test("pair affiche un code qui marche")
-    func pair() throws {
-        let result = AuthCommand.run(["pair"], authority: authority)
-        #expect(result.status == 0)
-        let code = try #require(result.output.split(separator: "\n").first?.split(separator: " ").last.map(String.init))
-        let key = P256.Signing.PrivateKey().publicKey.x963Representation
-        #expect(authority.pair(code: code, publicKey: key, name: "iPhone").deviceID == NacelleAuth.deviceID(publicKeyX963: key))
     }
 
     @Test("devices : vide, puis une ligne par appareil")
@@ -41,7 +32,7 @@ struct AuthCommandTests {
         #expect(try authority.devices.all().isEmpty)
     }
 
-    @Test("Arguments en trop ou inconnus : usage, code 2", arguments: [["pair", "x"], ["devices", "x"], ["revoke"], ["dance"]])
+    @Test("Arguments en trop ou inconnus : usage, code 2", arguments: [["devices", "x"], ["revoke"], ["dance"]])
     func usage(_ arguments: [String]) {
         let result = AuthCommand.run(arguments, authority: authority)
         #expect(result.status == 2)
