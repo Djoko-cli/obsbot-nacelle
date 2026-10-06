@@ -248,6 +248,10 @@ Chaque étape laisse un système qui marche.
 - Un iPhone déverrouillé et volé pilote la caméra jusqu'à `ptzd revoke`.
 - Sur le réseau local, l'identifiant de l'appareil (`deviceID`) passe en clair dans la poignée de main TLS (identité de la clé pré-partagée) ; tout le reste est chiffré (§ 14).
 - Le port go2rtc 8555 (médias WebRTC) et RTSP (avec mot de passe) restent sur le réseau local ; les médias WebRTC sont chiffrés par WebRTC lui-même (DTLS-SRTP).
+- Le flux RTSP vers Homebridge circule en clair sur le réseau local, identifiants compris : qui intercepte ce trafic lit les identifiants et les images.
+- L'écoute Tailscale de `ptzd` n'accepte que les adresses Tailscale (100.64.0.0/10 et fd7a:115c:a1e0::/48) ; toute autre adresse source est refusée et journalisée.
+- Quand Tailscale est coupé sur l'iPhone, l'app fait confiance au nom configuré, résolu par le DNS du réseau : un appareil hostile capable de répondre à ce nom recevrait la connexion en clair, et pendant un appairage le code. Appairer avec Tailscale actif.
+- La réserve des connexions anonymes est commune au réseau local et à Tailscale : un appareil hostile à plusieurs adresses peut retarder une connexion, sans jamais prendre une place authentifiée (§ 6.3).
 
 ## 13. Points à vérifier en tête du plan
 
