@@ -475,6 +475,7 @@ index 3fdd50a..d3b03ef 100644
 +            return (.badMessage, "Message de session inattendu.")
          }
      }
+ 
 PATCH
 ```
 
@@ -5462,6 +5463,7 @@ index a1569ce..8ff6f08 100644
 +            try await ptz.negotiate(offer: offer)
          }
      }
+ 
 PATCH
 ```
 
@@ -5481,6 +5483,7 @@ index 0651fb0..841316c 100644
 +    /// Délai d'ouverture (60 s par défaut), aligné sur `PTZClient.negotiationTimeout`. Ce réglage ne coupe pas
      /// une connexion ouverte et silencieuse : c'est le rôle de `Heartbeat`.
      static let openTimeout: TimeInterval = 10
+ 
 PATCH
 ```
 
