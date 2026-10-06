@@ -181,6 +181,8 @@ Le fichier de configuration est `/opt/homebrew/etc/go2rtc.yaml`, sur le Mac de M
 - La première connexion qui reçoit `authenticated` l'emporte. L'autre est fermée.
 - Quand la liaison est perdue (départ de la maison, Wi-Fi coupé), la reconnexion relance les deux.
 - Si Bonjour ne trouve rien, ou si l'accès au réseau local est refusé, Tailscale seul, sans message.
+- L'appairage (`pair`) ne passe que par Tailscale : la candidate locale attend `paired`. Il faut donc Tailscale actif une fois, au moment d'appairer ; sinon le bandeau l'indique.
+- Une erreur d'authentification reçue d'un service du réseau local ne ferme que cette connexion : un faux service ne peut ni voler le code ni bloquer l'app.
 - `Info.plist` : ajouter `NSBonjourServices` (`_nacelle._tcp`). `NSLocalNetworkUsageDescription` existe déjà.
 
 ### 8.4 Vidéo
@@ -192,7 +194,8 @@ Le fichier de configuration est `/opt/homebrew/etc/go2rtc.yaml`, sur le Mac de M
 
 Messages ajoutés, par ordre de priorité, juste après « Mac injoignable » :
 - « iPhone non appairé : lance ptzd pair sur le Mac » (`unpaired`, ou aucune clé locale) ;
-- « Code d'appairage refusé » (`badCode` ou `pairingClosed`, affiché jusqu'au prochain essai).
+- « Code d'appairage refusé » (`badCode` ou `pairingClosed`, affiché jusqu'au prochain essai) ;
+- « Appairage : active Tailscale sur l'iPhone » (un code attend, mais Tailscale n'a pas répondu ; les reconnexions continuent).
 
 ## 9. Erreurs
 
@@ -243,6 +246,7 @@ Chaque étape laisse un système qui marche.
 - L'annonce Bonjour révèle l'existence d'un service `Nacelle` aux appareils du réseau où se trouve le Mac.
 - Un appareil retiré garde une connexion déjà ouverte jusqu'à sa fin. Pour la couper tout de suite, redémarrer `ptzd`.
 - Un iPhone déverrouillé et volé pilote la caméra jusqu'à `ptzd revoke`.
+- L'app n'authentifie pas `ptzd` : un faux service `_nacelle._tcp` sur le Wi-Fi pourrait se faire passer pour le Mac (fausse vidéo, commandes perdues). Il ne peut ni piloter la caméra ni appairer une clé, puisque l'appairage passe par Tailscale.
 - Le trafic du réseau local passe en clair (`ws`, `http` de signalisation relayée par `ptzd`). L'authentification empêche le pilotage par un tiers, pas l'écoute du trafic sur le Wi-Fi.
 
 ## 13. Points à vérifier en tête du plan

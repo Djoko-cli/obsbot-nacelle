@@ -32,10 +32,14 @@ final class BonjourServiceBrowser: ServiceBrowser {
 /// qu'une URL). Une seule connexion à la fois ; vivacité par `Heartbeat`, comme l'autre transport.
 @MainActor
 final class NWWebSocketTransport: WebSocketTransport {
+    /// Délai d'ouverture, comme `URLSessionWebSocketTransport.openTimeout`.
+    static let openTimeout: TimeInterval = 10
+
     var onEvent: ((TransportEvent) -> Void)?
     private let scheduler: any Scheduler
     private var connection: NWConnection?
     private var heartbeat: Heartbeat?
+    private var openDeadline: (any Cancellable)?
 
     init(scheduler: any Scheduler) {
         self.scheduler = scheduler
@@ -61,6 +65,8 @@ final class NWWebSocketTransport: WebSocketTransport {
                 guard let self, let connection, connection === self.connection else { return }
                 switch state {
                 case .ready:
+                    self.openDeadline?.cancel()
+                    self.openDeadline = nil
                     self.startHeartbeat(for: connection)
                     self.onEvent?(.opened)
                 case .failed, .cancelled, .waiting:
@@ -73,6 +79,11 @@ final class NWWebSocketTransport: WebSocketTransport {
         }
         receive(on: connection)
         connection.start(queue: .main)
+        // Une connexion pas prête à l'échéance (résultat Bonjour périmé) est fermée.
+        openDeadline = scheduler.schedule(after: Self.openTimeout) { [weak self, weak connection] in
+            guard let self, let connection else { return }
+            self.finish(connection)
+        }
     }
 
     func send(_ text: String) {
@@ -82,6 +93,8 @@ final class NWWebSocketTransport: WebSocketTransport {
     }
 
     func close() {
+        openDeadline?.cancel()
+        openDeadline = nil
         heartbeat?.stop()
         heartbeat = nil
         connection?.cancel()
@@ -112,6 +125,8 @@ final class NWWebSocketTransport: WebSocketTransport {
     /// Signale la fin d'une connexion, une seule fois.
     private func finish(_ connection: NWConnection) {
         guard connection === self.connection else { return }
+        openDeadline?.cancel()
+        openDeadline = nil
         heartbeat?.stop()
         heartbeat = nil
         self.connection = nil

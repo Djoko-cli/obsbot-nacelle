@@ -25,6 +25,9 @@ final class PTZClient {
         case rejected
         /// Code d'appairage faux, expiré ou déjà utilisé.
         case badCode
+        /// Un code attend, mais Tailscale n'a pas répondu : l'appairage ne passe que par Tailscale
+        /// (spec accès local § 8.3). Les reconnexions continuent.
+        case needsTailscale
     }
 
     /// Pourquoi une négociation vidéo n'a pas abouti.
@@ -71,6 +74,11 @@ final class PTZClient {
     @ObservationIgnored private var active: Candidate?
     @ObservationIgnored private var nextCandidateID = 0
     @ObservationIgnored private var foundLocal = false
+    /// La connexion Tailscale de la tentative en cours s'est ouverte.
+    @ObservationIgnored private var tailscaleOpened = false
+    /// Verdict d'un service du réseau local pour la tentative en cours : affiché si la tentative
+    /// échoue sans autre verdict, sans arrêter les reconnexions.
+    @ObservationIgnored private var localIssue: AuthIssue?
     @ObservationIgnored private var discovery: (any Cancellable)?
     @ObservationIgnored private var retry: (any Cancellable)?
     @ObservationIgnored private var repeater: (any Cancellable)?
@@ -88,12 +96,15 @@ final class PTZClient {
     private final class Candidate {
         let id: Int
         let transport: any WebSocketTransport
+        /// Ouverte vers un service Bonjour du réseau local (pas le nom Tailscale).
+        let isLocal: Bool
         /// Défi reçu, en attente de réponse.
         var nonce: Data?
 
-        init(id: Int, transport: any WebSocketTransport) {
+        init(id: Int, transport: any WebSocketTransport, isLocal: Bool) {
             self.id = id
             self.transport = transport
+            self.isLocal = isLocal
         }
     }
 
@@ -236,7 +247,9 @@ final class PTZClient {
         closeAll()
         link = .connecting
         openedThisAttempt = false
+        tailscaleOpened = false
         foundLocal = false
+        localIssue = nil
         open(.url(url))
         browser.start()
         discovery = scheduler.schedule(after: Self.discoveryWindow) { [weak self] in
@@ -260,7 +273,13 @@ final class PTZClient {
 
     private func open(_ endpoint: WebSocketEndpoint) {
         nextCandidateID += 1
-        let candidate = Candidate(id: nextCandidateID, transport: makeTransport(endpoint))
+        let isLocal: Bool
+        if case .service = endpoint {
+            isLocal = true
+        } else {
+            isLocal = false
+        }
+        let candidate = Candidate(id: nextCandidateID, transport: makeTransport(endpoint), isLocal: isLocal)
         candidates.append(candidate)
         candidate.transport.onEvent = { [weak self, weak candidate] event in
             guard let self, let candidate else { return }
@@ -295,6 +314,9 @@ final class PTZClient {
         switch event {
         case .opened:
             openedThisAttempt = true
+            if !candidate.isLocal {
+                tailscaleOpened = true
+            }
         case let .message(text):
             guard let message = try? NacelleCodec.decodeServer(text) else { return }
             if candidate === active {
@@ -310,9 +332,16 @@ final class PTZClient {
             if candidate === active {
                 active = nil
                 lost()
-            } else if active == nil, candidates.isEmpty, discovery == nil, link == .connecting {
-                attemptFailed()
+            } else {
+                failAttemptIfOver()
             }
+        }
+    }
+
+    /// La tentative échoue quand plus aucune connexion n'est en vie et que Bonjour a fini de chercher.
+    private func failAttemptIfOver() {
+        if active == nil, candidates.isEmpty, discovery == nil, link == .connecting {
+            attemptFailed()
         }
     }
 
@@ -321,6 +350,8 @@ final class PTZClient {
         case let .challenge(nonce):
             answer(nonce, on: candidate)
         case .paired:
+            // Seule la connexion qui a envoyé le code (Tailscale) peut confirmer l'appairage.
+            guard candidate === pairingCandidate else { return }
             pendingCode = nil
             pairingCandidate = nil
             setPaired(true)
@@ -330,26 +361,49 @@ final class PTZClient {
         case .authenticated:
             becomeActive(candidate)
         case let .error(code, _):
-            switch code {
-            case .unpaired:
-                setPaired(false)
-                giveUp(.unpaired)
-            case .authFailed:
-                giveUp(.rejected)
-            case .badCode, .pairingClosed:
-                pendingCode = nil
-                giveUp(.badCode)
-            default:
-                lastError = code
-            }
+            handleHandshakeError(code, from: candidate)
         default:
             break
         }
     }
 
+    /// Un service du réseau local n'est pas authentifié : son verdict ne ferme que sa connexion
+    /// et ne touche ni l'appairage ni le code. Seule la connexion Tailscale peut tout arrêter.
+    private func handleHandshakeError(_ code: ErrorCode, from candidate: Candidate) {
+        let issue: AuthIssue
+        switch code {
+        case .unpaired:
+            issue = .unpaired
+        case .authFailed:
+            issue = .rejected
+        case .badCode, .pairingClosed:
+            issue = .badCode
+        default:
+            lastError = code
+            return
+        }
+        if candidate.isLocal {
+            localIssue = issue
+            close(candidate)
+            failAttemptIfOver()
+            return
+        }
+        switch issue {
+        case .unpaired:
+            setPaired(false)
+        case .badCode:
+            pendingCode = nil
+        default:
+            break
+        }
+        giveUp(issue)
+    }
+
     private func answer(_ nonce: Data, on candidate: Candidate) {
         candidate.nonce = nonce
         if let code = pendingCode {
+            // Le code ne part que par Tailscale ; la connexion locale attend `paired`.
+            guard !candidate.isLocal else { return }
             // Un seul appairage à la fois : les autres connexions attendent `paired`.
             guard pairingCandidate == nil else { return }
             guard let key = try? keys.loadOrCreate() else {
@@ -434,6 +488,11 @@ final class PTZClient {
         closeAll()
         if !openedThisAttempt {
             isUnreachable = true
+        }
+        if pendingCode != nil, !tailscaleOpened {
+            authIssue = .needsTailscale
+        } else if let localIssue {
+            authIssue = localIssue
         }
         state = nil
         scheduleRetry()
