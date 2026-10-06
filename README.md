@@ -66,7 +66,7 @@ Le script compile `ptzd` et `obsbot-ai`, les installe dans `~/Library/Applicatio
 | `port` | Port WebSocket | 1985 |
 | `panMaxSpeed`, `tiltMaxSpeed` | Vitesses UVC maximales (pan 1–80, tilt 1–120) | 40, 60 |
 | `panDirection`, `tiltDirection` | Sens de chaque axe, +1 ou -1 | +1, +1 |
-| `aiPath` | Chemin de `obsbot-ai`, relatif au dossier d'installation (l'ancienne clé `aiOffPath` est lue si elle manque) | `bin/obsbot-ai` |
+| `aiPath` | Chemin de `obsbot-ai`, relatif au dossier d'installation (l'ancienne clé `aiOffPath` est lue si elle manque, sauf si elle nomme `obsbot-ai-off`) | `bin/obsbot-ai` |
 | `localNetwork` | Écoute et annonce Bonjour sur le Wi-Fi et l'Ethernet | `true` |
 | `go2rtcAPI` | API locale de go2rtc, pour relayer la vidéo | `http://127.0.0.1:1984` |
 | `streamName` | Flux go2rtc relayé | `obsbot` |
