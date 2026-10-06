@@ -42,7 +42,9 @@ public final class WebSocketServer {
     private let scheduler: any Scheduler
     private let log: LogSink
     private let trustLoopback: Bool
+    private let localNetwork: Bool
     private var listeners: [String: NWListener] = [:]
+    private var localListeners: LocalNetworkListeners?
     private var clients: [ClientID: Client] = [:]
     private var nextID: ClientID = 1
 
@@ -85,7 +87,8 @@ public final class WebSocketServer {
         relay: any WebRTCRelay,
         scheduler: any Scheduler,
         log: @escaping LogSink,
-        trustLoopback: Bool = true
+        trustLoopback: Bool = true,
+        localNetwork: Bool = false
     ) {
         self.hosts = hosts.reduce(into: []) { unique, host in
             if !unique.contains(host) {
@@ -99,20 +102,34 @@ public final class WebSocketServer {
         self.scheduler = scheduler
         self.log = log
         self.trustLoopback = trustLoopback
+        self.localNetwork = localNetwork
         controller.onStateChange = { [weak self] snapshot in
             self?.broadcast(.state(snapshot))
         }
     }
 
     /// Ouvre l'écoute sur chaque adresse. En cas d'échec (adresse Tailscale pas
-    /// encore là), réessaie toutes les 5 s pour cette adresse.
+    /// encore là), réessaie toutes les 5 s pour cette adresse. Puis, si demandé, sur le
+    /// réseau local, où chaque connexion doit s'authentifier.
     public func start() {
         for host in hosts {
             listen(on: host)
         }
+        if localNetwork {
+            let local = LocalNetworkListeners(
+                port: port,
+                makeParameters: { [unowned self] in self.makeParameters() },
+                onConnection: { [weak self] connection in self?.accept(connection, trusted: false) },
+                scheduler: scheduler,
+                log: log
+            )
+            localListeners = local
+            local.start()
+        }
     }
 
-    private func listen(on host: String) {
+    /// TCP avec keepalive et WebSocket, sans adresse locale : chaque écoute ajoute la sienne.
+    private func makeParameters() -> NWParameters {
         // Keepalive TCP : une connexion morte (iPhone suspendu, réseau coupé) est fermée
         // après environ 25 s au lieu de garder une des 4 places indéfiniment.
         let tcp = NWProtocolTCP.Options()
@@ -133,6 +150,11 @@ public final class WebSocketServer {
             return NWProtocolWebSocket.Response(status: .reject, subprotocol: nil, additionalHeaders: [Self.rejectionMarker])
         }
         parameters.defaultProtocolStack.applicationProtocols.insert(webSocket, at: 0)
+        return parameters
+    }
+
+    private func listen(on host: String) {
+        let parameters = makeParameters()
         parameters.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port) ?? .any)
         parameters.allowLocalEndpointReuse = true
         let listener: NWListener

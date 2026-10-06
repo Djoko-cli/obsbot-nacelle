@@ -81,7 +81,8 @@ struct PTZDaemon {
             authority: DeviceAuthority(directory: supportDirectory),
             relay: relay,
             scheduler: scheduler,
-            log: log
+            log: log,
+            localNetwork: config.localNetwork
         )
 
         log("ptzd démarre.")
