@@ -384,6 +384,20 @@ struct PTZClientTests {
         #expect(keys.storedLANKey == nil)
     }
 
+    @Test("Secret du réseau local non enregistré (trousseau) : l'appairage reste valable, Tailscale s'authentifie")
+    func lanKeySaveFailure() throws {
+        keys.storedLANKey = nil
+        keys.saveLANKeyError = CocoaError(.fileWriteUnknown)
+        client.start(url: url)
+        client.pair(code: "042917")
+        try emit(.challenge(nonce: nonce), on: tailscale)
+        try emit(.paired(deviceID: try #require(keys.key).deviceID, lanKey: lanKey), on: tailscale)
+        #expect(client.isPaired)
+        #expect(keys.storedLANKey == nil)
+        try emit(.authenticated, on: tailscale)
+        #expect(client.link == .connected)
+    }
+
     @Test("Problème d'une tentative précédente : effacé au début de la suivante, sauf s'il arrête les reconnexions")
     func authIssueClearedPerAttempt() throws {
         client.start(url: url)

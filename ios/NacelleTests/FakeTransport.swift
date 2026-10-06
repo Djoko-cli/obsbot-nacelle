@@ -98,6 +98,8 @@ final class FakeKeyStore: DeviceKeyStoring {
     }
 
     var storedLANKey: Data?
+    /// Erreur levée par `saveLANKey` (trousseau en échec).
+    var saveLANKeyError: (any Error)?
 
     func delete() {
         key = nil
@@ -109,6 +111,9 @@ final class FakeKeyStore: DeviceKeyStoring {
     }
 
     func saveLANKey(_ key: Data) throws {
+        if let saveLANKeyError {
+            throw saveLANKeyError
+        }
         storedLANKey = key
     }
 }
