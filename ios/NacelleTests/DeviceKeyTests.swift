@@ -23,6 +23,16 @@ struct DeviceKeyTests {
         #expect(store.load() == nil)
     }
 
+    @Test("Secret du réseau local : enregistré, relu, effacé avec la clé")
+    func lanKey() throws {
+        #expect(store.lanKey() == nil)
+        let secret = Data(repeating: 5, count: 32)
+        try store.saveLANKey(secret)
+        #expect(store.lanKey() == secret)
+        store.delete()
+        #expect(store.lanKey() == nil)
+    }
+
     @Test("La réponse au défi se vérifie comme le fera ptzd")
     func challengeVerifies() throws {
         let key = try store.loadOrCreate()

@@ -47,6 +47,13 @@ final class FakeTransports {
     func to(_ endpoint: WebSocketEndpoint) -> FakeTransport? {
         all.last { $0.opened == [endpoint] }
     }
+
+    /// Le dernier transport ouvert vers un service du réseau local.
+    var local: FakeTransport? {
+        all.last { transport in
+            transport.opened.contains { if case .service = $0 { true } else { false } }
+        }
+    }
 }
 
 /// Bonjour simulé.
@@ -90,7 +97,18 @@ final class FakeKeyStore: DeviceKeyStoring {
         return created
     }
 
+    var storedLANKey: Data?
+
     func delete() {
         key = nil
+        storedLANKey = nil
+    }
+
+    func lanKey() -> Data? {
+        storedLANKey
+    }
+
+    func saveLANKey(_ key: Data) throws {
+        storedLANKey = key
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import NacelleProtocol
 import Network
 
 /// Recherche Bonjour de ptzd sur le réseau local (spec accès local § 8.3).
@@ -48,13 +49,16 @@ final class NWWebSocketTransport: WebSocketTransport {
     func open(_ endpoint: WebSocketEndpoint) {
         close()
         let target: NWEndpoint
+        let tls: NWProtocolTLS.Options?
         switch endpoint {
         case let .url(url):
             target = .url(url)
-        case let .service(service):
+            tls = nil
+        case let .service(service, credentials):
             target = service
+            tls = NacelleTLS.client(identity: credentials.identity, key: credentials.key)
         }
-        let parameters = NWParameters.tcp
+        let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
         let webSocket = NWProtocolWebSocket.Options()
         webSocket.autoReplyPing = true
         parameters.defaultProtocolStack.applicationProtocols.insert(webSocket, at: 0)

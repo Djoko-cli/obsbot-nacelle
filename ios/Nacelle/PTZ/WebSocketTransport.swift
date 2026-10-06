@@ -5,8 +5,16 @@ import Network
 enum WebSocketEndpoint: Equatable, Sendable {
     /// Le nom Tailscale du Mac.
     case url(URL)
-    /// Le service Bonjour `_nacelle._tcp` trouvé sur le réseau local.
-    case service(NWEndpoint)
+    /// Le service Bonjour `_nacelle._tcp` trouvé sur le réseau local, joint en TLS avec ce secret
+    /// (spec accès local § 14).
+    case service(NWEndpoint, LANCredentials)
+}
+
+/// Identité et secret du canal chiffré du réseau local, remis à l'appairage.
+struct LANCredentials: Equatable, Sendable {
+    /// Le `deviceID` de l'iPhone, identité TLS.
+    var identity: String
+    var key: Data
 }
 
 /// Découverte de ptzd sur le réseau local (Bonjour). Les résultats arrivent sur le MainActor.
