@@ -155,7 +155,7 @@ struct PTZClientTests {
         keys.key = nil
         keys.storedLANKey = nil
         var learned: [String] = []
-        client.onAddressLearned = { learned.append($0) }
+        client.onAddressLearned = { learned.append("\($0):\($1)") }
         client.start(settings: settings)
         #expect(!client.isPairing)
         client.pair(with: link)
@@ -172,7 +172,7 @@ struct PTZClientTests {
         #expect(keys.storedLANKey == newKey)
         #expect(client.isPaired)
         #expect(!client.isPairing)
-        #expect(learned == ["192.0.2.30"])
+        #expect(learned == ["192.0.2.30:1985"])
         guard case let .auth(deviceID, signature) = decoded(first).last else {
             Issue.record("auth attendu après paired")
             return
@@ -193,7 +193,7 @@ struct PTZClientTests {
     func pairingWithTwoPaths() throws {
         keys.key = nil
         var learned: [String] = []
-        client.onAddressLearned = { learned.append($0) }
+        client.onAddressLearned = { learned.append("\($0):\($1)") }
         client.start(settings: settings)
         client.pair(with: link)
         browser.find(service)
@@ -211,7 +211,7 @@ struct PTZClientTests {
         #expect(decoded(local).contains { if case .auth = $0 { true } else { false } })
         #expect(decoded(first).contains { if case .auth = $0 { true } else { false } })
         // Service Bonjour sans adresse résolue : la première adresse du QR est retenue.
-        #expect(learned == ["192.0.2.30"])
+        #expect(learned == ["192.0.2.30:1985"])
     }
 
     @Test("QR code refusé par ptzd : « QR code refusé », plus de reconnexion, QR oublié", arguments: [ErrorCode.badCode, .pairingClosed, .notLocal])
@@ -232,6 +232,56 @@ struct PTZClientTests {
         client.stop()
         client.start(settings: settings)
         #expect(transports.last?.opened == [.url(url)])
+    }
+
+    @Test("QR refusé sur un iPhone déjà appairé : simple avis, pas d'arrêt, reconnexion normale")
+    func pairingRefusedWhenPaired() throws {
+        try connect()
+        var refused = 0
+        client.onPairingRefused = { refused += 1 }
+        client.pair(with: link)
+        let first = try #require(qr("192.0.2.30"))
+        try emit(.challenge(nonce: nonce), on: first)
+        try emit(.error(code: .pairingClosed, message: "x"), on: first)
+        #expect(refused == 1)
+        #expect(client.authIssue == nil)
+        #expect(!client.isPairing)
+        #expect(client.link == .connecting)
+        #expect(transports.last?.opened == [.url(url)])
+    }
+
+    @Test("Expulsé à l'authentification, par Tailscale ou par le réseau local : « expulsé », plus de reconnexion")
+    func blockedAtAuthentication() throws {
+        client.start(settings: settings)
+        browser.find(service)
+        let local = try #require(transports.local)
+        try emit(.challenge(nonce: nonce), on: local)
+        try emit(.error(code: .blocked, message: "Expulsé par le Mac jusqu'à 20:14."), on: local)
+        #expect(client.authIssue == .blocked)
+        #expect(client.link == .idle)
+        let opened = transports.all.count
+        scheduler.advance(by: 30)
+        #expect(transports.all.count == opened)
+        #expect(client.isPaired == record.isPaired)
+    }
+
+    @Test("Expulsé pendant la session : arrêt tout de suite, sans tentative refusée d'avance")
+    func blockedDuringSession() throws {
+        try connect()
+        try emit(.error(code: .blocked, message: "Expulsé par le Mac jusqu'à 20:14."), on: tailscale)
+        #expect(client.authIssue == .blocked)
+        #expect(client.link == .idle)
+        let opened = transports.all.count
+        scheduler.advance(by: 30)
+        #expect(transports.all.count == opened)
+    }
+
+    @Test("Suivi IA : l'ordre part sur la connexion active")
+    func aiTrackingOrder() throws {
+        try connect()
+        client.setAITracking(true)
+        client.setAITracking(false)
+        #expect(commands(tailscale).suffix(2) == [.aiTracking(on: true), .aiTracking(on: false)])
     }
 
     @Test("Aucun Mac ne répond avec le QR (secret refusé en TLS, Mac injoignable) : « QR code refusé », sans reconnexion")

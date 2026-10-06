@@ -1,4 +1,5 @@
 import Foundation
+import NacelleProtocol
 import Network
 
 /// L'adresse du Mac en repli (spec découverte et QR § 8.1) : retenue à l'appairage, modifiable à la main.
@@ -44,17 +45,7 @@ struct ConnectionSettings: Codable, Equatable, Sendable {
         if host.lowercased().hasSuffix(".local") {
             return .local
         }
-        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
-        let octets = parts.compactMap { part in
-            part.allSatisfy { $0.isASCII && $0.isNumber } ? UInt8(part) : nil
-        }
-        guard parts.count == 4, octets.count == 4 else { return .tailscale }
-        switch (octets[0], octets[1]) {
-        case (10, _), (172, 16...31), (192, 168):
-            return .local
-        default:
-            return .tailscale
-        }
+        return LocalAddress.isPrivateIPv4(host) ? .local : .tailscale
     }
 
     /// Où joindre l'adresse du champ : en TLS avec ces secrets pour une adresse locale (aucune sans

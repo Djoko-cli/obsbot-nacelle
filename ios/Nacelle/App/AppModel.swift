@@ -35,15 +35,24 @@ final class AppModel {
     @ObservationIgnored private var isForeground = false
     @ObservationIgnored private var rememberingAddress = false
     @ObservationIgnored private let store: SettingsStore
+    @ObservationIgnored private let scheduler: any Scheduler
+    /// Avis bref affiché à la place du bandeau (QR refusé sur un iPhone déjà appairé).
+    private(set) var notice: String?
+    @ObservationIgnored private var noticeTimer: (any Cancellable)?
+    static let noticeDuration: TimeInterval = 5
 
-    init(store: SettingsStore, ptz: PTZClient, video: VideoSession) {
+    init(store: SettingsStore, ptz: PTZClient, video: VideoSession, scheduler: any Scheduler) {
         self.store = store
         self.ptz = ptz
         self.video = video
+        self.scheduler = scheduler
         settings = store.load()
         soundWanted = store.soundOn
-        ptz.onAddressLearned = { [weak self] address in
-            self?.remember(address)
+        ptz.onAddressLearned = { [weak self] address, port in
+            self?.remember(address, port: port)
+        }
+        ptz.onPairingRefused = { [weak self] in
+            self?.show(StatusBanner.qrRefused)
         }
         // La vie privée coupe le son, sa sortie le rétablit, et un état perdu le coupe aussi.
         ptz.onStateChange = { [weak self] in
@@ -69,7 +78,8 @@ final class AppModel {
                 pairingRecord: PairingRecord(),
                 scheduler: scheduler
             ),
-            video: VideoSession(scheduler: scheduler)
+            video: VideoSession(scheduler: scheduler),
+            scheduler: scheduler
         )
     }
 
@@ -98,13 +108,24 @@ final class AppModel {
         ptz.pair(with: link)
     }
 
-    /// L'adresse du Mac qui vient d'appairer l'iPhone va dans le champ s'il est vide (spec découverte et QR § 8.3).
-    private func remember(_ address: String) {
+    /// L'adresse et le port du Mac qui vient d'appairer l'iPhone vont dans le champ s'il est vide
+    /// (spec découverte et QR § 8.3, spec app Mac § 9).
+    private func remember(_ address: String, port: Int) {
         guard settings.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         rememberingAddress = true
         settings.host = address
+        settings.ptzdPort = port
         rememberingAddress = false
         ptz.update(settings)
+    }
+
+    /// Avis affiché `noticeDuration` à la place du bandeau.
+    private func show(_ text: String) {
+        notice = text
+        noticeTimer?.cancel()
+        noticeTimer = scheduler.schedule(after: Self.noticeDuration) { [weak self] in
+            self?.notice = nil
+        }
     }
 
     /// Oublie la clé de cet iPhone.
@@ -127,6 +148,9 @@ final class AppModel {
     /// Rien tant que l'app n'est pas au premier plan.
     var bannerText: String? {
         guard isActive else { return nil }
+        if let notice {
+            return notice
+        }
         return StatusBanner.text(for: BannerInputs(
             macUnreachable: ptz.isUnreachable,
             authIssue: ptz.authIssue,
@@ -168,6 +192,21 @@ final class AppModel {
     /// Applique `soundPlaying` à la vidéo : au départ, au bouton et à chaque changement d'état de ptzd.
     func syncSound() {
         video.setPlaysAudio(soundPlaying)
+    }
+
+    /// Le dernier ordre de suivi IA est « allumé ».
+    var aiTrackingOn: Bool {
+        ptz.state?.aiTracking == .on
+    }
+
+    /// Bouton du suivi IA utilisable : connecté, caméra présente, hors vie privée.
+    var aiToggleEnabled: Bool {
+        ptz.link == .connected && ptz.state?.camera == .connected && ptz.state?.privacy == false
+    }
+
+    /// Allume le suivi s'il n'est pas allumé (coupé ou inconnu), le coupe sinon.
+    func toggleAITracking() {
+        ptz.setAITracking(!aiTrackingOn)
     }
 
     /// Bouton vie privée utilisable : connecté et caméra présente.

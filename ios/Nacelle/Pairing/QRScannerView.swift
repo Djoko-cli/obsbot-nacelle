@@ -61,7 +61,7 @@ struct QRScannerView: View {
                     }
                 }
                 .ignoresSafeArea()
-                Text(message ?? "Vise le QR code affiché par ptzd pair sur le Mac.")
+                Text(message ?? "Visez le QR code affiché sur le Mac.")
                     .font(.subheadline.weight(.medium))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 14)
@@ -73,7 +73,7 @@ struct QRScannerView: View {
             ContentUnavailableView {
                 Label("Appareil photo refusé", systemImage: "camera.fill")
             } description: {
-                Text("Autorise l'appareil photo pour PTZBot dans les Réglages d'iOS.")
+                Text("Autorisez l'appareil photo pour PTZBot dans les Réglages d'iOS.")
             } actions: {
                 Button("Ouvrir les Réglages") {
                     if let url = URL(string: UIApplication.openSettingsURLString) {
