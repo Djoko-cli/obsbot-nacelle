@@ -115,7 +115,7 @@ final class VideoSession {
             constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil),
             delegate: observer
         ) else {
-            throw SignalingError.badResponse(status: 0)
+            throw PeerConnectionUnavailable()
         }
         let receiveOnly = RTCRtpTransceiverInit()
         receiveOnly.direction = .recvOnly
@@ -190,6 +190,9 @@ final class VideoSession {
 
 /// L'offre locale manque après `setLocalDescription`.
 private struct MissingLocalDescription: Error {}
+
+/// WebRTC n'a pas créé la connexion.
+private struct PeerConnectionUnavailable: Error {}
 
 /// Rappels de WebRTC (sur son propre fil), traduits en événements simples.
 private final class PeerObserver: NSObject, RTCPeerConnectionDelegate, @unchecked Sendable {

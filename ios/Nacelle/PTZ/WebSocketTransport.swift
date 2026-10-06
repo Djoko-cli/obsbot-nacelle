@@ -46,7 +46,7 @@ protocol WebSocketTransport: AnyObject {
 /// les événements d'une connexion remplacée sont ignorés.
 @MainActor
 final class URLSessionWebSocketTransport: NSObject, WebSocketTransport {
-    /// Délai d'ouverture (60 s par défaut), aligné sur `Signaling.timeout`. Ce réglage ne coupe pas
+    /// Délai d'ouverture (60 s par défaut), aligné sur `PTZClient.negotiationTimeout`. Ce réglage ne coupe pas
     /// une connexion ouverte et silencieuse : c'est le rôle de `Heartbeat`.
     static let openTimeout: TimeInterval = 10
 
