@@ -17,16 +17,20 @@ public enum NacelleAuth {
         Data("nacelle-auth-v1|\(nonce.base64EncodedString())|\(deviceID)".utf8)
     }
 
-    /// Preuve d'appairage : HMAC-SHA256 avec le secret du QR, sur
-    /// `nacelle-pair-v1|<défi en base64>|<clé publique en base64>` (spec découverte et QR § 6).
+    /// Ce que l'app prouve avec la preuve d'appairage : `nacelle-pair-v1|<défi en base64>|<clé publique en base64>`, en UTF-8.
+    public static func pairingPayload(nonce: Data, publicKeyX963: Data) -> Data {
+        Data("nacelle-pair-v1|\(nonce.base64EncodedString())|\(publicKeyX963.base64EncodedString())".utf8)
+    }
+
+    /// Preuve d'appairage : HMAC-SHA256 avec le secret du QR (spec découverte et QR § 6).
     public static func pairingProof(secret: Data, nonce: Data, publicKeyX963: Data) -> Data {
-        let message = Data("nacelle-pair-v1|\(nonce.base64EncodedString())|\(publicKeyX963.base64EncodedString())".utf8)
+        let message = pairingPayload(nonce: nonce, publicKeyX963: publicKeyX963)
         return Data(HMAC<SHA256>.authenticationCode(for: message, using: SymmetricKey(data: secret)))
     }
 
     /// Vérifie une preuve d'appairage en temps constant.
     public static func verifyPairingProof(_ proof: Data, secret: Data, nonce: Data, publicKeyX963: Data) -> Bool {
-        let message = Data("nacelle-pair-v1|\(nonce.base64EncodedString())|\(publicKeyX963.base64EncodedString())".utf8)
+        let message = pairingPayload(nonce: nonce, publicKeyX963: publicKeyX963)
         return HMAC<SHA256>.isValidAuthenticationCode(proof, authenticating: message, using: SymmetricKey(data: secret))
     }
 
