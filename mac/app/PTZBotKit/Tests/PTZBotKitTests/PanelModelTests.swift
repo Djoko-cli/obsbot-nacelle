@@ -1,0 +1,137 @@
+import Foundation
+import NacelleProtocol
+import Testing
+@testable import PTZBotKit
+
+@MainActor
+@Suite("Panneau")
+struct PanelModelTests {
+    let transport = FakeAdminTransport()
+    let scheduler = FakeScheduler()
+    let model: PanelModel
+    let device = AdminDevice(deviceID: "00112233445566778899aabbccddeeff", name: "iPhone", pairedAt: Date(timeIntervalSince1970: 1_791_300_000), blockedUntil: nil)
+
+    init() {
+        model = PanelModel(config: PTZDConfig(port: 1985, isFallback: false), transport: transport, scheduler: scheduler)
+    }
+
+    private func receive(_ message: ServerMessage) throws {
+        transport.emit(.message(try NacelleCodec.encode(message)))
+    }
+
+    private var sent: [ClientMessage] {
+        transport.sent.compactMap { try? NacelleCodec.decodeClient($0) }
+    }
+
+    /// Connexion de confiance établie, état et état d'administration reçus.
+    private func connect(devices: [AdminDevice] = []) throws {
+        model.start()
+        transport.emit(.opened)
+        try receive(.authenticated)
+        try receive(.state(StateSnapshot(camera: .connected, control: .idle, privacy: false, pan: 0, tilt: 0, zoom: 0, moving: false, aiTracking: .unknown)))
+        try receive(.adminState(AdminState(devices: devices, clients: [], pairing: nil)))
+    }
+
+    @Test("Connexion à 127.0.0.1 sur le port de config.json ; authentifiée : actif, état d'administration demandé")
+    func connects() throws {
+        #expect(model.service == .connecting)
+        try connect(devices: [device])
+        #expect(transport.opened == [URL(string: "ws://127.0.0.1:1985")!])
+        #expect(model.service == .active)
+        #expect(sent.first == .adminWatch)
+        #expect(model.state?.camera == .connected)
+        #expect(model.admin?.devices == [device])
+    }
+
+    @Test("ptzd ne répond pas : état effacé, nouvel essai toutes les 2 s")
+    func reconnects() throws {
+        try connect()
+        transport.emit(.closed)
+        #expect(model.service == .unreachable)
+        #expect(model.state == nil)
+        #expect(model.admin == nil)
+        scheduler.advance(by: PanelModel.retryDelay - 0.1)
+        #expect(transport.opened.count == 1)
+        scheduler.advance(by: 0.1)
+        #expect(transport.opened.count == 2)
+        transport.emit(.closed)
+        scheduler.advance(by: PanelModel.retryDelay)
+        #expect(transport.opened.count == 3)
+    }
+
+    @Test("Actions : chaque bouton envoie son message ; rien n'est envoyé hors connexion")
+    func actions() throws {
+        model.setPrivacy(true)
+        #expect(transport.sent.isEmpty)
+        try connect(devices: [device])
+        model.setPrivacy(true)
+        model.setAITracking(true)
+        model.kick(device.deviceID)
+        model.unblock(device.deviceID)
+        model.revoke(device.deviceID)
+        #expect(Array(sent.dropFirst()) == [
+            .privacy(on: true), .aiTracking(on: true), .kick(deviceID: device.deviceID),
+            .unblock(deviceID: device.deviceID), .revoke(deviceID: device.deviceID),
+        ])
+    }
+
+    @Test("Refus de ptzd : message affiché, effacé à l'action suivante")
+    func errors() throws {
+        try connect()
+        try receive(.error(code: .badMessage, message: "Appareil inconnu."))
+        #expect(model.lastError == "Appareil inconnu.")
+        model.setPrivacy(false)
+        #expect(model.lastError == nil)
+    }
+
+    @Test("Appairage : invitation affichée en QR, puis appareil nouveau : « appairé », fenêtre fermée 3 s après")
+    func pairingSucceeds() throws {
+        try connect(devices: [device])
+        model.openPairing()
+        #expect(sent.last == .openPairing)
+        let session = try #require(model.pairing)
+        #expect(session.phase == .waiting)
+        let invitation = PairingInvitation(pairingID: "1a2b3c4d", secret: Data(repeating: 5, count: 32), expiresAt: Date(timeIntervalSince1970: 1_791_301_300), hosts: ["192.168.0.10"], port: 1985)
+        try receive(.pairingOpened(invitation))
+        try receive(.adminState(AdminState(devices: [device], clients: [], pairing: AdminPairing(pairingID: "1a2b3c4d", expiresAt: invitation.expiresAt))))
+        #expect(session.phase == .showing(invitation))
+        #expect(session.link == PairingLink(invitation).url.absoluteString)
+        let newDevice = AdminDevice(deviceID: "ffeeddccbbaa99887766554433221100", name: "iPhone de test", pairedAt: Date(), blockedUntil: nil)
+        try receive(.adminState(AdminState(devices: [device, newDevice], clients: [], pairing: nil)))
+        #expect(session.phase == .paired(name: "iPhone de test", shortID: "ffeeddcc"))
+        scheduler.advance(by: PairingSession.closeDelay)
+        #expect(model.pairing == nil)
+        #expect(!sent.contains(.closePairing))
+    }
+
+    @Test("Appairage expiré (ou refusé) : « expiré » ; « Recommencer » relance un appairage")
+    func pairingExpires() throws {
+        try connect()
+        model.openPairing()
+        let invitation = PairingInvitation(pairingID: "1a2b3c4d", secret: Data(repeating: 5, count: 32), expiresAt: Date(), hosts: ["192.168.0.10"], port: 1985)
+        try receive(.pairingOpened(invitation))
+        try receive(.adminState(AdminState(devices: [], clients: [], pairing: nil)))
+        #expect(model.pairing?.phase == .expired)
+        model.openPairing()
+        #expect(model.pairing?.phase == .waiting)
+        #expect(sent.filter { $0 == .openPairing }.count == 2)
+    }
+
+    @Test("Fenêtre fermée pendant l'affichage du QR : closePairing envoyé, fenêtre oubliée")
+    func closingWindow() throws {
+        try connect()
+        model.openPairing()
+        try receive(.pairingOpened(PairingInvitation(pairingID: "1a2b3c4d", secret: Data(repeating: 5, count: 32), expiresAt: Date(), hosts: ["192.168.0.10"], port: 1985)))
+        model.closePairing()
+        #expect(sent.last == .closePairing)
+        #expect(model.pairing == nil)
+    }
+
+    @Test("Invitation sans adresse locale : « aucune adresse »")
+    func noAddress() throws {
+        try connect()
+        model.openPairing()
+        try receive(.pairingOpened(PairingInvitation(pairingID: "1a2b3c4d", secret: Data(repeating: 5, count: 32), expiresAt: Date(), hosts: [], port: 1985)))
+        #expect(model.pairing?.phase == .noAddress)
+    }
+}
