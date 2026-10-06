@@ -415,6 +415,7 @@ final class PTZClient {
         case let .paired(_, lanKey):
             // Seule la connexion qui a envoyé la preuve peut confirmer l'appairage.
             guard candidate === pairingCandidate else { return }
+            let qrHost = pendingPairing?.hosts.first
             // Sans le secret, seul Tailscale reste : l'appairage est valable quand même.
             do {
                 try keys.saveLANKey(lanKey)
@@ -424,7 +425,8 @@ final class PTZClient {
             pendingPairing = nil
             pairingCandidate = nil
             setPaired(true)
-            if let address = candidate.transport.remoteAddress {
+            // L'adresse du Mac qui a répondu, sinon la première du QR (service Bonjour en IPv6 ou non résolu, spec découverte et QR § 8.1).
+            if let address = candidate.transport.remoteAddress ?? qrHost {
                 onAddressLearned?(address)
             }
             for waiting in candidates where waiting.nonce != nil {
