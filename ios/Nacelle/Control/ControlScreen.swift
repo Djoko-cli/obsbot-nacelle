@@ -49,14 +49,8 @@ struct ControlScreen: View {
             SettingsView(
                 settings: $model.settings,
                 isPaired: model.ptz.isPaired,
-                onPair: { model.pair(code: $0) },
                 onForget: { model.forgetPairing() }
             )
-        }
-        .onAppear {
-            if !model.settings.isComplete {
-                showSettings = true
-            }
         }
     }
 

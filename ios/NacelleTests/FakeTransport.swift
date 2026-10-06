@@ -7,6 +7,8 @@ import Network
 @MainActor
 final class FakeTransport: WebSocketTransport {
     var onEvent: ((TransportEvent) -> Void)?
+    /// Adresse du Mac que le test fait connaître.
+    var remoteAddress: String?
     private(set) var opened: [WebSocketEndpoint] = []
     private(set) var sent: [String] = []
     private(set) var closeCount = 0
@@ -48,10 +50,10 @@ final class FakeTransports {
         all.last { $0.opened == [endpoint] }
     }
 
-    /// Le dernier transport ouvert vers un service du réseau local.
+    /// Le dernier transport ouvert vers un service Bonjour.
     var local: FakeTransport? {
         all.last { transport in
-            transport.opened.contains { if case .service = $0 { true } else { false } }
+            transport.opened.contains { if case .tls(.service, _) = $0 { true } else { false } }
         }
     }
 }

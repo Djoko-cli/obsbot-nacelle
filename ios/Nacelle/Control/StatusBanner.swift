@@ -10,8 +10,9 @@ struct BannerInputs: Equatable {
     var state: StateSnapshot?
 }
 
-/// Texte du bandeau d'état (spec § 7.3, spec accès local § 8.5). Ordre de priorité : Mac
-/// injoignable, appairage, caméra débranchée, vie privée, suivi IA non coupé, prise en main, connexion.
+/// Texte du bandeau d'état (spec § 7.3, spec accès local § 8.5, spec découverte et QR § 8.4). Ordre de
+/// priorité : Mac injoignable, appairage, caméra débranchée, vie privée, suivi IA non coupé, prise en main,
+/// connexion.
 enum StatusBanner {
     static func text(for inputs: BannerInputs) -> String? {
         if inputs.macUnreachable {
@@ -19,13 +20,11 @@ enum StatusBanner {
         }
         switch inputs.authIssue {
         case .unpaired:
-            return "iPhone non appairé : lance ptzd pair sur le Mac"
+            return "iPhone non appairé : scanne le QR code de ptzd pair"
         case .badCode:
-            return "Code d'appairage refusé"
+            return "QR code refusé : relance ptzd pair"
         case .rejected:
             return "Accès refusé par le Mac"
-        case .needsTailscale:
-            return "Appairage : active Tailscale sur l'iPhone"
         case nil:
             break
         }

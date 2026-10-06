@@ -1,18 +1,15 @@
 import SwiftUI
 
-/// Réglages : le Mac et l'appairage (spec accès local § 8.1). Saisis au premier lancement,
-/// modifiables ensuite.
+/// Réglages : l'adresse du Mac en repli et l'appairage (spec découverte et QR § 8.1).
 struct SettingsView: View {
     @Binding var settings: ConnectionSettings
     let isPaired: Bool
-    let onPair: (String) -> Void
     let onForget: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var draft = ConnectionSettings()
     // Port saisi en texte : un champ lié à un Int ne se met à jour qu'à la validation (Retour ou perte
     // du focus), et le pavé numérique n'a pas de Retour ; « Enregistrer » perdrait la dernière saisie.
     @State private var ptzdPortText = ""
-    @State private var code = ""
     @State private var confirmForget = false
 
     /// Les réglages tels que saisis, port compris.
@@ -22,16 +19,11 @@ struct SettingsView: View {
         return settings
     }
 
-    /// Un code d'appairage complet, ou rien.
-    private var codeIsValid: Bool {
-        code.isEmpty || PairingCodeInput.isValid(code)
-    }
-
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("mon-mac.tailnet.ts.net", text: $draft.host)
+                    TextField("Adresse du Mac (repli)", text: $draft.host)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
@@ -43,13 +35,10 @@ struct SettingsView: View {
                 } header: {
                     Text("Mac")
                 } footer: {
-                    Text("Le nom Tailscale du Mac (MagicDNS), pour piloter de partout. À la maison, l'app trouve aussi le Mac sur le Wi-Fi, sans Tailscale.")
+                    Text("Retenue à l'appairage. Une adresse locale sert à la maison, et en 4G par la route de sous-réseau du NAS (Tailscale actif sur l'iPhone). Vide : l'app cherche le Mac sur le Wi-Fi.")
                 }
                 Section {
                     LabeledContent("État", value: isPaired ? "Appairé" : "Non appairé")
-                    TextField("Code à 6 chiffres", text: $code)
-                        .keyboardType(.numberPad)
-                        .textContentType(.oneTimeCode)
                     if isPaired {
                         Button("Oublier cet appairage", role: .destructive) {
                             confirmForget = true
@@ -58,7 +47,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Appairage")
                 } footer: {
-                    Text("Sur le Mac, lance ptzd pair dans le Terminal, puis saisis le code affiché (valable 5 min) et touche Enregistrer.")
+                    Text("Sur le Mac, lance ptzd pair dans le Terminal pour afficher un QR code, valable 5 min.")
                 }
             }
             .navigationTitle("Réglages")
@@ -67,12 +56,9 @@ struct SettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Enregistrer") {
                         settings = edited
-                        if !code.isEmpty {
-                            onPair(code)
-                        }
                         dismiss()
                     }
-                    .disabled(!edited.isComplete || !codeIsValid)
+                    .disabled(!edited.isValid)
                 }
             }
             .confirmationDialog("Oublier l'appairage ?", isPresented: $confirmForget, titleVisibility: .visible) {
@@ -87,14 +73,5 @@ struct SettingsView: View {
             draft = settings
             ptzdPortText = String(settings.ptzdPort)
         }
-    }
-}
-
-/// Saisie du code d'appairage.
-enum PairingCodeInput {
-    /// Six chiffres, espaces aux bords ignorés.
-    static func isValid(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        return trimmed.count == 6 && trimmed.allSatisfy(\.isASCII) && trimmed.allSatisfy(\.isNumber)
     }
 }

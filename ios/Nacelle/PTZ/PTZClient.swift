@@ -4,10 +4,11 @@ import Network
 import Observation
 import os
 
-/// Dialogue avec ptzd (spec § 7.2, spec accès local § 8) : à chaque connexion, le nom Tailscale
-/// et le service Bonjour du réseau local sont essayés ensemble ; la première connexion
-/// authentifiée l'emporte. Puis prise en main, `move` répété 10 fois par seconde tant que le
-/// joystick est hors du centre, reconnexion espacée.
+/// Dialogue avec ptzd (spec § 7.2, spec accès local § 8, spec découverte et QR § 8) : à chaque
+/// connexion, l'adresse du champ et le service Bonjour du réseau local sont essayés ensemble ; la
+/// première connexion authentifiée l'emporte. Puis prise en main, `move` répété 10 fois par seconde
+/// tant que le joystick est hors du centre, reconnexion espacée. Un QR code scanné remplace ces
+/// candidates par ses adresses et Bonjour, en TLS avec le secret du QR, le temps de l'appairage.
 @MainActor
 @Observable
 final class PTZClient {
@@ -18,19 +19,19 @@ final class PTZClient {
         case waitingToRetry
     }
 
-    /// Ce qui empêche l'authentification. Un verdict de ptzd par Tailscale (`unpaired`, `rejected`,
-    /// `badCode`) arrête les reconnexions jusqu'à ce que l'utilisateur agisse. `needsTailscale` et les
-    /// verdicts reçus d'un service du réseau local les laissent continuer ; effacés à chaque nouvelle tentative.
+    /// Ce qui empêche l'authentification. Un verdict de ptzd par Tailscale (`unpaired`, `rejected`),
+    /// l'absence de clé et l'échec d'un appairage arrêtent les reconnexions jusqu'à ce que l'utilisateur
+    /// agisse. Les autres verdicts d'un service du réseau local les laissent continuer ; effacés à chaque
+    /// nouvelle tentative.
     enum AuthIssue: Equatable {
         /// Pas de clé, ou ptzd ne connaît pas cet iPhone.
         case unpaired
         /// Signature refusée.
         case rejected
-        /// Code d'appairage faux, expiré ou déjà utilisé.
+        /// QR code refusé : preuve fausse, appairage expiré ou déjà utilisé, ou aucun Mac n'a répondu
+        /// avec le secret du QR (spec découverte et QR § 9).
         case badCode
-        /// Un code attend, mais Tailscale n'a pas répondu : l'appairage ne passe que par Tailscale
-        /// (spec accès local § 8.3). Les reconnexions continuent.
-        case needsTailscale
+
     }
 
     /// Pourquoi une négociation vidéo n'a pas abouti.
@@ -61,7 +62,7 @@ final class PTZClient {
     /// Dernière erreur renvoyée par ptzd.
     private(set) var lastError: ErrorCode?
     /// Vrai quand une tentative de connexion a échoué, jusqu'à la prochaine réussite.
-    /// Remis à faux par `start(url:)` et `stop()` : le bandeau revient à « Connexion… ».
+    /// Remis à faux par `start(settings:)` et `stop()` : le bandeau revient à « Connexion… ».
     private(set) var isUnreachable = false
     private(set) var authIssue: AuthIssue?
     /// Cet iPhone s'est déjà authentifié, ou vient d'être appairé (enregistré).
@@ -73,15 +74,16 @@ final class PTZClient {
     @ObservationIgnored private let pairingRecord: PairingRecord
     @ObservationIgnored private let scheduler: any Scheduler
     @ObservationIgnored private let deviceName: String
-    @ObservationIgnored private var url: URL?
+    /// Adresse IPv4 du Mac qui vient d'appairer cet iPhone, à retenir dans le champ (spec découverte et QR § 8.3).
+    @ObservationIgnored var onAddressLearned: ((String) -> Void)?
+    /// Réglages du dernier `start` ; nil à l'arrêt.
+    @ObservationIgnored private var settings: ConnectionSettings?
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var openedThisAttempt = false
     @ObservationIgnored private var candidates: [Candidate] = []
     @ObservationIgnored private var active: Candidate?
     @ObservationIgnored private var nextCandidateID = 0
     @ObservationIgnored private var foundLocal = false
-    /// La connexion Tailscale de la tentative en cours s'est ouverte.
-    @ObservationIgnored private var tailscaleOpened = false
     /// Verdict d'un service du réseau local pour la tentative en cours : affiché si la tentative
     /// échoue sans autre verdict, sans arrêter les reconnexions.
     @ObservationIgnored private var localIssue: AuthIssue?
@@ -92,7 +94,8 @@ final class PTZClient {
     @ObservationIgnored private var repeater: (any Cancellable)?
     @ObservationIgnored private var currentMove = JoystickVector.zero
     /// Code saisi dans les réglages, envoyé au prochain défi.
-    @ObservationIgnored private var pendingCode: String?
+    /// QR code scanné, en attente d'appairage. Son secret n'est jamais rangé (spec découverte et QR § 8.3).
+    @ObservationIgnored private var pendingPairing: PairingLink?
     @ObservationIgnored private var pairingCandidate: Candidate?
     @ObservationIgnored private var nextOfferID = 0
     /// Négociations vidéo en attente de `webrtcAnswer`, par identifiant d'offre.
@@ -140,8 +143,8 @@ final class PTZClient {
         }
     }
 
-    func start(url: URL) {
-        self.url = url
+    func start(settings: ConnectionSettings) {
+        self.settings = settings
         attempt = 0
         isUnreachable = false
         retry?.cancel()
@@ -158,7 +161,7 @@ final class PTZClient {
         stopRepeating()
         retry?.cancel()
         retry = nil
-        url = nil
+        settings = nil
         closeAll()
         link = .idle
         state = nil
@@ -200,9 +203,16 @@ final class PTZClient {
         pending.values.forEach { $0.resume(throwing: error) }
     }
 
-    /// Appairage avec le code de `ptzd pair` : envoyé au prochain défi, connexion relancée.
-    func pair(code: String) {
-        pendingCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Nouveaux réglages pris en compte à la tentative suivante, sans couper la connexion
+    /// (adresse retenue après un appairage).
+    func update(_ settings: ConnectionSettings) {
+        guard self.settings != nil else { return }
+        self.settings = settings
+    }
+
+    /// Appairage avec le QR code de `ptzd pair` : connexion relancée vers ses adresses et Bonjour.
+    func pair(with link: PairingLink) {
+        pendingPairing = link
         authIssue = nil
         authIssueBlocks = false
         restart()
@@ -212,7 +222,7 @@ final class PTZClient {
     func forgetPairing() {
         keys.delete()
         setPaired(false)
-        pendingCode = nil
+        pendingPairing = nil
         restart()
     }
 
@@ -247,28 +257,43 @@ final class PTZClient {
     // MARK: - Connexions
 
     private func restart() {
-        guard url != nil else { return }
+        guard settings != nil else { return }
         retry?.cancel()
         retry = nil
         attempt = 0
         connect()
     }
 
-    /// Une tentative : le nom Tailscale tout de suite, le réseau local si Bonjour trouve ptzd.
+    /// Une tentative. Appairage : chaque adresse du QR et Bonjour, avec le secret du QR. Sinon : l'adresse
+    /// du champ tout de suite, et Bonjour si l'iPhone a son secret du réseau local. Sans clé, rien à tenter.
     private func connect() {
-        guard let url else { return }
+        guard let settings else { return }
         closeAll()
         link = .connecting
         openedThisAttempt = false
-        tailscaleOpened = false
         foundLocal = false
         localIssue = nil
         if !authIssueBlocks {
             authIssue = nil
         }
-        open(.url(url))
-        // Le réseau local passe en TLS : sans secret remis à l'appairage, pas d'essai local.
-        if keys.load() != nil, keys.lanKey() != nil {
+        if let pairing = pendingPairing {
+            let credentials = Self.credentials(for: pairing)
+            for host in pairing.hosts {
+                if let port = NWEndpoint.Port(rawValue: UInt16(pairing.port)) {
+                    open(.tls(.hostPort(host: NWEndpoint.Host(host), port: port), credentials))
+                }
+            }
+        } else {
+            guard keys.load() != nil else {
+                setPaired(false)
+                giveUp(.unpaired)
+                return
+            }
+            if let endpoint = settings.endpoint(credentials: deviceCredentials()) {
+                open(endpoint)
+            }
+        }
+        if lanCredentials() != nil {
             browser.start()
         }
         discovery = scheduler.schedule(after: Self.discoveryWindow) { [weak self] in
@@ -276,11 +301,26 @@ final class PTZClient {
         }
     }
 
+    /// Identité TLS `pair-<pairingID>` et secret du QR code.
+    private static func credentials(for pairing: PairingLink) -> LANCredentials {
+        LANCredentials(identity: NacelleTLS.pairingIdentity(pairing.pairingID), key: pairing.secret)
+    }
+
+    /// Identité (`deviceID`) et secret remis à l'appairage, si l'iPhone a les deux.
+    private func deviceCredentials() -> LANCredentials? {
+        guard let key = keys.load(), let lanKey = keys.lanKey() else { return nil }
+        return LANCredentials(identity: key.deviceID, key: lanKey)
+    }
+
+    /// De quoi ouvrir le TLS du réseau local pour la tentative en cours.
+    private func lanCredentials() -> LANCredentials? {
+        pendingPairing.map(Self.credentials(for:)) ?? deviceCredentials()
+    }
+
     private func found(_ endpoint: NWEndpoint) {
-        guard link == .connecting, active == nil, !foundLocal,
-              let key = keys.load(), let lanKey = keys.lanKey() else { return }
+        guard link == .connecting, active == nil, !foundLocal, let credentials = lanCredentials() else { return }
         foundLocal = true
-        open(.service(endpoint, LANCredentials(identity: key.deviceID, key: lanKey)))
+        open(.tls(endpoint, credentials))
     }
 
     private func discoveryEnded() {
@@ -294,7 +334,7 @@ final class PTZClient {
     private func open(_ endpoint: WebSocketEndpoint) {
         nextCandidateID += 1
         let isLocal: Bool
-        if case .service = endpoint {
+        if case .tls = endpoint {
             isLocal = true
         } else {
             isLocal = false
@@ -341,9 +381,6 @@ final class PTZClient {
         switch event {
         case .opened:
             openedThisAttempt = true
-            if !candidate.isLocal {
-                tailscaleOpened = true
-            }
         case let .message(text):
             guard let message = try? NacelleCodec.decodeServer(text) else { return }
             if candidate === active {
@@ -378,7 +415,7 @@ final class PTZClient {
         case let .challenge(nonce):
             answer(nonce, on: candidate)
         case let .paired(_, lanKey):
-            // Seule la connexion qui a envoyé le code (Tailscale) peut confirmer l'appairage.
+            // Seule la connexion qui a envoyé la preuve peut confirmer l'appairage.
             guard candidate === pairingCandidate else { return }
             // Sans le secret, seul Tailscale reste : l'appairage est valable quand même.
             do {
@@ -386,7 +423,7 @@ final class PTZClient {
             } catch {
                 Self.logger.error("Secret du réseau local non enregistré : \(String(describing: error), privacy: .public)")
             }
-            pendingCode = nil
+            pendingPairing = nil
             pairingCandidate = nil
             setPaired(true)
             for waiting in candidates where waiting.nonce != nil {
@@ -407,8 +444,8 @@ final class PTZClient {
         }
     }
 
-    /// Un service du réseau local n'est pas authentifié : son verdict ne ferme que sa connexion
-    /// et ne touche ni l'appairage ni le code. Seule la connexion Tailscale peut tout arrêter.
+    /// Un refus de la preuve arrête l'appairage. Hors appairage, le verdict d'un service du réseau local
+    /// ne ferme que sa connexion et ne touche pas à l'appairage ; seule la connexion Tailscale peut tout arrêter.
     private func handleHandshakeError(_ code: ErrorCode, from candidate: Candidate) {
         let issue: AuthIssue
         switch code {
@@ -416,10 +453,15 @@ final class PTZClient {
             issue = .unpaired
         case .authFailed:
             issue = .rejected
-        case .badCode, .pairingClosed:
+        case .badCode, .pairingClosed, .notLocal:
             issue = .badCode
         default:
             lastError = code
+            return
+        }
+        if candidate === pairingCandidate {
+            pendingPairing = nil
+            giveUp(.badCode)
             return
         }
         if candidate.isLocal {
@@ -428,22 +470,15 @@ final class PTZClient {
             failAttemptIfOver()
             return
         }
-        switch issue {
-        case .unpaired:
+        if issue == .unpaired {
             setPaired(false)
-        case .badCode:
-            pendingCode = nil
-        default:
-            break
         }
         giveUp(issue)
     }
 
     private func answer(_ nonce: Data, on candidate: Candidate) {
         candidate.nonce = nonce
-        if let code = pendingCode {
-            // Le code ne part que par Tailscale ; la connexion locale attend `paired`.
-            guard !candidate.isLocal else { return }
+        if let pairing = pendingPairing {
             // Un seul appairage à la fois : les autres connexions attendent `paired`.
             guard pairingCandidate == nil else { return }
             guard let key = try? keys.loadOrCreate() else {
@@ -453,7 +488,8 @@ final class PTZClient {
             pairingCandidate = candidate
             // Transition (plan découverte et QR, tâche 1) : le code voyage dans `pairingID`, sans preuve ;
             // la tâche 4 remplace ce passage par l'appairage du QR code.
-            send(.pair(pairingID: code, publicKey: key.publicKeyX963, name: deviceName, proof: Data()), on: candidate)
+            let proof = NacelleAuth.pairingProof(secret: pairing.secret, nonce: nonce, publicKeyX963: key.publicKeyX963)
+            send(.pair(pairingID: pairing.pairingID, publicKey: key.publicKeyX963, name: deviceName, proof: proof), on: candidate)
         } else if keys.load() != nil {
             authenticate(candidate)
         } else {
@@ -532,13 +568,17 @@ final class PTZClient {
     }
 
     private func attemptFailed() {
+        // Appairage sans réponse : le QR est refusé (mauvais secret, expiré) ou aucun Mac n'est joignable.
+        if pendingPairing != nil {
+            pendingPairing = nil
+            giveUp(.badCode)
+            return
+        }
         closeAll()
         if !openedThisAttempt {
             isUnreachable = true
         }
-        if pendingCode != nil, !tailscaleOpened {
-            authIssue = .needsTailscale
-        } else if let localIssue {
+        if let localIssue {
             authIssue = localIssue
         }
         state = nil
@@ -546,7 +586,7 @@ final class PTZClient {
     }
 
     private func scheduleRetry() {
-        guard url != nil else {
+        guard settings != nil else {
             link = .idle
             return
         }
