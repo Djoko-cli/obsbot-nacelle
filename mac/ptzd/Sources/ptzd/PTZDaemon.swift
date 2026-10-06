@@ -1,5 +1,6 @@
 import Foundation
 import os
+import PTZAuth
 import PTZCore
 import PTZServer
 import UVCCamera
@@ -36,6 +37,11 @@ struct PTZDaemon {
         let arguments = Array(CommandLine.arguments.dropFirst())
         if arguments.first == "uvc" {
             exit(UVCDebugCommand.run(Array(arguments.dropFirst()), log: log))
+        }
+        if let command = arguments.first, AuthCommand.names.contains(command) {
+            let result = AuthCommand.run(arguments, authority: DeviceAuthority(directory: supportDirectory))
+            print(result.output)
+            exit(result.status)
         }
 
         let config: PTZConfig
