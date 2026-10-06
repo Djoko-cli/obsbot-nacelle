@@ -420,7 +420,7 @@ final class PTZClient {
             // Seule la connexion qui a envoyé la preuve peut confirmer l'appairage.
             guard candidate === pairingCandidate else { return }
             let qrHost = pendingPairing?.hosts.first
-            // Sans le secret, seul Tailscale reste : l'appairage est valable quand même.
+            // Sans le secret, le réseau local en TLS est impossible ; seule l'écoute Tailscale reste : l'appairage est valable quand même.
             do {
                 try keys.saveLANKey(lanKey)
             } catch {
@@ -489,6 +489,7 @@ final class PTZClient {
             // Un seul appairage à la fois : les autres connexions attendent `paired`.
             guard pairingCandidate == nil else { return }
             guard let key = try? keys.loadOrCreate() else {
+                pendingPairing = nil
                 giveUp(.unpaired)
                 return
             }

@@ -10,7 +10,9 @@ import PTZCore
 /// en tout et par adresse : un appareil du Wi-Fi ne peut pas occuper les places des clients.
 /// Une place n'est jamais gardée par une connexion morte ou anonyme : 10 s pour s'authentifier,
 /// connexion en attente, ping toutes les 10 s. Sur le réseau local, tout passe en TLS à clé
-/// pré-partagée (spec accès local § 14) et l'appairage est refusé.
+/// pré-partagée (spec accès local § 14) : c'est le seul endroit où l'on appaire, dans le TLS ouvert
+/// avec le secret du QR (identité `pair-<id>`). L'appairage est refusé (`notLocal`) sur Tailscale et
+/// sur 127.0.0.1, et `openPairing` n'est accepté que de 127.0.0.1 de confiance.
 @MainActor
 public final class WebSocketServer {
     /// Clients authentifiés ou de confiance (127.0.0.1 compris).
@@ -44,7 +46,7 @@ public final class WebSocketServer {
     private let log: LogSink
     private let trustLoopback: Bool
     private let localNetwork: Bool
-    /// Adresses écoutées comme le réseau local (TLS, pas d'appairage) : pour les tests seulement,
+    /// Adresses écoutées comme le réseau local (TLS, seul endroit où l'on appaire) : pour les tests seulement,
     /// le vrai réseau local passant par `LocalNetworkListeners`.
     private let localHosts: Set<String>
     private var listeners: [String: NWListener] = [:]
@@ -61,7 +63,7 @@ public final class WebSocketServer {
         let trusted: Bool
         /// Adresse distante, pour la réserve des connexions anonymes.
         let address: String
-        /// Arrivée par le réseau local (canal TLS) : l'appairage y est refusé.
+        /// Arrivée par le réseau local (canal TLS) : le seul endroit où `pair` est accepté.
         let local: Bool
         var authenticated = false
         /// Défi en cours ; consommé par le premier `auth`.
@@ -207,8 +209,8 @@ public final class WebSocketServer {
             MainActor.assumeIsolated { self?.listenerChanged(host, state) }
         }
         let trusted = !local && trustLoopback && Self.isLoopback(host)
-        // L'écoute Tailscale (ni boucle locale ni réseau local) n'admet que des adresses Tailscale :
-        // l'appairage y est permis parce que WireGuard authentifie les pairs (spec accès local § 12).
+        // L'écoute Tailscale (ni boucle locale ni réseau local) n'admet que des adresses Tailscale,
+        // que WireGuard authentifie (spec accès local § 12) ; l'appairage y est refusé (`notLocal`).
         // Les écoutes en boucle locale en sont dispensées, même sans confiance (`trustLoopback` à
         // faux, tests) : seuls les programmes du Mac y arrivent, et les tests y jouent ce rôle.
         let tailscaleOnly = !local && !Self.isLoopback(host)
@@ -398,14 +400,16 @@ public final class WebSocketServer {
             }
             openPairing(id)
         case let .pair(pairingID, publicKey, name, proof):
-            guard !client.authenticated else {
-                send(.error(code: .badMessage, message: "Déjà authentifié."), to: id)
-                return
-            }
             // Le QR code ne sert que sur le réseau local, dans le canal TLS ouvert avec son secret.
+            // Testé avant `authenticated` : le client de confiance (127.0.0.1) est authentifié d'office
+            // et doit recevoir `notLocal` (spec découverte et QR § 7.1).
             guard client.local else {
                 log("Client \(id) : appairage refusé hors du réseau local (\(client.address)).")
                 send(.error(code: .notLocal, message: "Appairage par QR code sur le réseau local seulement."), to: id)
+                return
+            }
+            guard !client.authenticated else {
+                send(.error(code: .badMessage, message: "Déjà authentifié."), to: id)
                 return
             }
             pair(id, pairingID: pairingID, publicKey: publicKey, name: name, proof: proof)

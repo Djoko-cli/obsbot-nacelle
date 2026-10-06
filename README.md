@@ -126,9 +126,11 @@ Prérequis : Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew ins
    ```
 
    Puis, dans l'app, toucher **Scanner le QR code** et viser l'écran du Mac (iOS demande l'accès à l'appareil photo). La clé de l'iPhone reste dans sa Secure Enclave ; le Mac garde sa clé publique et le secret du canal chiffré du réseau local, dans `devices.json` (droits 600). L'app retient l'adresse locale du Mac dans Réglages › Adresse du Mac (repli).
+
+   Mise à jour depuis une version qui demandait le nom Tailscale : le champ « Adresse du Mac (repli) » le garde. Pour passer à l'adresse locale (qui sert aussi en 4G par la route de sous-réseau), vider ce champ et toucher Enregistrer avant de scanner : l'app y retiendra l'adresse locale du Mac.
 6. Hors de la maison, l'app joint cette même adresse par Tailscale si un appareil du tailnet publie le réseau local (routage de sous-réseau) et si l'iPhone accepte les routes. Sinon, mettre dans le champ le nom Tailscale du Mac (champ `DNSName`, sans le point final, de `tailscale status --self --peers=false --json` sur le Mac) : l'app le joint par l'écoute Tailscale de `ptzd`, sans TLS.
 
-Retirer un iPhone : `ptzd devices` donne le début de son identifiant, puis `ptzd revoke <début>`. Ses connexions déjà ouvertes durent jusqu'à leur fin ; relancer le service pour les couper tout de suite.
+Retirer un iPhone : `ptzd devices` donne le début de son identifiant, puis `ptzd revoke <début>`. Ses connexions déjà ouvertes durent jusqu'à leur fin ; relancer le service pour les couper tout de suite. L'iPhone retiré affiche ensuite « Mac injoignable » : sur lui, « Oublier cet appairage », puis scanner un nouveau QR code.
 
 Avec un compte Apple gratuit, l'app expire au bout de 7 jours : refaire l'étape 2.
 

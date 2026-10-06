@@ -381,6 +381,26 @@ struct WebSocketServerTests {
         withExtendedLifetime(server) {}
     }
 
+    @Test("Appairage depuis 127.0.0.1 de confiance : notLocal, journalisé, aucun essai décompté")
+    func pairFromTrustedLoopbackRefused() async throws {
+        let opened = authority.pairing.open()
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) })
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        // Le client de confiance ne reçoit pas de défi : une preuve quelconque suffit.
+        let pair = ClientMessage.pair(
+            pairingID: opened.pairingID, publicKey: key.publicKey.x963Representation, name: "iPhone",
+            proof: Data(count: 32)
+        )
+        try await send(pair, on: task)
+        let reply = try await next(task) { if case .error = $0 { true } else { false } }
+        #expect(reply == .error(code: .notLocal, message: "Appairage par QR code sur le réseau local seulement."))
+        #expect(authority.pairing.current?.pairingID == opened.pairingID)
+        #expect(lines.values.contains("Client 1 : appairage refusé hors du réseau local (127.0.0.1)."))
+        withExtendedLifetime(server) {}
+    }
+
     @Test("Appairage hors du réseau local (Tailscale) : notLocal, même avec la bonne preuve")
     func pairOnlyOnLocalNetwork() async throws {
         let opened = authority.pairing.open()

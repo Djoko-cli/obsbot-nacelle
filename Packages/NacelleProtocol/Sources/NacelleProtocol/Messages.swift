@@ -45,9 +45,9 @@ public enum ErrorCode: String, Codable, Sendable {
     case unpaired
     /// Signature fausse.
     case authFailed
-    /// Code d'appairage faux.
+    /// Preuve d'appairage fausse.
     case badCode
-    /// Aucun code d'appairage en cours, ou code expiré.
+    /// Aucun appairage en cours, expiré, déjà utilisé, ou autre identifiant.
     case pairingClosed
     /// Message refusé avant l'authentification.
     case notAuthenticated
@@ -98,7 +98,7 @@ public enum ServerMessage: Equatable, Sendable {
     /// Appairage ouvert : ce que `ptzd pair` met dans le QR code.
     case pairingOpened(PairingInvitation)
     /// L'appareil vient d'être enregistré ; `lanKey` est son secret du canal chiffré du réseau local
-    /// (spec accès local § 14), remis seulement par Tailscale.
+    /// (spec accès local § 14), remis sur le réseau local à la connexion qui a fourni la preuve.
     case paired(deviceID: String, lanKey: Data)
     /// Réponse de go2rtc à l'offre `id`.
     case webrtcAnswer(id: Int, sdp: String)
