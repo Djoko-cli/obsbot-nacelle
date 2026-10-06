@@ -195,6 +195,8 @@ Durée attendue : environ 4 s, davantage quand la vidéo démarre au même momen
 
 ### 6.10 Sécurité
 
+> Remplacé par l'amendement A4 : voir [2026-10-06-acces-local-design.md](2026-10-06-acces-local-design.md). Le texte ci-dessous décrit la v1.
+
 - `ptzd` n'écoute que sur l'adresse Tailscale et sur 127.0.0.1 (amendement A1), jamais sur `0.0.0.0` ni sur l'adresse du réseau local : un appareil du Wi-Fi qui n'est pas dans le réseau Tailscale ne peut pas piloter.
 - Il n'y a pas d'authentification en plus dans la v1 : le réseau Tailscale de Majid sert de frontière.
 - L'API go2rtc (port 1984) est déjà ouverte sans authentification sur le réseau local. C'est un état antérieur à ce projet, qui reste hors périmètre.
@@ -312,3 +314,4 @@ Validés par Majid le 2026-10-05, après les vérifications faites en écrivant 
 | **A1** | `ptzd` écoute aussi sur 127.0.0.1 (§ 6.1, § 6.10) | Le Mac ne peut pas joindre un `NWListener` par sa propre adresse Tailscale (l'iPhone, lui, y arrive) : sans 127.0.0.1, le service installé ne se vérifierait que depuis l'iPhone. Aucune exposition nouvelle. |
 | **A2** | Vie privée à -70° au lieu de -90° ; ordres absolus bornés à pan ±130°, tilt de -80° à +70° (§ 2, § 6.1, § 6.5) | La caméra ignore en silence un ordre à -90° ou à +89°, pan compris, en renvoyant un succès : le mode vie privée tel que spécifié ne faisait rien. -70° est obéi exactement, et vérifié à l'image. Détails : section « Correctif » de [docs/spike/2026-10-05-faisabilite.md](../../spike/2026-10-05-faisabilite.md). |
 | **A3** | `obsbot-ai-off` attend 10 s et quitte sans refermer le SDK s'il ne trouve pas la caméra ; un seul nouvel essai de prise en main 3 s après un échec (§ 6.4, § 6.9) | L'app ouvre la vidéo et la prise en main ensemble : une fois sur trois, l'initialisation du SDK a dépassé 5 s, puis `obsbot-ai-off` a planté en refermant le SDK encore occupé (constaté dans le simulateur le 2026-10-05). |
+| **A4** | Accès par le réseau local, appairage obligatoire, vidéo de l'app négociée par `ptzd`, go2rtc fermé au réseau local sauf RTSP avec mot de passe (§ 2, § 6.10, § 7) | Majid veut se passer de Tailscale à la maison (2026-10-06). La frontière n'est plus le réseau Tailscale mais l'appairage de l'iPhone. Détails : [2026-10-06-acces-local-design.md](2026-10-06-acces-local-design.md). |
