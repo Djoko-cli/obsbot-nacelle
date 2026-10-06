@@ -25,11 +25,11 @@ public final class PairingSession {
     /// Appelé `closeDelay` après un appairage réussi : la fenêtre se ferme.
     @ObservationIgnored public var onFinished: (() -> Void)?
     @ObservationIgnored private let scheduler: any Scheduler
-    /// Appareils connus à l'ouverture : un appareil absent de cette liste est le nouveau.
-    @ObservationIgnored private var knownDevices: Set<String>
+    /// Appareils connus à l'ouverture : un appareil absent de cette liste ou avec pairedAt différent est le nouveau.
+    @ObservationIgnored private var knownDevices: [String: Date]
     @ObservationIgnored private var closing: (any Cancellable)?
 
-    init(knownDevices: Set<String>, scheduler: any Scheduler) {
+    init(knownDevices: [String: Date], scheduler: any Scheduler) {
         self.knownDevices = knownDevices
         self.scheduler = scheduler
     }
@@ -47,7 +47,10 @@ public final class PairingSession {
 
     func adminChanged(_ state: AdminState) {
         guard case let .showing(invitation) = phase, state.pairing?.pairingID != invitation.pairingID else { return }
-        if let device = state.devices.first(where: { !knownDevices.contains($0.deviceID) }) {
+        if let device = state.devices.first(where: { device in
+            guard let known = knownDevices[device.deviceID] else { return true }
+            return known != device.pairedAt
+        }) {
             phase = .paired(name: device.name, shortID: String(device.deviceID.prefix(8)))
             closing = scheduler.schedule(after: Self.closeDelay) { [weak self] in
                 self?.onFinished?()
@@ -58,7 +61,9 @@ public final class PairingSession {
     }
 
     /// « Recommencer » : nouvelle attente, appareils connus mis à jour.
-    func restart(knownDevices: Set<String>) {
+    func restart(knownDevices: [String: Date]) {
+        closing?.cancel()
+        closing = nil
         self.knownDevices = knownDevices
         phase = .waiting
     }
