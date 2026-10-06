@@ -31,6 +31,7 @@ public final class WebSocketServer {
     private let port: UInt16
     private let controller: PTZController
     private let authority: DeviceAuthority
+    private let relay: any WebRTCRelay
     private let scheduler: any Scheduler
     private let log: LogSink
     private let trustLoopback: Bool
@@ -49,11 +50,14 @@ public final class WebSocketServer {
         var deadline: (any Cancellable)?
         var ping: (any Cancellable)?
         var pongDeadline: (any Cancellable)?
+        /// Négociation vidéo en cours ; une nouvelle offre la remplace.
+        var negotiation: Task<Void, Never>?
 
         func cancelTimers() {
             deadline?.cancel()
             ping?.cancel()
             pongDeadline?.cancel()
+            negotiation?.cancel()
         }
     }
 
@@ -69,6 +73,7 @@ public final class WebSocketServer {
         port: UInt16,
         controller: PTZController,
         authority: DeviceAuthority,
+        relay: any WebRTCRelay,
         scheduler: any Scheduler,
         log: @escaping LogSink,
         trustLoopback: Bool = true
@@ -81,6 +86,7 @@ public final class WebSocketServer {
         self.port = port
         self.controller = controller
         self.authority = authority
+        self.relay = relay
         self.scheduler = scheduler
         self.log = log
         self.trustLoopback = trustLoopback
@@ -257,6 +263,12 @@ public final class WebSocketServer {
         case let .auth(deviceID, signature):
             guard !client.authenticated else { return }
             verify(id, deviceID: deviceID, signature: signature)
+        case let .webrtcOffer(offerID, sdp):
+            guard client.authenticated else {
+                send(.error(code: .notAuthenticated, message: "Authentification d'abord."), to: id)
+                return
+            }
+            relayOffer(id, offerID: offerID, sdp: sdp)
         default:
             guard client.authenticated else {
                 send(.error(code: .notAuthenticated, message: "Authentification d'abord."), to: id)
@@ -299,6 +311,24 @@ public final class WebSocketServer {
         case .registryUnreadable:
             log("devices.json illisible : aucun appareil accepté.")
             refuse(id, .unpaired, "Liste des appareils illisible sur le Mac.", reason: "devices.json illisible")
+        }
+    }
+
+    /// Relaie l'offre à go2rtc ; la réponse ou l'erreur porte l'identifiant de l'offre.
+    private func relayOffer(_ id: ClientID, offerID: Int, sdp: String) {
+        clients[id]?.negotiation?.cancel()
+        let relay = relay
+        clients[id]?.negotiation = Task { [weak self] in
+            let reply: ServerMessage
+            do {
+                reply = .webrtcAnswer(id: offerID, sdp: try await relay.answer(offer: sdp))
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.log("Relais vidéo du client \(id) en échec : \(error).")
+                reply = .webrtcError(id: offerID, message: "go2rtc ne répond pas.")
+            }
+            guard !Task.isCancelled else { return }
+            self?.send(reply, to: id)
         }
     }
 

@@ -68,6 +68,10 @@ struct PTZDaemon {
             log: log
         )
         camera.onPresenceChange = { controller.cameraPresenceChanged($0) }
+        guard let relay = Go2rtcRelay(api: config.go2rtcAPI, stream: config.streamName) else {
+            log("go2rtcAPI invalide : \(config.go2rtcAPI)")
+            exit(78)
+        }
         // 127.0.0.1 en plus de l'adresse Tailscale : le Mac ne peut pas se joindre
         // lui-même par Tailscale, et les diagnostics locaux en ont besoin.
         let server = WebSocketServer(
@@ -75,6 +79,7 @@ struct PTZDaemon {
             port: UInt16(config.port),
             controller: controller,
             authority: DeviceAuthority(directory: supportDirectory),
+            relay: relay,
             scheduler: scheduler,
             log: log
         )

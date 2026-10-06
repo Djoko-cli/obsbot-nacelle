@@ -3,6 +3,7 @@ import Foundation
 public enum ConfigError: Error, Equatable {
     case missingListenAddress
     case invalidListenAddress(String)
+    case invalidGo2rtcAPI(String)
     case outOfRange(String)
 }
 
@@ -15,9 +16,13 @@ public struct PTZConfig: Codable, Equatable, Sendable {
     public var panDirection: Int
     public var tiltDirection: Int
     public var aiOffPath: String
+    /// API locale de go2rtc, pour relayer les offres WebRTC (spec accès local § 6.5).
+    public var go2rtcAPI: String
+    /// Flux go2rtc relayé.
+    public var streamName: String
 
     private enum CodingKeys: String, CodingKey {
-        case listenAddress, port, panMaxSpeed, tiltMaxSpeed, panDirection, tiltDirection, aiOffPath
+        case listenAddress, port, panMaxSpeed, tiltMaxSpeed, panDirection, tiltDirection, aiOffPath, go2rtcAPI, streamName
     }
 
     public init(
@@ -27,7 +32,9 @@ public struct PTZConfig: Codable, Equatable, Sendable {
         tiltMaxSpeed: Int = 60,
         panDirection: Int = 1,
         tiltDirection: Int = 1,
-        aiOffPath: String = "bin/obsbot-ai-off"
+        aiOffPath: String = "bin/obsbot-ai-off",
+        go2rtcAPI: String = "http://127.0.0.1:1984",
+        streamName: String = "obsbot"
     ) {
         self.listenAddress = listenAddress
         self.port = port
@@ -36,6 +43,8 @@ public struct PTZConfig: Codable, Equatable, Sendable {
         self.panDirection = panDirection
         self.tiltDirection = tiltDirection
         self.aiOffPath = aiOffPath
+        self.go2rtcAPI = go2rtcAPI
+        self.streamName = streamName
     }
 
     public init(from decoder: any Decoder) throws {
@@ -50,7 +59,9 @@ public struct PTZConfig: Codable, Equatable, Sendable {
             tiltMaxSpeed: try c.decodeIfPresent(Int.self, forKey: .tiltMaxSpeed) ?? 60,
             panDirection: try c.decodeIfPresent(Int.self, forKey: .panDirection) ?? 1,
             tiltDirection: try c.decodeIfPresent(Int.self, forKey: .tiltDirection) ?? 1,
-            aiOffPath: try c.decodeIfPresent(String.self, forKey: .aiOffPath) ?? "bin/obsbot-ai-off"
+            aiOffPath: try c.decodeIfPresent(String.self, forKey: .aiOffPath) ?? "bin/obsbot-ai-off",
+            go2rtcAPI: try c.decodeIfPresent(String.self, forKey: .go2rtcAPI) ?? "http://127.0.0.1:1984",
+            streamName: try c.decodeIfPresent(String.self, forKey: .streamName) ?? "obsbot"
         )
     }
 
@@ -73,6 +84,18 @@ public struct PTZConfig: Codable, Equatable, Sendable {
         guard (1...120).contains(tiltMaxSpeed) else { throw ConfigError.outOfRange("tiltMaxSpeed") }
         guard [1, -1].contains(panDirection) else { throw ConfigError.outOfRange("panDirection") }
         guard [1, -1].contains(tiltDirection) else { throw ConfigError.outOfRange("tiltDirection") }
+        guard Self.isLocalHTTP(go2rtcAPI) else { throw ConfigError.invalidGo2rtcAPI(go2rtcAPI) }
+        guard !streamName.trimmingCharacters(in: .whitespaces).isEmpty else { throw ConfigError.outOfRange("streamName") }
+    }
+
+    /// L'API go2rtc n'écoute que sur la boucle locale (spec accès local § 7) : `http://127.0.0.1:<port>`
+    /// ou `http://localhost:<port>`, sans chemin.
+    static func isLocalHTTP(_ text: String) -> Bool {
+        guard let url = URLComponents(string: text), url.scheme == "http", url.port != nil,
+              url.path.isEmpty || url.path == "/", url.query == nil else {
+            return false
+        }
+        return url.host == "127.0.0.1" || url.host == "localhost"
     }
 
     static func isAllowedListenAddress(_ text: String) -> Bool {
