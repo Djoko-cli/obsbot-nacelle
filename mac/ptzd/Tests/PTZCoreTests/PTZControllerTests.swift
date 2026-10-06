@@ -197,6 +197,38 @@ struct PTZControllerTests {
         #expect(controller.snapshot.aiTracking == .off)
     }
 
+    @Test("À partir de tracking .off : aiTracking(on: true) en vol, puis privacy(on: true) lance la coupure")
+    func aiTrackingCutFromOffDuringPrivacy() {
+        let controller = makeController()
+        _ = controller.handle(.aiTracking(on: false), from: 1)
+        runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .off)
+        _ = controller.handle(.aiTracking(on: true), from: 1)
+        #expect(runner.orders == [false, true])
+        _ = controller.handle(.privacy(on: true), from: 1)
+        runner.finish(.success)
+        #expect(runner.orders == [false, true, false])
+        #expect(runner.runCount == 3)
+        runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .off)
+    }
+
+    @Test("À partir de tracking .off : aiTracking(on: true) en vol, puis mouvement lance la coupure")
+    func aiTrackingCutFromOffDuringMove() {
+        let controller = makeController()
+        _ = controller.handle(.aiTracking(on: false), from: 1)
+        runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .off)
+        _ = controller.handle(.aiTracking(on: true), from: 1)
+        #expect(runner.orders == [false, true])
+        _ = controller.handle(.move(pan: 1, tilt: 0), from: 1)
+        runner.finish(.success)
+        #expect(runner.orders == [false, true, false])
+        #expect(runner.runCount == 3)
+        runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .off)
+    }
+
     @Test("Débranchement : caméra absente, mouvement oublié")
     func unplug() {
         let controller = makeController()

@@ -76,7 +76,7 @@ public final class PTZController {
                 return refusal
             }
             // Le suivi IA contrerait le joystick : coupé au premier mouvement, s'il n'est pas déjà coupé.
-            if pan != 0 || tilt != 0, control.tracking != .off {
+            if pan != 0 || tilt != 0, control.mayBeTracking {
                 control.take()
             }
             verifyTarget = false
@@ -92,7 +92,7 @@ public final class PTZController {
             }
             if on {
                 // Le suivi IA ramènerait l'objectif vers la personne.
-                if control.tracking != .off {
+                if control.mayBeTracking {
                     control.take()
                 }
                 return attempt {
