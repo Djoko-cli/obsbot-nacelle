@@ -21,11 +21,13 @@ struct PTZBotApp: App {
             PairingView(model: panel)
         }
         .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
 
         Window("Appareils appairés", id: WindowID.devices) {
             DevicesView(model: panel)
         }
         .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
     }
 }
 
