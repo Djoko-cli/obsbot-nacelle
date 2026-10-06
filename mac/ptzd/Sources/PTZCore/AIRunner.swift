@@ -8,6 +8,18 @@ public enum AIResult: Equatable, Sendable {
     case timeout
     case launchFailed(String)
     case unexpectedExit(Int32)
+
+    /// Le motif, en français, pour les messages montrés à l'utilisateur (le journal garde la forme brute).
+    public var userDescription: String {
+        switch self {
+        case .success: "réussi"
+        case .cameraNotFound: "caméra introuvable"
+        case .sdkError: "erreur du SDK OBSBOT"
+        case .timeout: "délai dépassé"
+        case .launchFailed: "l'utilitaire n'a pas pu être lancé"
+        case let .unexpectedExit(status): "l'utilitaire s'est arrêté avec le code \(status)"
+        }
+    }
 }
 
 /// Allume (`on`) ou coupe le suivi IA de la caméra.

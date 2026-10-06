@@ -166,7 +166,7 @@ struct PTZControllerTests {
         #expect(errors.values.count == 1)
         #expect(errors.values.first?.0 == 7)
         #expect(errors.values.first?.1 == .uvcFailed)
-        #expect(errors.values.first?.2 == "Suivi IA non modifié (sdkError).")
+        #expect(errors.values.first?.2 == "Suivi IA non modifié (erreur du SDK OBSBOT).")
         #expect(controller.snapshot.aiTracking == .unknown)
     }
 

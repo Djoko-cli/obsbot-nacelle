@@ -43,7 +43,7 @@ public final class ControlTaker {
     /// est lancée quand cet ordre se termine.
     public func take() {
         if isObsbotCenterRunning() {
-            log("OBSBOT Center est ouvert : ferme-le, il fausse la relecture du tilt.")
+            log("OBSBOT Center est ouvert : fermez-le, il fausse la relecture du tilt.")
         }
         guard state != .taking else { if explicitOrder { cutPending = true }; return }
         state = .taking

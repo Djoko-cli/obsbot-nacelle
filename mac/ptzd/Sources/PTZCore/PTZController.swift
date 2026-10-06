@@ -111,7 +111,7 @@ public final class PTZController {
             }
             control.setTracking(on: on) { [weak self] result in
                 guard result != .success else { return }
-                self?.onClientError?(client, .uvcFailed, "Suivi IA non modifié (\(result)).")
+                self?.onClientError?(client, .uvcFailed, "Suivi IA non modifié (\(result.userDescription)).")
             }
             return nil
         case .pair, .openPairing, .auth, .webrtcOffer, .adminWatch, .revoke, .kick, .unblock, .closePairing:
