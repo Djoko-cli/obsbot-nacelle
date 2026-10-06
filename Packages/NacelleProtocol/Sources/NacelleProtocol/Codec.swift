@@ -31,7 +31,7 @@ public enum NacelleCodec {
 
 extension ClientMessage: Codable {
     private enum CodingKeys: String, CodingKey {
-        case type, pan, tilt, value, on
+        case type, pan, tilt, value, on, code, publicKey, name, deviceID, signature, id, sdp
     }
 
     public init(from decoder: any Decoder) throws {
@@ -49,6 +49,19 @@ extension ClientMessage: Codable {
             self = .zoom(value: min(max(try container.decode(Int.self, forKey: .value), 0), 100))
         case "privacy":
             self = .privacy(on: try container.decode(Bool.self, forKey: .on))
+        case "pair":
+            self = .pair(
+                code: try container.decode(String.self, forKey: .code),
+                publicKey: try container.decode(Data.self, forKey: .publicKey),
+                name: try container.decode(String.self, forKey: .name)
+            )
+        case "auth":
+            self = .auth(
+                deviceID: try container.decode(String.self, forKey: .deviceID),
+                signature: try container.decode(Data.self, forKey: .signature)
+            )
+        case "webrtcOffer":
+            self = .webrtcOffer(id: try container.decode(Int.self, forKey: .id), sdp: try container.decode(String.self, forKey: .sdp))
         default:
             throw NacelleProtocolError.unknownType(type)
         }
@@ -69,6 +82,19 @@ extension ClientMessage: Codable {
         case let .privacy(on):
             try container.encode("privacy", forKey: .type)
             try container.encode(on, forKey: .on)
+        case let .pair(code, publicKey, name):
+            try container.encode("pair", forKey: .type)
+            try container.encode(code, forKey: .code)
+            try container.encode(publicKey, forKey: .publicKey)
+            try container.encode(name, forKey: .name)
+        case let .auth(deviceID, signature):
+            try container.encode("auth", forKey: .type)
+            try container.encode(deviceID, forKey: .deviceID)
+            try container.encode(signature, forKey: .signature)
+        case let .webrtcOffer(id, sdp):
+            try container.encode("webrtcOffer", forKey: .type)
+            try container.encode(id, forKey: .id)
+            try container.encode(sdp, forKey: .sdp)
         }
     }
 
@@ -110,7 +136,7 @@ extension StateSnapshot: Codable {
 
 extension ServerMessage: Codable {
     private enum CodingKeys: String, CodingKey {
-        case type, code, message
+        case type, code, message, nonce, deviceID, id, sdp
     }
 
     public init(from decoder: any Decoder) throws {
@@ -124,6 +150,16 @@ extension ServerMessage: Codable {
                 code: try container.decode(ErrorCode.self, forKey: .code),
                 message: try container.decode(String.self, forKey: .message)
             )
+        case "challenge":
+            self = .challenge(nonce: try container.decode(Data.self, forKey: .nonce))
+        case "authenticated":
+            self = .authenticated
+        case "paired":
+            self = .paired(deviceID: try container.decode(String.self, forKey: .deviceID))
+        case "webrtcAnswer":
+            self = .webrtcAnswer(id: try container.decode(Int.self, forKey: .id), sdp: try container.decode(String.self, forKey: .sdp))
+        case "webrtcError":
+            self = .webrtcError(id: try container.decode(Int.self, forKey: .id), message: try container.decode(String.self, forKey: .message))
         default:
             throw NacelleProtocolError.unknownType(type)
         }
@@ -138,6 +174,22 @@ extension ServerMessage: Codable {
         case let .error(code, message):
             try container.encode("error", forKey: .type)
             try container.encode(code, forKey: .code)
+            try container.encode(message, forKey: .message)
+        case let .challenge(nonce):
+            try container.encode("challenge", forKey: .type)
+            try container.encode(nonce, forKey: .nonce)
+        case .authenticated:
+            try container.encode("authenticated", forKey: .type)
+        case let .paired(deviceID):
+            try container.encode("paired", forKey: .type)
+            try container.encode(deviceID, forKey: .deviceID)
+        case let .webrtcAnswer(id, sdp):
+            try container.encode("webrtcAnswer", forKey: .type)
+            try container.encode(id, forKey: .id)
+            try container.encode(sdp, forKey: .sdp)
+        case let .webrtcError(id, message):
+            try container.encode("webrtcError", forKey: .type)
+            try container.encode(id, forKey: .id)
             try container.encode(message, forKey: .message)
         }
     }

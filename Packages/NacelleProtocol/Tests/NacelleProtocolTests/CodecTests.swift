@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import NacelleProtocol
 
@@ -9,10 +10,19 @@ struct ClientMessageTests {
         .zoom(value: 33),
         .privacy(on: true),
         .privacy(on: false),
+        .pair(code: "042917", publicKey: Data([4, 1, 2, 3]), name: "iPhone"),
+        .auth(deviceID: "00112233445566778899aabbccddeeff", signature: Data([48, 69, 2, 1])),
+        .webrtcOffer(id: 3, sdp: "v=0\r\no=- 1 1 IN IP4 0.0.0.0\r\n"),
     ])
     func roundTrip(_ message: ClientMessage) throws {
         let text = try NacelleCodec.encode(message)
         #expect(try NacelleCodec.decodeClient(text) == message)
+    }
+
+    @Test("Les octets passent en base64, le code reste une chaîne (zéros en tête)")
+    func pairFormat() throws {
+        let text = try NacelleCodec.encode(ClientMessage.pair(code: "007123", publicKey: Data([1, 2, 3]), name: "iPhone"))
+        #expect(text == #"{"code":"007123","name":"iPhone","publicKey":"AQID","type":"pair"}"#)
     }
 
     @Test("takeControl s'écrit avec son seul type")
@@ -62,6 +72,12 @@ struct ServerMessageTests {
         ServerMessage.state(known),
         .state(unknown),
         .error(code: .privacyActive, message: "Vie privée active : mouvement refusé."),
+        .error(code: .unpaired, message: "Appareil inconnu."),
+        .challenge(nonce: Data(repeating: 7, count: 32)),
+        .authenticated,
+        .paired(deviceID: "00112233445566778899aabbccddeeff"),
+        .webrtcAnswer(id: 3, sdp: "v=0\r\n"),
+        .webrtcError(id: 3, message: "go2rtc ne répond pas."),
     ])
     func roundTrip(_ message: ServerMessage) throws {
         let text = try NacelleCodec.encode(message)
@@ -72,6 +88,11 @@ struct ServerMessageTests {
     func unknownValuesAreNull() throws {
         let text = try NacelleCodec.encode(ServerMessage.state(Self.unknown))
         #expect(text == #"{"camera":"absent","control":"idle","moving":false,"pan":null,"privacy":true,"tilt":null,"type":"state","zoom":null}"#)
+    }
+
+    @Test("authenticated s'écrit avec son seul type")
+    func authenticatedFormat() throws {
+        #expect(try NacelleCodec.encode(ServerMessage.authenticated) == #"{"type":"authenticated"}"#)
     }
 
     @Test("Un type inconnu est rejeté")

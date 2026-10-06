@@ -118,6 +118,9 @@ final class PTZClient {
                 state = snapshot
             case let .error(code, _):
                 lastError = code
+            case .challenge, .authenticated, .paired, .webrtcAnswer, .webrtcError:
+                // Authentification et vidéo relayée : branchées plus loin dans le plan.
+                break
             }
         case .closed:
             stopRepeating()
