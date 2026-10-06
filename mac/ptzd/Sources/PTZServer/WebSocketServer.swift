@@ -392,6 +392,7 @@ public final class WebSocketServer {
         case .openPairing:
             // Seul un programme du Mac (ptzd pair) ouvre un appairage (spec découverte et QR § 7.1).
             guard client.trusted else {
+                log("Client \(id) : ouverture d'appairage refusée hors du Mac (\(client.address)).")
                 send(.error(code: .notLocal, message: "Ouverture d'appairage depuis le Mac seulement."), to: id)
                 return
             }
@@ -403,6 +404,7 @@ public final class WebSocketServer {
             }
             // Le QR code ne sert que sur le réseau local, dans le canal TLS ouvert avec son secret.
             guard client.local else {
+                log("Client \(id) : appairage refusé hors du réseau local (\(client.address)).")
                 send(.error(code: .notLocal, message: "Appairage par QR code sur le réseau local seulement."), to: id)
                 return
             }
@@ -445,8 +447,7 @@ public final class WebSocketServer {
 
     private func pairingExpired(_ pairingID: String) {
         expiry = nil
-        guard authority.pairing.current?.pairingID == pairingID else { return }
-        authority.pairing.close(pairingID)
+        guard authority.pairing.close(pairingID) else { return }
         log("Appairage \(pairingID) expiré.")
         rebuildLocalListeners()
     }
