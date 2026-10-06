@@ -38,11 +38,12 @@ struct WebSocketServerTests {
         scheduler: any Scheduler = DispatchScheduler(),
         log: @escaping LogSink = { _ in },
         trustLoopback: Bool = true,
-        relay: any WebRTCRelay = FakeRelay { "v=0 réponse à \($0)" }
+        relay: any WebRTCRelay = FakeRelay { "v=0 réponse à \($0)" },
+        localHosts: Set<String> = []
     ) async -> (WebSocketServer, [String: UInt16]) {
         let server = WebSocketServer(
             hosts: hosts, port: 0, controller: controller, authority: authority, relay: relay,
-            scheduler: scheduler, log: log, trustLoopback: trustLoopback
+            scheduler: scheduler, log: log, trustLoopback: trustLoopback, localHosts: localHosts
         )
         let ports = await withCheckedContinuation { continuation in
             var ready: [String: UInt16] = [:]
@@ -97,8 +98,24 @@ struct WebSocketServerTests {
         NacelleAuth.deviceID(publicKeyX963: key.publicKey.x963Representation)
     }
 
-    private func pairTestDevice() throws {
-        try authority.devices.add(PairedDevice(deviceID: deviceID, name: "iPhone de test", publicKey: key.publicKey.x963Representation, pairedAt: Date()))
+    private func pairTestDevice(lanKey: Data? = nil) throws {
+        try authority.devices.add(PairedDevice(
+            deviceID: deviceID, name: "iPhone de test", publicKey: key.publicKey.x963Representation,
+            pairedAt: Date(), lanKey: lanKey
+        ))
+    }
+
+    /// Ouvre le canal TLS du « réseau local » (::1 dans les tests), reçoit le défi, le signe ;
+    /// renvoie le client et la réponse du serveur.
+    private func authenticateOverTLS(port: UInt16, lanKey: Data) async throws -> (TLSClient, ServerMessage) {
+        let client = TLSClient(host: "::1", port: port, identity: deviceID, key: lanKey)
+        try await client.open()
+        guard case let .challenge(nonce) = try await client.receive() else {
+            Issue.record("défi attendu")
+            return (client, .authenticated)
+        }
+        try client.send(.auth(deviceID: deviceID, signature: try signature(for: nonce)))
+        return (client, try await client.receive())
     }
 
     private func send(_ message: ClientMessage, on task: URLSessionWebSocketTask) async throws {
@@ -417,6 +434,81 @@ struct WebSocketServerTests {
         withExtendedLifetime(server) {}
     }
 
+    @Test("Réseau local : appareil appairé en TLS avec son secret, puis défi et authentification")
+    func localTLS() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
+        let (client, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        defer { client.close() }
+        #expect(reply == .authenticated)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Réseau local : sans TLS, ou avec une mauvaise clé, aucun canal")
+    func localRequiresTLS() async throws {
+        try pairTestDevice(lanKey: NacelleTLS.makeKey())
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
+        let wrong = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: NacelleTLS.makeKey())
+        await #expect(throws: TLSClientError.noChannel) { try await wrong.open() }
+        wrong.close()
+        let plain = connect("::1", ports["::1"]!)
+        defer { plain.cancel(with: .goingAway, reason: nil) }
+        await #expect(throws: (any Error).self) { _ = try await plain.receive() }
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Réseau local : appairage refusé, même pour un appareil appairé")
+    func noPairingOnLocalNetwork() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        _ = try authority.pairing.open()
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
+        let client = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: lanKey)
+        defer { client.close() }
+        try await client.open()
+        _ = try await client.receive()
+        try client.send(.pair(code: "123456", publicKey: key.publicKey.x963Representation, name: "iPhone"))
+        #expect(try await client.receive() == .error(code: .pairingClosed, message: "Appairage par Tailscale seulement."))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Appairage par Tailscale : l'écoute locale est relancée et accepte le nouveau secret")
+    func rebuildAfterPairing() async throws {
+        let code = try authority.pairing.open()
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
+        let rebuilt = PortBox()
+        server.onReady = { host, port in
+            if host == "::1" {
+                rebuilt.port = port
+            }
+        }
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await challenge(task)
+        try await send(.pair(code: code, publicKey: key.publicKey.x963Representation, name: "iPhone"), on: task)
+        guard case let .paired(_, lanKey) = try await next(task, where: { _ in true }) else {
+            Issue.record("paired attendu")
+            return
+        }
+        try await waitUntil { rebuilt.port != nil }
+        let (client, reply) = try await authenticateOverTLS(port: rebuilt.port!, lanKey: lanKey)
+        defer { client.close() }
+        #expect(reply == .authenticated)
+    }
+
+    @Test("Appareil retiré : refusé dès la poignée de main TLS suivante")
+    func localRevocation() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
+        try authority.devices.remove(prefix: String(deviceID.prefix(8)))
+        let client = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: lanKey)
+        defer { client.close() }
+        await #expect(throws: TLSClientError.noChannel) { try await client.open() }
+        withExtendedLifetime(server) {}
+    }
+
     @Test("L'état n'est diffusé qu'aux clients authentifiés")
     func broadcastOnlyToAuthenticated() async throws {
         try pairTestDevice()
@@ -593,6 +685,12 @@ struct WebSocketServerTests {
 @MainActor
 final class LineBox {
     var values: [String] = []
+}
+
+/// Port d'une écoute relancée (tests).
+@MainActor
+final class PortBox {
+    var port: UInt16?
 }
 
 /// Relais WebRTC de test : la réponse est calculée à partir de l'offre.

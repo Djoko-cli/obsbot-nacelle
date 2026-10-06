@@ -59,6 +59,16 @@ final class LocalNetworkListeners {
         scheduleReconcile()
     }
 
+    /// Relance toutes les écoutes (nouveaux réglages TLS) : chacune se relie après `.cancelled`.
+    func rebuild() {
+        let names = Array(bound.keys)
+        guard !names.isEmpty else { return }
+        log("Écoutes locales relancées (nouvel appareil appairé).")
+        for name in names {
+            retire(name)
+        }
+    }
+
     private func scheduleReconcile() {
         timer = scheduler.schedule(after: Self.reconcileInterval) { [weak self] in
             self?.reconcile()
