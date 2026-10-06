@@ -77,6 +77,7 @@ struct SettingsView: View {
             .confirmationDialog("Oublier l'appairage ?", isPresented: $confirmForget, titleVisibility: .visible) {
                 Button("Oublier", role: .destructive) {
                     onForget()
+                    dismiss()
                 }
             } message: {
                 Text("Le Mac refusera cet iPhone jusqu'au prochain appairage.")

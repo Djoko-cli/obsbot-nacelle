@@ -60,16 +60,16 @@ final class LocalNetworkListeners {
         scheduleReconcile()
     }
 
-    /// Relance toutes les écoutes (nouveaux réglages TLS) : chacune se relie après `.cancelled`.
     /// Adresses IPv4 écoutées, l'Ethernet d'abord.
     var addresses: [String] {
         bound.sorted { ($0.value.isWired ? 0 : 1, $0.key) < ($1.value.isWired ? 0 : 1, $1.key) }.map(\.value.address)
     }
 
+    /// Relance toutes les écoutes (nouveaux réglages TLS) : chacune se relie après `.cancelled`.
     func rebuild() {
         let names = Array(bound.keys)
         guard !names.isEmpty else { return }
-        log("Écoutes locales relancées (nouvel appareil appairé).")
+        log("Écoutes locales relancées.")
         for name in names {
             retire(name)
         }
