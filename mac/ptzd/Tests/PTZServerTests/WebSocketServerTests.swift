@@ -1043,6 +1043,7 @@ struct WebSocketServerTests {
         scheduler.advance(by: WebSocketServer.pongTimeout - 2 * WebSocketServer.pingInterval)
         #expect(server.clientCount == 0)
         #expect(lines.values.contains("Client 1 libéré : pas de pong depuis 25 s."))
+        #expect(scheduler.pendingCount == 0)
     }
 
     @Test("Client qui répond aux pings (URLSessionWebSocketTask) : gardé au-delà de 25 s")
@@ -1079,6 +1080,7 @@ struct WebSocketServerTests {
         server.connectionChanged(1, .waiting(.posix(.ENETDOWN)))
         #expect(server.clientCount == 0)
         #expect(lines.values.contains { $0.hasPrefix("Client 1 libéré : connexion en attente") })
+        #expect(scheduler.pendingCount == 0)
     }
 
     @Test("Fermeture normale : minuteries du client annulées, rien de plus au journal")
@@ -1092,6 +1094,7 @@ struct WebSocketServerTests {
 
         task.cancel(with: .goingAway, reason: nil)
         try await waitUntil { server.clientCount == 0 }
+        #expect(scheduler.pendingCount == 0)
         #expect(!lines.values.contains { $0.contains("libéré") })
     }
 }
