@@ -9,7 +9,8 @@ import PTZCore
 /// 127.0.0.1 (spec accès local § 6.3). Les connexions anonymes ont leurs propres réserves, bornées
 /// en tout et par adresse : un appareil du Wi-Fi ne peut pas occuper les places des clients.
 /// Une place n'est jamais gardée par une connexion morte ou anonyme : 10 s pour s'authentifier,
-/// connexion en attente, ping toutes les 10 s.
+/// connexion en attente, ping toutes les 10 s. Sur le réseau local, tout passe en TLS à clé
+/// pré-partagée (spec accès local § 14) et l'appairage est refusé.
 @MainActor
 public final class WebSocketServer {
     /// Clients authentifiés ou de confiance (127.0.0.1 compris).
@@ -43,6 +44,9 @@ public final class WebSocketServer {
     private let log: LogSink
     private let trustLoopback: Bool
     private let localNetwork: Bool
+    /// Adresses écoutées comme le réseau local (TLS, pas d'appairage) : pour les tests seulement,
+    /// le vrai réseau local passant par `LocalNetworkListeners`.
+    private let localHosts: Set<String>
     private var listeners: [String: NWListener] = [:]
     private var localListeners: LocalNetworkListeners?
     private var clients: [ClientID: Client] = [:]
@@ -55,6 +59,8 @@ public final class WebSocketServer {
         let trusted: Bool
         /// Adresse distante, pour la réserve des connexions anonymes.
         let address: String
+        /// Arrivée par le réseau local (canal TLS) : l'appairage y est refusé.
+        let local: Bool
         var authenticated = false
         /// Défi en cours ; consommé par le premier `auth`.
         var nonce: Data?
@@ -78,7 +84,8 @@ public final class WebSocketServer {
     }
 
     /// Les adresses en double ne sont écoutées qu'une fois (config.json peut déjà contenir 127.0.0.1).
-    /// `trustLoopback` à faux (tests) impose l'authentification aussi sur 127.0.0.1.
+    /// `trustLoopback` à faux (tests) impose l'authentification aussi sur 127.0.0.1 ; `localHosts` (tests)
+    /// fait écouter ces adresses comme le réseau local.
     public init(
         hosts: [String],
         port: UInt16,
@@ -88,7 +95,8 @@ public final class WebSocketServer {
         scheduler: any Scheduler,
         log: @escaping LogSink,
         trustLoopback: Bool = true,
-        localNetwork: Bool = false
+        localNetwork: Bool = false,
+        localHosts: Set<String> = []
     ) {
         self.hosts = hosts.reduce(into: []) { unique, host in
             if !unique.contains(host) {
@@ -103,6 +111,7 @@ public final class WebSocketServer {
         self.log = log
         self.trustLoopback = trustLoopback
         self.localNetwork = localNetwork
+        self.localHosts = localHosts
         controller.onStateChange = { [weak self] snapshot in
             self?.broadcast(.state(snapshot))
         }
@@ -112,14 +121,17 @@ public final class WebSocketServer {
     /// encore là), réessaie toutes les 5 s pour cette adresse. Puis, si demandé, sur le
     /// réseau local, où chaque connexion doit s'authentifier.
     public func start() {
-        for host in hosts {
+        for host in hosts.filter({ !localHosts.contains($0) }) {
+            listen(on: host)
+        }
+        for host in localHosts.sorted() {
             listen(on: host)
         }
         if localNetwork {
             let local = LocalNetworkListeners(
                 port: port,
-                makeParameters: { [unowned self] in self.makeParameters() },
-                onConnection: { [weak self] connection in self?.accept(connection, trusted: false) },
+                makeParameters: { [unowned self] in self.makeParameters(tls: self.localTLS()) },
+                onConnection: { [weak self] connection in self?.accept(connection, trusted: false, local: true) },
                 scheduler: scheduler,
                 log: log
             )
@@ -128,8 +140,24 @@ public final class WebSocketServer {
         }
     }
 
-    /// TCP avec keepalive et WebSocket, sans adresse locale : chaque écoute ajoute la sienne.
-    private func makeParameters() -> NWParameters {
+    /// TLS à clé pré-partagée du réseau local : les secrets des appareils appairés à cet instant,
+    /// et le veto d'un appareil retiré depuis, relu à chaque poignée de main.
+    private func localTLS() -> NWProtocolTLS.Options {
+        let authority = authority
+        return NacelleTLS.server(identities: Array(authority.lanKeys().keys)) { authority.lanKey(for: $0) }
+    }
+
+    /// Relance les écoutes du réseau local, pour qu'elles connaissent le secret d'un nouvel appareil.
+    private func rebuildLocalListeners() {
+        localListeners?.rebuild()
+        for host in localHosts {
+            listeners.removeValue(forKey: host)?.cancel()
+            listen(on: host)
+        }
+    }
+
+    /// TCP avec keepalive, TLS si donné, et WebSocket, sans adresse locale : chaque écoute ajoute la sienne.
+    private func makeParameters(tls: NWProtocolTLS.Options? = nil) -> NWParameters {
         // Keepalive TCP : une connexion morte (iPhone suspendu, réseau coupé) est fermée
         // après environ 25 s au lieu de garder une des 4 places indéfiniment.
         let tcp = NWProtocolTCP.Options()
@@ -137,7 +165,7 @@ public final class WebSocketServer {
         tcp.keepaliveIdle = 10
         tcp.keepaliveInterval = 5
         tcp.keepaliveCount = 3
-        let parameters = NWParameters(tls: nil, tcp: tcp)
+        let parameters = NWParameters(tls: tls, tcp: tcp)
         let webSocket = NWProtocolWebSocket.Options()
         webSocket.autoReplyPing = true
         // Un navigateur envoie toujours Origin, nos clients (app iOS, nacelle-ws) jamais :
@@ -154,7 +182,8 @@ public final class WebSocketServer {
     }
 
     private func listen(on host: String) {
-        let parameters = makeParameters()
+        let local = localHosts.contains(host)
+        let parameters = makeParameters(tls: local ? localTLS() : nil)
         parameters.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port) ?? .any)
         parameters.allowLocalEndpointReuse = true
         let listener: NWListener
@@ -167,9 +196,9 @@ public final class WebSocketServer {
         listener.stateUpdateHandler = { [weak self] state in
             MainActor.assumeIsolated { self?.listenerChanged(host, state) }
         }
-        let trusted = trustLoopback && Self.isLoopback(host)
+        let trusted = !local && trustLoopback && Self.isLoopback(host)
         listener.newConnectionHandler = { [weak self] connection in
-            MainActor.assumeIsolated { self?.accept(connection, trusted: trusted) }
+            MainActor.assumeIsolated { self?.accept(connection, trusted: trusted, local: local) }
         }
         listeners[host] = listener
         listener.start(queue: .main)
@@ -233,7 +262,7 @@ public final class WebSocketServer {
         clients.values.filter { $0.authenticated || $0.trusted }.count
     }
 
-    private func accept(_ connection: NWConnection, trusted: Bool) {
+    private func accept(_ connection: NWConnection, trusted: Bool, local: Bool = false) {
         let address = Self.address(of: connection.endpoint)
         let pending = clients.values.filter { !$0.authenticated && !$0.trusted }.map(\.address)
         guard Self.admits(trusted: trusted, address: address, authenticated: reservedCount, pendingAddresses: pending) else {
@@ -247,7 +276,7 @@ public final class WebSocketServer {
         }
         let id = nextID
         nextID += 1
-        var client = Client(connection: connection, trusted: trusted, address: address)
+        var client = Client(connection: connection, trusted: trusted, address: address, local: local)
         client.deadline = scheduler.schedule(after: Self.authTimeout) { [weak self] in
             self?.release(id, reason: "pas authentifié en \(Int(Self.authTimeout)) s")
         }
@@ -328,6 +357,11 @@ public final class WebSocketServer {
                 send(.error(code: .badMessage, message: "Déjà authentifié."), to: id)
                 return
             }
+            // Le secret du canal chiffré ne doit jamais partir sur le réseau local (spec accès local § 14).
+            guard !client.local else {
+                send(.error(code: .pairingClosed, message: "Appairage par Tailscale seulement."), to: id)
+                return
+            }
             pair(id, code: code, publicKey: publicKey, name: name)
         case let .auth(deviceID, signature):
             guard !client.authenticated else { return }
@@ -355,6 +389,7 @@ public final class WebSocketServer {
         case let .paired(deviceID, lanKey):
             log("Appareil appairé : \(deviceID.prefix(8)) (\(name)).")
             send(.paired(deviceID: deviceID, lanKey: lanKey), to: id)
+            rebuildLocalListeners()
         case .badCode:
             log("Client \(id) : code d'appairage faux (\(endpoint(id))).")
             send(.error(code: .badCode, message: "Code d'appairage faux."), to: id)
