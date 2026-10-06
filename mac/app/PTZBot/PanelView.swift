@@ -84,7 +84,11 @@ struct PanelView: View {
             HStack {
                 Spacer()
                 Button("Quitter") {
-                    NSApp.terminate(nil)
+                    // Un appairage ouvert est fermé avant de partir ; l'envoi est asynchrone, d'où le court délai.
+                    model.closePairing()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        NSApp.terminate(nil)
+                    }
                 }
             }
         }
