@@ -41,7 +41,7 @@ struct NacelleAuthTests {
         var otherNonce = nonce
         otherNonce[0] ^= 1
         #expect(!NacelleAuth.verify(signature: signature, nonce: otherNonce, deviceID: deviceID, publicKeyX963: publicKey))
-        #expect(!NacelleAuth.verify(signature: signature, nonce: nonce, deviceID: "0" + deviceID.dropFirst(), publicKeyX963: publicKey))
+        #expect(!NacelleAuth.verify(signature: signature, nonce: nonce, deviceID: (deviceID.first == "0" ? "1" : "0") + deviceID.dropFirst(), publicKeyX963: publicKey))
         let otherKey = P256.Signing.PrivateKey().publicKey.x963Representation
         #expect(!NacelleAuth.verify(signature: signature, nonce: nonce, deviceID: deviceID, publicKeyX963: otherKey))
         #expect(!NacelleAuth.verify(signature: Data([1, 2]), nonce: nonce, deviceID: deviceID, publicKeyX963: publicKey))
