@@ -61,21 +61,9 @@ final class AppModel {
         guard !isActive, let ptzdURL = settings.ptzdURL else { return }
         isActive = true
         ptz.start(url: ptzdURL)
-        video.start { [weak self] offer in
-            guard let self else { throw PTZClient.NegotiationError.connectionLost }
-            return try await self.signal(offer: offer)
-        }
-    }
-
-    /// Offre vidéo relayée par ptzd. Pendant la transition (spec accès local § 11, étapes 1 à 3),
-    /// si go2rtc ne répond pas à ptzd, l'ancien `POST` direct vers go2rtc est retenté.
-    private func signal(offer: String) async throws -> String {
-        do {
-            return try await ptz.negotiate(offer: offer)
-        } catch PTZClient.NegotiationError.relay {
-            guard let url = settings.webRTCURL else { throw PTZClient.NegotiationError.relay("") }
-            let (data, response) = try await URLSession.shared.data(for: Signaling.request(url: url, offerSDP: offer))
-            return try Signaling.answer(data: data, response: response)
+        // Offre vidéo relayée par ptzd (spec accès local § 8.4).
+        video.start { [ptz] offer in
+            try await ptz.negotiate(offer: offer)
         }
     }
 
