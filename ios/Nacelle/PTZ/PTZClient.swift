@@ -281,8 +281,8 @@ final class PTZClient {
         if let pairing = pendingPairing {
             let credentials = Self.credentials(for: pairing)
             for host in pairing.hosts {
-                if let port = NWEndpoint.Port(rawValue: UInt16(pairing.port)) {
-                    open(.tls(.hostPort(host: NWEndpoint.Host(host), port: port), credentials))
+                if let url = ConnectionSettings.webSocketURL(host: host, port: pairing.port) {
+                    open(.tls(.url(url), credentials))
                 }
             }
         } else {

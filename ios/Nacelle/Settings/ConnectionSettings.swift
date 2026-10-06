@@ -60,24 +60,27 @@ struct ConnectionSettings: Codable, Equatable, Sendable {
     /// Où joindre l'adresse du champ : en TLS avec ces secrets pour une adresse locale (aucune sans
     /// secret), en WebSocket simple pour Tailscale ; nil si le champ est vide.
     func endpoint(credentials: LANCredentials?) -> WebSocketEndpoint? {
-        guard let host = fallbackHost, let url = makePtzdURL(), let port = NWEndpoint.Port(rawValue: UInt16(ptzdPort)) else {
-            return nil
-        }
+        guard let host = fallbackHost, let url = makePtzdURL() else { return nil }
         switch Self.route(for: host) {
         case .local:
-            return credentials.map { .tls(.hostPort(host: NWEndpoint.Host(host), port: port), $0) }
+            return credentials.map { .tls(.url(url), $0) }
         case .tailscale:
             return .url(url)
         }
     }
 
-    /// `ws://<hôte>:<port ptzd>`
-    private func makePtzdURL() -> URL? {
+    /// `ws://<hôte>:<port>`. Le WebSocket de Network.framework a besoin d'une URL : vers un simple
+    /// `NWEndpoint.hostPort`, la connexion est abandonnée avant la poignée de main (vérifié sur macOS 27).
+    static func webSocketURL(host: String, port: Int) -> URL? {
         var components = URLComponents()
         components.scheme = "ws"
-        components.host = trimmedHost
-        components.port = ptzdPort
+        components.host = host
+        components.port = port
         return components.url
+    }
+
+    private func makePtzdURL() -> URL? {
+        Self.webSocketURL(host: trimmedHost, port: ptzdPort)
     }
 }
 

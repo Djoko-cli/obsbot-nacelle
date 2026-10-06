@@ -17,7 +17,7 @@ struct ConnectionSettingsTests {
     @Test("Adresse locale : TLS avec les secrets de l'iPhone, rien sans eux")
     func localEndpoint() {
         let settings = ConnectionSettings(host: "192.168.0.10", ptzdPort: 1985)
-        #expect(settings.endpoint(credentials: credentials) == .tls(.hostPort(host: "192.168.0.10", port: 1985), credentials))
+        #expect(settings.endpoint(credentials: credentials) == .tls(.url(URL(string: "ws://192.168.0.10:1985")!), credentials))
         #expect(settings.endpoint(credentials: nil) == nil)
     }
 

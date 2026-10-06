@@ -55,7 +55,7 @@ struct PTZClientTests {
 
     /// La connexion vers une adresse du QR code.
     private func qr(_ host: String) -> FakeTransport? {
-        transports.to(.tls(.hostPort(host: NWEndpoint.Host(host), port: 1985), pairingCredentials))
+        transports.to(.tls(.url(URL(string: "ws://\(host):1985")!), pairingCredentials))
     }
 
     /// Ouverture, défi, signature, authentification, par Tailscale.
@@ -267,7 +267,7 @@ struct PTZClientTests {
         client.start(settings: ConnectionSettings(host: "mac-mini.local"))
         let key = try #require(keys.key)
         let credentials = LANCredentials(identity: key.deviceID, key: lanKey)
-        #expect(transports.all.map(\.opened) == [[.tls(.hostPort(host: "mac-mini.local", port: 1985), credentials)]])
+        #expect(transports.all.map(\.opened) == [[.tls(.url(URL(string: "ws://mac-mini.local:1985")!), credentials)]])
         #expect(browser.isRunning)
     }
 
