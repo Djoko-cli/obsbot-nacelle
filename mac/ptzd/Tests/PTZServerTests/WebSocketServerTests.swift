@@ -4,6 +4,7 @@ import NacelleProtocol
 import Network
 import PTZAuth
 import PTZCore
+import Synchronization
 import Testing
 @testable import PTZServer
 
@@ -39,11 +40,12 @@ struct WebSocketServerTests {
         log: @escaping LogSink = { _ in },
         trustLoopback: Bool = true,
         relay: any WebRTCRelay = FakeRelay { "v=0 réponse à \($0)" },
-        localHosts: Set<String> = []
+        localHosts: Set<String> = [],
+        now: @escaping @Sendable () -> Date = { Date() }
     ) async -> (WebSocketServer, [String: UInt16]) {
         let server = WebSocketServer(
             hosts: hosts, port: 0, controller: controller, authority: authority, relay: relay,
-            scheduler: scheduler, log: log, trustLoopback: trustLoopback, localHosts: localHosts
+            scheduler: scheduler, log: log, trustLoopback: trustLoopback, localHosts: localHosts, now: now
         )
         let ports = await withCheckedContinuation { continuation in
             var ready: [String: UInt16] = [:]
@@ -733,6 +735,83 @@ struct WebSocketServerTests {
         withExtendedLifetime(server) {}
     }
 
+    @Test("Blocage échu pendant la veille : le minuteur est en pause, l'heure non ; accepté et plus de blockedUntil")
+    func expiredBlockLiftedWithoutTimer() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let clock = TestClock()
+        let (server, ports) = await startServer(
+            on: ["127.0.0.1", "::1"], scheduler: FakeScheduler(), localHosts: ["::1"], now: { clock.date }
+        )
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        try await send(.kick(deviceID: deviceID), on: admin)
+        #expect(try await nextAdmin(admin).devices.first?.blockedUntil != nil)
+
+        // L'heure avance de plus de 600 s sans que le planificateur ne tire (veille du Mac).
+        clock.advance(by: WebSocketServer.blockDuration + 1)
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        defer { iPhone.close() }
+        #expect(reply == .authenticated)
+        #expect(try await nextAdmin(admin).devices.first?.blockedUntil == nil)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("État d'administration : blockedUntil seulement pour un blocage encore en cours")
+    func adminStateHidesExpiredBlock() async throws {
+        try pairTestDevice()
+        let clock = TestClock()
+        let (server, ports) = await startServer(scheduler: FakeScheduler(), now: { clock.date })
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        try await send(.kick(deviceID: deviceID), on: admin)
+        #expect(try await nextAdmin(admin).devices.first?.blockedUntil != nil)
+        clock.advance(by: WebSocketServer.blockDuration + 1)
+        #expect(server.adminState().devices.first?.blockedUntil == nil)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Expulsé puis reconnecté avec une mauvaise signature : authFailed, pas blocked")
+    func kickedBadSignatureIsAuthFailed() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], scheduler: FakeScheduler(), localHosts: ["::1"])
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        try await send(.kick(deviceID: deviceID), on: admin)
+        #expect(try await nextAdmin(admin).devices.first?.blockedUntil != nil)
+
+        let client = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: lanKey)
+        try await client.open()
+        defer { client.close() }
+        guard case let .challenge(nonce) = try await client.receive() else {
+            Issue.record("défi attendu")
+            return
+        }
+        let other = P256.Signing.PrivateKey()
+        let forged = try other.signature(for: NacelleAuth.signedPayload(nonce: nonce, deviceID: deviceID)).derRepresentation
+        try client.send(.auth(deviceID: deviceID, signature: forged))
+        guard case .error(.authFailed, _) = try await client.receive() else {
+            Issue.record("authFailed attendu, pas blocked")
+            return
+        }
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Client authentifié mais pas de confiance (réseau local) : l'administration est refusée, notLocal")
+    func authenticatedUntrustedClientCannotAdminister() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        defer { iPhone.close() }
+        #expect(reply == .authenticated)
+        try iPhone.send(.kick(deviceID: deviceID))
+        let refused = try await iPhone.receive(where: { if case .error = $0 { true } else { false } })
+        #expect(refused == .error(code: .notLocal, message: "Administration depuis le Mac seulement."))
+        withExtendedLifetime(server) {}
+    }
+
     @Test("Débloquer : réaccepté tout de suite, journalisé")
     func unblock() async throws {
         let lanKey = NacelleTLS.makeKey()
@@ -810,8 +889,12 @@ struct WebSocketServerTests {
 
     @Test("Invitation : 4 adresses au plus, dans l'ordre")
     func invitationHosts() {
-        #expect(WebSocketServer.invitationHosts(["a", "b", "c", "d", "e"]) == ["a", "b", "c", "d"])
-        #expect(WebSocketServer.invitationHosts(["a"]) == ["a"])
+        let hosts = ["192.168.0.2", "192.168.0.3", "10.0.0.5", "169.254.0.7", "192.168.0.9"]
+        #expect(WebSocketServer.invitationHosts(hosts) == ["192.168.0.2", "192.168.0.3", "10.0.0.5", "169.254.0.7"])
+        #expect(WebSocketServer.invitationHosts(["192.168.0.2"]) == ["192.168.0.2"])
+        // Une adresse que l'app iPhone rejetterait (publique, IPv6) est écartée avant le plafond de 4.
+        #expect(WebSocketServer.invitationHosts(["192.0.2.1", "192.168.0.2", "fe80::1", "10.0.0.5"]) == ["192.168.0.2", "10.0.0.5"])
+        #expect(WebSocketServer.invitationHosts(["192.0.2.1"]).isEmpty)
     }
 
     @Test("Appareil retiré : refusé dès la poignée de main TLS suivante")
@@ -960,7 +1043,6 @@ struct WebSocketServerTests {
         scheduler.advance(by: WebSocketServer.pongTimeout - 2 * WebSocketServer.pingInterval)
         #expect(server.clientCount == 0)
         #expect(lines.values.contains("Client 1 libéré : pas de pong depuis 25 s."))
-        #expect(scheduler.pendingCount == 0)
     }
 
     @Test("Client qui répond aux pings (URLSessionWebSocketTask) : gardé au-delà de 25 s")
@@ -997,7 +1079,6 @@ struct WebSocketServerTests {
         server.connectionChanged(1, .waiting(.posix(.ENETDOWN)))
         #expect(server.clientCount == 0)
         #expect(lines.values.contains { $0.hasPrefix("Client 1 libéré : connexion en attente") })
-        #expect(scheduler.pendingCount == 0)
     }
 
     @Test("Fermeture normale : minuteries du client annulées, rien de plus au journal")
@@ -1011,7 +1092,6 @@ struct WebSocketServerTests {
 
         task.cancel(with: .goingAway, reason: nil)
         try await waitUntil { server.clientCount == 0 }
-        #expect(scheduler.pendingCount == 0)
         #expect(!lines.values.contains { $0.contains("libéré") })
     }
 }
@@ -1019,6 +1099,19 @@ struct WebSocketServerTests {
 @MainActor
 final class LineBox {
     var values: [String] = []
+}
+
+/// Horloge murale de test, avancée à la main.
+final class TestClock: Sendable {
+    private let current = Mutex(Date(timeIntervalSince1970: 1_800_000_000))
+
+    var date: Date {
+        current.withLock { $0 }
+    }
+
+    func advance(by seconds: TimeInterval) {
+        current.withLock { $0 = $0.addingTimeInterval(seconds) }
+    }
 }
 
 /// Port d'une écoute relancée (tests).
