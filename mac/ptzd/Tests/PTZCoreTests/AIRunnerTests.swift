@@ -33,6 +33,15 @@ struct AIRunnerTests {
         #expect(await run("/bin/sh", ["-c", "exit 7"]) == .unexpectedExit(7))
     }
 
+    @Test("Motifs en français pour l'utilisateur : aucune forme brute de l'énumération")
+    func userDescriptions() {
+        #expect(AIResult.cameraNotFound.userDescription == "caméra introuvable")
+        #expect(AIResult.sdkError.userDescription == "erreur du SDK OBSBOT")
+        #expect(AIResult.timeout.userDescription == "délai dépassé")
+        #expect(AIResult.launchFailed("/x : introuvable").userDescription == "l'utilitaire n'a pas pu être lancé")
+        #expect(AIResult.unexpectedExit(7).userDescription == "l'utilitaire s'est arrêté avec le code 7")
+    }
+
     @Test("Délai dépassé : le processus est arrêté")
     func timeout() async {
         #expect(await run("/bin/sh", ["-c", "sleep 5"], timeout: 0.3) == .timeout)

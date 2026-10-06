@@ -34,7 +34,7 @@ public enum PairCommand {
 
             Dans PTZBot sur l'iPhone, touchez « Scanner le QR code » et visez ce code.
             \(url)
-            Valable jusqu'à \(time.string(from: invitation.expiresAt)), une seule fois. Ne l'affiche que le temps du scan.
+            Valable jusqu'à \(time.string(from: invitation.expiresAt)), une seule fois. Ne l'affichez que le temps du scan.
             """)
         }
     }
