@@ -63,6 +63,29 @@ struct AppModelTests {
         model.deactivate()
     }
 
+    @Test("Écran d'appairage : tant que l'iPhone n'est pas appairé ; « Appairage… », puis « QR code refusé »")
+    func pairingScreen() throws {
+        let model = makeModel()
+        model.activate()
+        #expect(model.needsPairing)
+        #expect(model.pairingStatus == nil)
+        let link = try #require(PairingLink(string: "nacelle://pair?v=1&id=1a2b3c4d&k=BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU&h=192.0.2.30&p=1985"))
+        model.pair(with: link)
+        #expect(model.pairingStatus == "Appairage…")
+        let transport = try #require(transports.last)
+        transport.emit(.message(try NacelleCodec.encode(ServerMessage.challenge(nonce: Data(count: 32)))))
+        transport.emit(.message(try NacelleCodec.encode(ServerMessage.error(code: .pairingClosed, message: "x"))))
+        #expect(model.pairingStatus == "QR code refusé : relance ptzd pair")
+        #expect(model.needsPairing)
+        model.pair(with: link)
+        let second = try #require(transports.last)
+        second.emit(.message(try NacelleCodec.encode(ServerMessage.challenge(nonce: Data(count: 32)))))
+        second.emit(.message(try NacelleCodec.encode(ServerMessage.paired(deviceID: "x", lanKey: Data(count: 32)))))
+        #expect(!model.needsPairing)
+        #expect(model.pairingStatus == nil)
+        model.deactivate()
+    }
+
     @Test("Appairage par QR : un champ déjà rempli n'est pas modifié")
     func addressKept() throws {
         SettingsStore(defaults: defaults).save(complete)

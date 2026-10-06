@@ -66,6 +66,10 @@ final class PTZClient {
     private(set) var authIssue: AuthIssue?
     /// Cet iPhone s'est déjà authentifié, ou vient d'être appairé (enregistré).
     private(set) var isPaired: Bool
+    /// Un QR code scanné attend la réponse du Mac.
+    var isPairing: Bool {
+        pendingPairing != nil
+    }
 
     @ObservationIgnored private let makeTransport: (WebSocketEndpoint) -> any WebSocketTransport
     @ObservationIgnored private let browser: any ServiceBrowser
@@ -93,7 +97,7 @@ final class PTZClient {
     @ObservationIgnored private var repeater: (any Cancellable)?
     @ObservationIgnored private var currentMove = JoystickVector.zero
     /// QR code scanné, en attente d'appairage. Son secret n'est jamais rangé (spec découverte et QR § 8.3).
-    @ObservationIgnored private var pendingPairing: PairingLink?
+    private var pendingPairing: PairingLink?
     @ObservationIgnored private var pairingCandidate: Candidate?
     @ObservationIgnored private var nextOfferID = 0
     /// Négociations vidéo en attente de `webrtcAnswer`, par identifiant d'offre.

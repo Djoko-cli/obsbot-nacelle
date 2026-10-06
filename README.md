@@ -9,9 +9,9 @@ La caméra est branchée en USB sur un Mac qui la diffuse déjà avec [go2rtc](h
 ## Statut
 
 - **Côté Mac** : `ptzd` et `obsbot-ai-off` s'installent avec `scripts/install-mac.sh` (voir plus bas).
-- **App iOS** : s'installe depuis Xcode sur l'iPhone (voir « App iOS » plus bas).
+- **App iOS** (PTZBot) : s'installe depuis Xcode sur l'iPhone (voir « App iOS » plus bas).
 
-Conception : [spec](docs/superpowers/specs/2026-10-05-nacelle-design.md) · [spec de l'accès local](docs/superpowers/specs/2026-10-06-acces-local-design.md) · [plan côté Mac](docs/superpowers/plans/2026-10-05-nacelle-mac.md) · [plan de l'app iOS](docs/superpowers/plans/2026-10-05-nacelle-ios.md) · [plan de l'accès local](docs/superpowers/plans/2026-10-06-acces-local.md) · [tests de faisabilité](docs/spike/2026-10-05-faisabilite.md).
+Conception : [spec](docs/superpowers/specs/2026-10-05-nacelle-design.md) · [spec de l'accès local](docs/superpowers/specs/2026-10-06-acces-local-design.md) · [spec de la découverte et du QR code](docs/superpowers/specs/2026-10-06-decouverte-qr-design.md) · [plan côté Mac](docs/superpowers/plans/2026-10-05-nacelle-mac.md) · [plan de l'app iOS](docs/superpowers/plans/2026-10-05-nacelle-ios.md) · [plan de l'accès local](docs/superpowers/plans/2026-10-06-acces-local.md) · [plan de la découverte et du QR code](docs/superpowers/plans/2026-10-06-decouverte-qr.md) · [tests de faisabilité](docs/spike/2026-10-05-faisabilite.md).
 
 ## Architecture
 
@@ -25,10 +25,10 @@ iPhone : app SwiftUI                         Mac (celui de go2rtc)
 │                           │            │                       ▼          │
 │ Vidéo WebRTC ◀────────────┼─ images ───│ go2rtc (API en local) ◀── ffmpeg │
 └───────────────────────────┘            └──────────────────────────────────┘
-   à la maison : Wi-Fi (Bonjour) ; dehors : Tailscale
+   à la maison : Wi-Fi (Bonjour, adresse locale) ; dehors : la même adresse par Tailscale
 ```
 
-- **`ptzd`** : un service macOS en Swift, lancé par launchd. C'est le seul à envoyer des commandes de nacelle à la caméra, en UVC. Il écoute sur l'adresse Tailscale du Mac, sur 127.0.0.1, et sur ses interfaces Wi-Fi et Ethernet, où il s'annonce par Bonjour (`_nacelle._tcp`). Chaque iPhone doit être appairé une fois, par Tailscale ; ensuite, il signe un défi à chaque connexion. Sur le réseau local, tout passe en plus dans un canal TLS dont la clé, propre à chaque iPhone, est remise à l'appairage. Seules les connexions venues de 127.0.0.1 sont dispensées du défi.
+- **`ptzd`** : un service macOS en Swift, lancé par launchd. C'est le seul à envoyer des commandes de nacelle à la caméra, en UVC. Il écoute sur l'adresse Tailscale du Mac, sur 127.0.0.1, et sur ses interfaces Wi-Fi et Ethernet, où il s'annonce par Bonjour (`_nacelle._tcp`). Chaque iPhone est appairé une fois, sur le réseau local, en scannant le QR code affiché par `ptzd pair` ; ensuite, il signe un défi à chaque connexion. Sur le réseau local, tout passe en plus dans un canal TLS : pendant l'appairage, sa clé est le secret du QR code ; ensuite, une clé propre à chaque iPhone, remise à l'appairage. Seules les connexions venues de 127.0.0.1 sont dispensées du défi.
 - **`obsbot-ai-off`** : un petit utilitaire qui coupe le suivi IA de la caméra avec le SDK OBSBOT, puis se termine. `ptzd` le lance à chaque prise en main.
 - **go2rtc** : `ptzd` lui relaie l'offre WebRTC de l'app ; les images vont ensuite directement de go2rtc à l'iPhone. Voir « go2rtc » plus bas pour le fermer au réseau local.
 
@@ -91,7 +91,7 @@ Le Mac ne peut pas se joindre lui-même par son adresse Tailscale : en local, pa
 
 ## App iOS
 
-Prérequis : Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), un identifiant Apple (un compte gratuit suffit), Tailscale sur l'iPhone, et le côté Mac installé.
+Prérequis : Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), un identifiant Apple (un compte gratuit suffit), le côté Mac installé, et Tailscale sur l'iPhone pour piloter hors de la maison.
 
 1. Indiquer l'équipe de signature dans un réglage local, non versionné. Son identifiant est le champ OU des certificats « Apple Development » du trousseau :
 
@@ -118,15 +118,15 @@ Prérequis : Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew ins
    ```
 
 3. Au premier lancement, iOS demande de faire confiance au développeur : Réglages › Général › VPN et gestion de l'appareil.
-4. Dans l'app, saisir le nom Tailscale du Mac (champ `DNSName`, sans le point final, de `tailscale status --self --peers=false --json` sur le Mac). Le port par défaut (1985) convient.
-5. Appairer l'iPhone : sur le Mac, afficher un code (valable 5 min, un seul usage, 3 essais) :
+4. Au premier lancement, PTZBot cherche le Mac sur le Wi-Fi (« Recherche du Mac à proximité… ») : iOS demande l'accès au réseau local, répondre **Autoriser**.
+5. Appairer l'iPhone, sur le même réseau que le Mac : afficher un QR code (valable 5 min, un seul usage, 3 essais) :
 
    ```bash
    ~/Library/Application\ Support/ObsbotNacelle/bin/ptzd pair
    ```
 
-   Puis, avec Tailscale actif sur l'iPhone (l'appairage ne passe que par Tailscale), le saisir dans Réglages › Appairage et toucher **Enregistrer**. La clé de l'iPhone reste dans sa Secure Enclave ; le Mac garde sa clé publique et le secret du canal chiffré du réseau local, dans `devices.json` (droits 600).
-6. À la maison, l'app trouve le Mac sur le Wi-Fi, sans Tailscale : au premier essai, iOS demande l'accès au réseau local, répondre **Autoriser**.
+   Puis, dans l'app, toucher **Scanner le QR code** et viser l'écran du Mac (iOS demande l'accès à l'appareil photo). La clé de l'iPhone reste dans sa Secure Enclave ; le Mac garde sa clé publique et le secret du canal chiffré du réseau local, dans `devices.json` (droits 600). L'app retient l'adresse locale du Mac dans Réglages › Adresse du Mac (repli).
+6. Hors de la maison, l'app joint cette même adresse par Tailscale si un appareil du tailnet publie le réseau local (routage de sous-réseau) et si l'iPhone accepte les routes. Sinon, mettre dans le champ le nom Tailscale du Mac (champ `DNSName`, sans le point final, de `tailscale status --self --peers=false --json` sur le Mac) : l'app le joint par l'écoute Tailscale de `ptzd`, sans TLS.
 
 Retirer un iPhone : `ptzd devices` donne le début de son identifiant, puis `ptzd revoke <début>`. Ses connexions déjà ouvertes durent jusqu'à leur fin ; relancer le service pour les couper tout de suite.
 
@@ -156,6 +156,7 @@ webrtc:
 - Le port WebRTC 8555 reste ouvert : sans offre négociée par `ptzd`, il ne donne aucune image.
 - `go2rtc.yaml` contient le mot de passe RTSP : le passer en droits 600 (`chmod 600 go2rtc.yaml`).
 - Le flux RTSP vers Homebridge, identifiants compris, circule en clair sur le réseau local : un appareil qui intercepte ce trafic peut les lire, ainsi que les images.
+- Le QR code de `ptzd pair`, et l'URL affichée sous lui, permettent d'appairer un appareil pendant 5 minutes : ne les afficher que le temps du scan.
 - Ne jamais exposer 127.0.0.1:1985 au réseau, par exemple avec `tailscale serve` ou `ssh -L` : les connexions venues de 127.0.0.1 sont dispensées d'authentification, tout client distant passé par là piloterait la caméra.
 
 ## Désinstaller

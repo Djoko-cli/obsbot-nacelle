@@ -1,9 +1,11 @@
+import NacelleProtocol
 import SwiftUI
 
 /// Réglages : l'adresse du Mac en repli et l'appairage (spec découverte et QR § 8.1).
 struct SettingsView: View {
     @Binding var settings: ConnectionSettings
     let isPaired: Bool
+    let onPair: (PairingLink) -> Void
     let onForget: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var draft = ConnectionSettings()
@@ -11,6 +13,7 @@ struct SettingsView: View {
     // du focus), et le pavé numérique n'a pas de Retour ; « Enregistrer » perdrait la dernière saisie.
     @State private var ptzdPortText = ""
     @State private var confirmForget = false
+    @State private var showScanner = false
 
     /// Les réglages tels que saisis, port compris.
     private var edited: ConnectionSettings {
@@ -39,6 +42,9 @@ struct SettingsView: View {
                 }
                 Section {
                     LabeledContent("État", value: isPaired ? "Appairé" : "Non appairé")
+                    Button("Scanner le QR code") {
+                        showScanner = true
+                    }
                     if isPaired {
                         Button("Oublier cet appairage", role: .destructive) {
                             confirmForget = true
@@ -59,6 +65,13 @@ struct SettingsView: View {
                         dismiss()
                     }
                     .disabled(!edited.isValid)
+                }
+            }
+            .sheet(isPresented: $showScanner) {
+                QRScannerView { link in
+                    showScanner = false
+                    onPair(link)
+                    dismiss()
                 }
             }
             .confirmationDialog("Oublier l'appairage ?", isPresented: $confirmForget, titleVisibility: .visible) {

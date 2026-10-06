@@ -120,6 +120,19 @@ final class AppModel {
         ))
     }
 
+    /// L'écran d'appairage remplace les commandes tant que l'iPhone n'est pas appairé (spec découverte et QR § 8.1).
+    var needsPairing: Bool {
+        !ptz.isPaired
+    }
+
+    /// Où en est l'appairage, sur l'écran d'appairage.
+    var pairingStatus: String? {
+        if ptz.isPairing {
+            return "Appairage…"
+        }
+        return ptz.authIssue == .badCode ? StatusBanner.qrRefused : nil
+    }
+
     /// Joystick et zoom utilisables : connecté, caméra présente, hors vie privée.
     var controlsEnabled: Bool {
         guard ptz.link == .connected, let state = ptz.state else { return false }
