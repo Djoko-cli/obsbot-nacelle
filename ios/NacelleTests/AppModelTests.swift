@@ -131,6 +131,89 @@ struct AppModelTests {
         model.deactivate()
     }
 
+    /// Connexion authentifiée par la dernière connexion ouverte, puis cet état de ptzd.
+    private func connect(privacy: Bool) throws -> FakeTransport {
+        let transport = try #require(transports.last)
+        transport.emit(.opened)
+        transport.emit(.message(try NacelleCodec.encode(ServerMessage.challenge(nonce: Data(count: 32)))))
+        transport.emit(.message(try NacelleCodec.encode(ServerMessage.authenticated)))
+        try send(privacy: privacy, on: transport)
+        return transport
+    }
+
+    private func send(privacy: Bool, on transport: FakeTransport) throws {
+        let snapshot = StateSnapshot(camera: .connected, control: .ready, privacy: privacy, pan: 0, tilt: 0, zoom: 0, moving: false)
+        transport.emit(.message(try NacelleCodec.encode(ServerMessage.state(snapshot))))
+    }
+
+    @Test("Son : coupé au premier lancement ; le choix est retenu et joué une fois l'état de ptzd connu")
+    func soundPreference() throws {
+        SettingsStore(defaults: defaults).save(complete)
+        let model = makeModel()
+        #expect(!model.soundWanted)
+        model.activate()
+        _ = try connect(privacy: false)
+        #expect(!model.video.playsAudio)
+        model.soundWanted = true
+        #expect(model.video.playsAudio)
+        #expect(SettingsStore(defaults: defaults).soundOn)
+        model.deactivate()
+        let again = makeModel()
+        #expect(again.soundWanted)
+        again.activate()
+        #expect(!again.video.playsAudio)
+        _ = try connect(privacy: false)
+        #expect(again.video.playsAudio)
+        again.deactivate()
+    }
+
+    @Test("Vie privée : son coupé et bouton grisé sans autre action ; à la sortie, le choix revient")
+    func soundInPrivacy() throws {
+        SettingsStore(defaults: defaults).save(complete)
+        let model = makeModel()
+        model.soundWanted = true
+        model.activate()
+        let transport = try connect(privacy: true)
+        #expect(!model.soundPlaying)
+        #expect(!model.soundToggleEnabled)
+        #expect(!model.video.playsAudio)
+        #expect(model.soundWanted)
+        try send(privacy: false, on: transport)
+        #expect(model.soundPlaying)
+        #expect(model.soundToggleEnabled)
+        #expect(model.video.playsAudio)
+        model.deactivate()
+    }
+
+    @Test("Connexion à ptzd perdue pendant que le son joue : coupé, car la vie privée n'est plus connue")
+    func soundCutWhenStateLost() throws {
+        SettingsStore(defaults: defaults).save(complete)
+        let model = makeModel()
+        model.soundWanted = true
+        model.activate()
+        let transport = try connect(privacy: false)
+        #expect(model.video.playsAudio)
+        transport.emit(.closed)
+        #expect(!model.video.playsAudio)
+        #expect(!model.soundToggleEnabled)
+        model.deactivate()
+    }
+
+    @Test("Connexion à ptzd perdue en vie privée : le son reste coupé, la vidéo continuant sans ptzd")
+    func soundWhenStateLost() throws {
+        SettingsStore(defaults: defaults).save(complete)
+        let model = makeModel()
+        model.soundWanted = true
+        model.activate()
+        let transport = try connect(privacy: true)
+        transport.emit(.closed)
+        #expect(model.ptz.state == nil)
+        #expect(!model.soundPlaying)
+        #expect(!model.soundToggleEnabled)
+        #expect(!model.video.playsAudio)
+        model.deactivate()
+    }
+
     @Test("Inactif (Centre de contrôle, appel) : la nacelle s'arrête, la connexion reste ouverte")
     func pauseStopsMovement() throws {
         SettingsStore(defaults: defaults).save(complete)

@@ -57,7 +57,15 @@ final class PTZClient {
 
     private(set) var link: Link = .idle
     /// Dernier état reçu de ptzd ; nil hors connexion.
-    private(set) var state: StateSnapshot?
+    private(set) var state: StateSnapshot? {
+        didSet {
+            if state != oldValue {
+                onStateChange?()
+            }
+        }
+    }
+    /// Appelé à chaque changement d'état, y compris sa perte (nil) quand la connexion tombe.
+    @ObservationIgnored var onStateChange: (() -> Void)?
     /// Dernière erreur renvoyée par ptzd.
     private(set) var lastError: ErrorCode?
     /// Vrai quand une tentative de connexion a échoué, jusqu'à la prochaine réussite.

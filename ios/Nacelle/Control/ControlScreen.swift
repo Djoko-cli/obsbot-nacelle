@@ -22,7 +22,10 @@ struct ControlScreen: View {
                         BannerView(text: text)
                     }
                     Spacer(minLength: 12)
-                    privacyButton
+                    HStack(spacing: 10) {
+                        soundButton
+                        privacyButton
+                    }
                 }
                 Spacer()
                 HStack(alignment: .bottom) {
@@ -69,6 +72,31 @@ struct ControlScreen: View {
         }
         .foregroundStyle(.white)
         .accessibilityLabel("Réglages")
+    }
+
+    private var soundButton: some View {
+        Button {
+            model.soundWanted.toggle()
+        } label: {
+            Image(systemName: model.soundPlaying ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .foregroundStyle(.white)
+        .disabled(!model.soundToggleEnabled)
+        .opacity(model.soundToggleEnabled ? 1 : 0.4)
+        .accessibilityLabel(soundLabel)
+    }
+
+    private var soundLabel: String {
+        if privacyOn {
+            return "Son coupé en vie privée"
+        }
+        if !model.soundToggleEnabled {
+            return "Son coupé"
+        }
+        return model.soundWanted ? "Couper le son" : "Activer le son"
     }
 
     private var privacyButton: some View {
