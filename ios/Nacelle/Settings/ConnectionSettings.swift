@@ -87,7 +87,14 @@ struct ConnectionSettings: Codable, Equatable, Sendable {
 /// Réglages enregistrés dans UserDefaults.
 struct SettingsStore {
     static let key = "connectionSettings"
+    static let soundKey = "soundOn"
     let defaults: UserDefaults
+
+    /// Son voulu dans l'app : coupé au premier lancement, puis le dernier choix.
+    var soundOn: Bool {
+        get { defaults.bool(forKey: Self.soundKey) }
+        nonmutating set { defaults.set(newValue, forKey: Self.soundKey) }
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

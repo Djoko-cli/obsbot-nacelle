@@ -19,6 +19,15 @@ final class AppModel {
         }
     }
 
+    /// Son voulu (bouton haut-parleur), retenu d'un lancement à l'autre.
+    var soundWanted: Bool {
+        didSet {
+            guard soundWanted != oldValue else { return }
+            store.soundOn = soundWanted
+            syncSound()
+        }
+    }
+
     let ptz: PTZClient
     let video: VideoSession
     /// Connecté (ou en train de se connecter) au contrôle et à la vidéo.
@@ -32,8 +41,13 @@ final class AppModel {
         self.ptz = ptz
         self.video = video
         settings = store.load()
+        soundWanted = store.soundOn
         ptz.onAddressLearned = { [weak self] address in
             self?.remember(address)
+        }
+        // La vie privée coupe le son, sa sortie le rétablit, et un état perdu le coupe aussi.
+        ptz.onStateChange = { [weak self] in
+            self?.syncSound()
         }
     }
 
@@ -65,6 +79,7 @@ final class AppModel {
         isForeground = true
         guard !isActive else { return }
         isActive = true
+        syncSound()
         ptz.start(settings: settings)
         // Offre vidéo relayée par ptzd (spec accès local § 8.4).
         video.start { [ptz] offer in
@@ -137,6 +152,22 @@ final class AppModel {
     var controlsEnabled: Bool {
         guard ptz.link == .connected, let state = ptz.state else { return false }
         return state.camera == .connected && !state.privacy
+    }
+
+    /// Son joué : voulu, et seulement si ptzd dit que la vie privée est inactive (le micro de la caméra
+    /// capte la pièce). État inconnu (connexion en cours ou perdue) : coupé, car la vidéo, elle, continue.
+    var soundPlaying: Bool {
+        soundWanted && ptz.state?.privacy == false
+    }
+
+    /// Bouton son utilisable : hors vie privée, état connu.
+    var soundToggleEnabled: Bool {
+        ptz.state?.privacy == false
+    }
+
+    /// Applique `soundPlaying` à la vidéo : au départ, au bouton et à chaque changement d'état de ptzd.
+    func syncSound() {
+        video.setPlaysAudio(soundPlaying)
     }
 
     /// Bouton vie privée utilisable : connecté et caméra présente.

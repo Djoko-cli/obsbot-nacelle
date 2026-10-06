@@ -2,8 +2,10 @@ import Foundation
 import Observation
 @preconcurrency import WebRTC
 
-/// Vidéo en direct de go2rtc, en WebRTC, réception seule (spec § 7.2). L'offre est négociée
-/// par `signal`, qui la relaie à go2rtc (spec accès local § 8.4).
+/// Vidéo et son en direct de go2rtc, en WebRTC, réception seule (spec § 7.2). L'offre est négociée
+/// par `signal`, qui la relaie à go2rtc (spec accès local § 8.4). Le son est toujours reçu ; `playsAudio`
+/// décide seulement s'il est joué, pour qu'activer le son soit immédiat. Coupé, il reste décodé et
+/// sorti à volume nul : un peu de batterie, sans gêne pour les autres apps (`.mixWithOthers`).
 @MainActor
 @Observable
 final class VideoSession {
@@ -21,6 +23,8 @@ final class VideoSession {
     static let retryDelays: [TimeInterval] = [1, 2, 4, 8]
 
     private(set) var phase: Phase = .idle
+    /// Le son reçu est joué ; sinon, il est reçu mais muet.
+    private(set) var playsAudio = false
 
     @ObservationIgnored private let scheduler: any Scheduler
     @ObservationIgnored private var signal: Signal?
@@ -29,15 +33,18 @@ final class VideoSession {
     @ObservationIgnored private var peer: RTCPeerConnection?
     @ObservationIgnored private var observer: PeerObserver?
     @ObservationIgnored private var track: RTCVideoTrack?
+    @ObservationIgnored private var audioTrack: RTCAudioTrack?
     @ObservationIgnored private var renderer: RTCMTLVideoView?
     @ObservationIgnored private var retry: (any Cancellable)?
     @ObservationIgnored private var gathering: CheckedContinuation<Void, Never>?
 
     private static let factory: RTCPeerConnectionFactory = {
         RTCInitializeSSL()
+        // Périphérique audio en sortie seule : WebRTC ne demande jamais le micro de l'iPhone.
         return RTCPeerConnectionFactory(
             encoderFactory: RTCDefaultVideoEncoderFactory(),
-            decoderFactory: RTCDefaultVideoDecoderFactory()
+            decoderFactory: RTCDefaultVideoDecoderFactory(),
+            audioDevice: PlayoutAudioDevice()
         )
     }()
 
@@ -49,6 +56,12 @@ final class VideoSession {
     func attach(renderer: RTCMTLVideoView) {
         self.renderer = renderer
         track?.add(renderer)
+    }
+
+    /// Joue ou coupe le son reçu, tout de suite et pour les connexions suivantes.
+    func setPlaysAudio(_ on: Bool) {
+        playsAudio = on
+        audioTrack?.isEnabled = on
     }
 
     func start(signal: @escaping Signal) {
@@ -126,6 +139,11 @@ final class VideoSession {
                 track.add(renderer)
             }
         }
+        let audio = peer.addTransceiver(of: .audio, init: receiveOnly)
+        if let track = audio?.receiver.track as? RTCAudioTrack {
+            track.isEnabled = playsAudio
+            audioTrack = track
+        }
         self.peer = peer
         self.observer = observer
         return peer
@@ -182,6 +200,7 @@ final class VideoSession {
             track?.remove(renderer)
         }
         track = nil
+        audioTrack = nil
         peer?.close()
         peer = nil
         observer = nil
