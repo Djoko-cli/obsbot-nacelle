@@ -16,6 +16,17 @@ struct StatusBannerTests {
         StatusBanner.text(for: BannerInputs(macUnreachable: unreachable, connecting: connecting, state: state))
     }
 
+    @Test("Appairage : texte selon le problème, juste après « Mac injoignable »")
+    func pairingTexts() {
+        func text(_ issue: PTZClient.AuthIssue, unreachable: Bool = false) -> String? {
+            StatusBanner.text(for: BannerInputs(macUnreachable: unreachable, authIssue: issue, connecting: true, state: state(camera: .absent)))
+        }
+        #expect(text(.unpaired) == "iPhone non appairé : lance ptzd pair sur le Mac")
+        #expect(text(.badCode) == "Code d'appairage refusé")
+        #expect(text(.rejected) == "Accès refusé par le Mac")
+        #expect(text(.unpaired, unreachable: true) == "Mac injoignable : Tailscale est-il actif ?")
+    }
+
     @Test("Chaque condition a son texte")
     func texts() {
         #expect(text(unreachable: true) == "Mac injoignable : Tailscale est-il actif ?")
