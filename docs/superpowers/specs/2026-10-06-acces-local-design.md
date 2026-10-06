@@ -246,8 +246,8 @@ Chaque étape laisse un système qui marche.
 - L'annonce Bonjour révèle l'existence d'un service `Nacelle` aux appareils du réseau où se trouve le Mac.
 - Un appareil retiré garde une connexion déjà ouverte jusqu'à sa fin. Pour la couper tout de suite, redémarrer `ptzd`.
 - Un iPhone déverrouillé et volé pilote la caméra jusqu'à `ptzd revoke`.
-- L'app n'authentifie pas `ptzd` : un faux service `_nacelle._tcp` sur le Wi-Fi pourrait se faire passer pour le Mac (fausse vidéo, commandes perdues). Il ne peut ni piloter la caméra ni appairer une clé, puisque l'appairage passe par Tailscale.
-- Le trafic du réseau local passe en clair (`ws`, `http` de signalisation relayée par `ptzd`). L'authentification empêche le pilotage par un tiers, pas l'écoute du trafic sur le Wi-Fi.
+- Sur le réseau local, l'identifiant de l'appareil (`deviceID`) passe en clair dans la poignée de main TLS (identité de la clé pré-partagée) ; tout le reste est chiffré (§ 14).
+- Le port go2rtc 8555 (médias WebRTC) et RTSP (avec mot de passe) restent sur le réseau local ; les médias WebRTC sont chiffrés par WebRTC lui-même (DTLS-SRTP).
 
 ## 13. Points à vérifier en tête du plan
 
@@ -255,3 +255,24 @@ Chaque étape laisse un système qui marche.
 2. Le comportement de go2rtc 1.9.14 avec RTSP protégé, sur l'instance de test (§ 7).
 3. La disponibilité de `SecureEnclave` dans le simulateur iOS 27.
 4. La connexion de l'app à un service Bonjour : URL résolue pour `URLSessionWebSocketTask`, ou transport `NWConnection` WebSocket.
+
+## 14. Amendement : canal chiffré sur le réseau local
+
+Décidé par Majid le 2026-10-06, après la relecture de sécurité de la tâche 8 du plan.
+
+**Raison.** La signature du défi ne lie ni le serveur ni la connexion. Sans canal protégé, un faux service `_nacelle._tcp` sur le Wi-Fi pouvait relayer le défi du vrai `ptzd`, le faire signer par l'iPhone et obtenir une session authentifiée sur le vrai `ptzd` (pilotage, vie privée, vidéo). Par Tailscale, ce relais est impossible : WireGuard authentifie les pairs.
+
+**Principe.** Toute connexion par le réseau local passe en TLS avec une clé pré-partagée propre à chaque iPhone, remise à l'appairage, qui ne passe que par Tailscale. Un relais sans la clé échoue dès la poignée de main ; un relais passif ne voit que du chiffré.
+
+| Point | Règle |
+|---|---|
+| Secret | 32 octets aléatoires par appareil, créés par `ptzd` à l'appairage, gardés dans `devices.json` (droits 600) avec la clé publique, remis dans `paired {deviceID, lanKey}` |
+| Appairage | `pair` est refusé sur l'écoute du réseau local (`pairingClosed`, « Appairage par Tailscale seulement ») ; l'app ne l'envoie que par Tailscale (§ 8.3) |
+| TLS | TLS 1.2 (TLS 1.3 n'accepte pas les clés pré-partagées sur macOS 27), suite `TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256` (confidentialité persistante), identité TLS = `deviceID`, reprise de session et tickets coupés des deux côtés (sinon une mauvaise clé ou un appareil retiré pourrait reprendre une session) |
+| Clés côté `ptzd` | La liste des clés d'une écoute est figée à son lancement : `ptzd` relance ses écoutes du réseau local après chaque appairage ; une clé factice garde TLS-PSK actif quand aucun appareil n'est appairé ; à chaque poignée de main, `devices.json` est relu et un appareil retiré est refusé tout de suite |
+| Défi | Le défi et la signature restent exigés à l'intérieur du canal chiffré (§ 6.3) |
+| Tailscale et 127.0.0.1 | Inchangés : WebSocket simple (WireGuard protège Tailscale) |
+| App | Le secret est rangé dans le trousseau avec la clé de l'appareil ; « Oublier cet appairage » efface les deux ; sans secret, l'app n'essaie pas le réseau local ; délai d'ouverture de 10 s (un échec TLS sur un service Bonjour ne se signale jamais) |
+| Réglages partagés | Les réglages TLS (version, suite, reprise) sont dans `NacelleProtocol`, communs au Mac et à l'iPhone |
+
+Vérifié en amont (macOS 27, simulateur iOS 27) : échanges dans les deux sens, mauvaise clé refusée en quelques millisecondes, identité inconnue refusée, relais sans clé refusé, API non dépréciées, aucun avertissement en Swift 6 strict.

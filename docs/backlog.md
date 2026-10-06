@@ -13,7 +13,3 @@ Aujourd'hui, tout appareil du tailnet peut piloter la nacelle et voir la vidéo.
 - appairage de l'iPhone avec `ptzd` : une clé générée dans le Secure Enclave de l'iPhone, déverrouillée par Face ID, et un défi signé à chaque connexion (même principe qu'une passkey, sans serveur web) ;
 - côté Mac, la liste des clés publiques autorisées, ajoutées par un code d'appairage affiché par `ptzd` ;
 - la vidéo (go2rtc) reste hors de ce périmètre : à traiter à part (ACL Tailscale, ou authentification de go2rtc).
-
-## Authentification du serveur par l'app
-
-Aujourd'hui, l'app ne vérifie pas qu'elle parle au vrai `ptzd` : un faux service `_nacelle._tcp` sur le Wi-Fi peut se faire passer pour le Mac. Piste : une clé propre à `ptzd`, transmise par Tailscale à l'appairage, puis vérifiée par l'app à chaque connexion.
