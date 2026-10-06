@@ -431,6 +431,85 @@ struct WebSocketServerTests {
         withExtendedLifetime(server) {}
     }
 
+    @Test("Réserves : la confiance n'est jamais refusée à cause des anonymes, un anonyme l'est au-delà de 2 par adresse ou de 8 en tout")
+    func admission() {
+        let eight = (1...8).map { "192.0.2.\($0)" }
+        #expect(WebSocketServer.admits(trusted: true, address: "127.0.0.1", authenticated: 0, pendingAddresses: eight))
+        #expect(WebSocketServer.admits(trusted: true, address: "127.0.0.1", authenticated: 3, pendingAddresses: []))
+        #expect(!WebSocketServer.admits(trusted: true, address: "127.0.0.1", authenticated: 4, pendingAddresses: []))
+
+        #expect(WebSocketServer.admits(trusted: false, address: "192.0.2.1", authenticated: 4, pendingAddresses: ["192.0.2.1"]))
+        #expect(!WebSocketServer.admits(trusted: false, address: "192.0.2.1", authenticated: 0, pendingAddresses: ["192.0.2.1", "192.0.2.1"]))
+        #expect(WebSocketServer.admits(trusted: false, address: "192.0.2.9", authenticated: 0, pendingAddresses: ["192.0.2.1", "192.0.2.1"]))
+        #expect(!WebSocketServer.admits(trusted: false, address: "192.0.2.9", authenticated: 0, pendingAddresses: eight))
+        #expect(WebSocketServer.admits(trusted: false, address: "192.0.2.9", authenticated: 0, pendingAddresses: Array(eight.dropLast())))
+    }
+
+    @Test("Réseau : 2 connexions anonymes par adresse, la 3e est fermée sans défi, journalisée")
+    func pendingPerAddress() async throws {
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) }, trustLoopback: false)
+        let port = ports["127.0.0.1"]!
+        let first = connect("127.0.0.1", port)
+        let second = connect("127.0.0.1", port)
+        defer { [first, second].forEach { $0.cancel(with: .goingAway, reason: nil) } }
+        #expect(try await challenge(first).count == NacelleAuth.nonceLength)
+        #expect(try await challenge(second).count == NacelleAuth.nonceLength)
+
+        let third = connect("127.0.0.1", port)
+        defer { third.cancel(with: .goingAway, reason: nil) }
+        await #expect(throws: (any Error).self) {
+            _ = try await third.receive()
+        }
+        #expect(lines.values.contains("Connexion refusée : trop de connexions anonymes (127.0.0.1)."))
+        #expect(server.clientCount == 2)
+    }
+
+    @Test("Un anonyme qui s'authentifie alors que 4 clients le sont déjà est refusé")
+    func authenticatedLimit() async throws {
+        try pairTestDevice()
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) }, trustLoopback: false)
+        let port = ports["127.0.0.1"]!
+        var members: [URLSessionWebSocketTask] = []
+        for _ in 0..<WebSocketServer.maxClients {
+            let task = connect("127.0.0.1", port)
+            let nonce = try await challenge(task)
+            try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: task)
+            _ = try await next(task) { if case .state = $0 { true } else { false } }
+            members.append(task)
+        }
+        let extra = connect("127.0.0.1", port)
+        let nonce = try await challenge(extra)
+        try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: extra)
+        await #expect(throws: (any Error).self) {
+            _ = try await extra.receive()
+        }
+        try await waitUntil { server.clientCount == WebSocketServer.maxClients }
+        #expect(lines.values.contains("Connexion refusée : déjà 4 clients."))
+        (members + [extra]).forEach { $0.cancel(with: .goingAway, reason: nil) }
+    }
+
+    @Test("Journal : un identifiant d'appareil forgé n'y entre pas tel quel")
+    func forgedDeviceIDNotLogged() async throws {
+        #expect(WebSocketServer.logID(deviceID) == String(deviceID.prefix(8)))
+        #expect(WebSocketServer.logID("0123456789abcdef0123456789ABCDEF") == "01234567")
+        #expect(WebSocketServer.logID("0123456789abcdef0123456789abcdef0") == "invalide")
+        #expect(WebSocketServer.logID("abcd\nClient 9 authentifié : x") == "invalide")
+        #expect(WebSocketServer.logID("zzzzzzzz") == "invalide")
+
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) }, trustLoopback: false)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await challenge(task)
+        try await send(.auth(deviceID: "abcd\nClient 9 authentifié : x", signature: Data(count: 64)), on: task)
+        _ = try await next(task) { _ in true }
+        try await waitUntil { server.clientCount == 0 }
+        #expect(lines.values.contains { $0.hasPrefix("Client 1 refusé : appareil inconnu invalide (") })
+        #expect(!lines.values.contains { $0.contains("\n") })
+    }
+
     @Test("Client qui ne répond pas aux pings : place libérée 25 s après le dernier pong")
     func missingPong() async throws {
         let scheduler = FakeScheduler()
