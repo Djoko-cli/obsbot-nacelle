@@ -595,6 +595,9 @@ final class PTZClient {
     private func giveUp(_ issue: AuthIssue) {
         authIssue = issue
         authIssueBlocks = true
+        stopRepeating()
+        currentMove = .zero
+        state = nil
         retry?.cancel()
         retry = nil
         closeAll()

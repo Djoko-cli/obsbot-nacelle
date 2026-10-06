@@ -252,6 +252,9 @@ struct PTZClientTests {
 
     @Test("Expulsé à l'authentification, par Tailscale ou par le réseau local : « expulsé », plus de reconnexion")
     func blockedAtAuthentication() throws {
+        try connect()
+        #expect(client.isPaired == true)
+        client.stop()
         client.start(settings: settings)
         browser.find(service)
         let local = try #require(transports.local)
@@ -262,7 +265,7 @@ struct PTZClientTests {
         let opened = transports.all.count
         scheduler.advance(by: 30)
         #expect(transports.all.count == opened)
-        #expect(client.isPaired == record.isPaired)
+        #expect(client.isPaired == true)
     }
 
     @Test("Expulsé pendant la session : arrêt tout de suite, sans tentative refusée d'avance")
@@ -271,6 +274,7 @@ struct PTZClientTests {
         try emit(.error(code: .blocked, message: "Expulsé par le Mac jusqu'à 20:14."), on: tailscale)
         #expect(client.authIssue == .blocked)
         #expect(client.link == .idle)
+        #expect(client.state == nil)
         let opened = transports.all.count
         scheduler.advance(by: 30)
         #expect(transports.all.count == opened)
