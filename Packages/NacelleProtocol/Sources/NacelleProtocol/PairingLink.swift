@@ -4,6 +4,8 @@ import Foundation
 /// (spec découverte et QR § 6).
 public struct PairingLink: Equatable, Sendable {
     public static let version = "1"
+    /// Adresses au plus dans un QR code (spec app Mac § 7.4 et § 9).
+    public static let maxHosts = 4
 
     public var pairingID: String
     public var secret: Data
@@ -35,7 +37,8 @@ public struct PairingLink: Equatable, Sendable {
         return components.url!
     }
 
-    /// Nil pour un QR qui n'est pas un appairage Nacelle de cette version, ou incomplet.
+    /// Nil pour un QR qui n'est pas un appairage Nacelle de cette version, incomplet, ou dont les adresses
+    /// ne sont pas 1 à 4 IPv4 du réseau local.
     public init?(url: URL) {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               components.scheme == "nacelle", components.host == "pair" else { return nil }
@@ -49,7 +52,8 @@ public struct PairingLink: Equatable, Sendable {
               let hostList = values["h"], let portText = values["p"], let port = Int(portText),
               (1...65535).contains(port) else { return nil }
         let hosts = hostList.split(separator: ",").map(String.init).filter { !$0.isEmpty }
-        guard !hosts.isEmpty else { return nil }
+        // Au plus 4 adresses, toutes du réseau local : un QR piégé ne fait pas joindre n'importe qui.
+        guard (1...Self.maxHosts).contains(hosts.count), hosts.allSatisfy(LocalAddress.isLocalIPv4) else { return nil }
         self.init(pairingID: id, secret: key, hosts: hosts, port: port)
     }
 
