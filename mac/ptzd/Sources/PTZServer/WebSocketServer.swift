@@ -559,7 +559,8 @@ public final class WebSocketServer {
     }
 
     private func blockExpired(_ deviceID: String) {
-        guard blocks.removeValue(forKey: deviceID) != nil else { return }
+        guard let block = blocks.removeValue(forKey: deviceID) else { return }
+        block.timer.cancel()
         publishAdmin()
     }
 
@@ -585,14 +586,22 @@ public final class WebSocketServer {
     }
 
     /// Les adresses de l'invitation : celles du réseau local d'abord, 4 au plus (spec app Mac § 7.4).
+    /// Seules les IPv4 locales restent : l'app iPhone rejette tout le QR code sur une autre adresse.
     nonisolated static func invitationHosts(_ hosts: [String]) -> [String] {
-        Array(hosts.prefix(PairingLink.maxHosts))
+        Array(hosts.filter(LocalAddress.isLocalIPv4).prefix(PairingLink.maxHosts))
+    }
+
+    /// Les adresses des écoutes réelles du réseau local, filtrées ; `localHosts` (tests seulement, vide en
+    /// service) est ajouté tel quel : les tests y mettent « ::1 », qui n'est pas une IPv4 locale.
+    private func invitationAddresses() -> [String] {
+        let listening = Self.invitationHosts(localListeners?.addresses ?? [])
+        return Array((listening + localHosts.sorted()).prefix(PairingLink.maxHosts))
     }
 
     /// L'état d'administration : appareils, clients authentifiés ou de confiance, appairage en cours.
     func adminState() -> AdminState {
         let devices = ((try? authority.devices.all()) ?? []).map { device in
-            AdminDevice(deviceID: device.deviceID, name: device.name, pairedAt: device.pairedAt, blockedUntil: blocks[device.deviceID]?.until)
+            AdminDevice(deviceID: device.deviceID, name: device.name, pairedAt: device.pairedAt, blockedUntil: blocks[device.deviceID].flatMap { $0.until > now() ? $0.until : nil })
         }
         let connected = clients.sorted { $0.key < $1.key }.compactMap { id, client -> AdminClient? in
             guard client.authenticated, let since = client.since else { return nil }
@@ -622,7 +631,7 @@ public final class WebSocketServer {
         log("Appairage ouvert (\(opened.pairingID)), valable \(Int(PairingWindow.lifetime / 60)) min.")
         let invitation = PairingInvitation(
             pairingID: opened.pairingID, secret: opened.secret, expiresAt: opened.expiresAt,
-            hosts: Self.invitationHosts((localListeners?.addresses ?? []) + localHosts.sorted()), port: Int(port)
+            hosts: invitationAddresses(), port: Int(port)
         )
         send(.pairingOpened(invitation), to: id)
         rebuildLocalListeners()
@@ -671,8 +680,14 @@ public final class WebSocketServer {
         case let .accepted(device):
             // Vérifié après la signature : un inconnu n'apprend rien des expulsions.
             if let block = blocks[deviceID] {
-                refuse(id, .blocked, Self.blockedMessage(block.until), reason: "appareil \(Self.logID(deviceID)) expulsé jusqu'à \(Self.clock(block.until))")
-                return
+                if block.until <= now() {
+                    // Le minuteur du planificateur est en pause pendant la veille du Mac, pas l'heure :
+                    // un blocage échu est levé ici sans attendre le minuteur.
+                    blockExpired(deviceID)
+                } else {
+                    refuse(id, .blocked, Self.blockedMessage(block.until), reason: "appareil \(Self.logID(deviceID)) expulsé jusqu'à \(Self.clock(block.until))")
+                    return
+                }
             }
             // Les 4 places sont aux iPhone authentifiés : un anonyme qui s'authentifie
             // alors qu'elles sont prises est refusé.
