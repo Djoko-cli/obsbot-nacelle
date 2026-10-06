@@ -265,16 +265,20 @@ final class PTZClient {
             authIssue = nil
         }
         open(.url(url))
-        browser.start()
+        // Le réseau local passe en TLS : sans secret remis à l'appairage, pas d'essai local.
+        if keys.load() != nil, keys.lanKey() != nil {
+            browser.start()
+        }
         discovery = scheduler.schedule(after: Self.discoveryWindow) { [weak self] in
             self?.discoveryEnded()
         }
     }
 
     private func found(_ endpoint: NWEndpoint) {
-        guard link == .connecting, active == nil, !foundLocal else { return }
+        guard link == .connecting, active == nil, !foundLocal,
+              let key = keys.load(), let lanKey = keys.lanKey() else { return }
         foundLocal = true
-        open(.service(endpoint))
+        open(.service(endpoint, LANCredentials(identity: key.deviceID, key: lanKey)))
     }
 
     private func discoveryEnded() {
@@ -371,9 +375,10 @@ final class PTZClient {
         switch message {
         case let .challenge(nonce):
             answer(nonce, on: candidate)
-        case .paired:
+        case let .paired(_, lanKey):
             // Seule la connexion qui a envoyé le code (Tailscale) peut confirmer l'appairage.
             guard candidate === pairingCandidate else { return }
+            try? keys.saveLANKey(lanKey)
             pendingCode = nil
             pairingCandidate = nil
             setPaired(true)

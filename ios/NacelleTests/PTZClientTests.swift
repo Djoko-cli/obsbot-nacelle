@@ -29,6 +29,7 @@ struct PTZClientTests {
             scheduler: scheduler
         )
         keys.key = SoftwareDeviceKey(key: P256.Signing.PrivateKey())
+        keys.storedLANKey = lanKey
     }
 
     private var tailscale: FakeTransport {
@@ -178,7 +179,7 @@ struct PTZClientTests {
         client.start(url: url)
         #expect(browser.isRunning)
         browser.find(service)
-        let local = try #require(transports.to(.service(service)))
+        let local = try #require(transports.local)
         try emit(.challenge(nonce: nonce), on: local)
         try emit(.challenge(nonce: nonce), on: tailscale)
         try emit(.authenticated, on: local)
@@ -210,7 +211,7 @@ struct PTZClientTests {
         #expect(client.link == .connecting)
         #expect(!client.isUnreachable)
         browser.find(service)
-        let local = try #require(transports.to(.service(service)))
+        let local = try #require(transports.local)
         local.emit(.opened)
         try emit(.challenge(nonce: nonce), on: local)
         try emit(.authenticated, on: local)
@@ -225,13 +226,12 @@ struct PTZClientTests {
         #expect(transports.all.count == 2)
     }
 
-    @Test("Appairage avec deux chemins : la locale, première au défi, n'envoie jamais le code ; elle s'authentifie après paired")
+    @Test("Nouvel appairage avec deux chemins : la locale, première au défi, n'envoie jamais le code ; elle s'authentifie après paired")
     func pairingWithTwoPaths() throws {
-        keys.key = nil
         client.start(url: url)
         client.pair(code: "042917")
         browser.find(service)
-        let local = try #require(transports.to(.service(service)))
+        let local = try #require(transports.local)
         try emit(.challenge(nonce: nonce), on: local)
         #expect(decoded(local).isEmpty)
         try emit(.challenge(nonce: nonce), on: tailscale)
@@ -252,7 +252,7 @@ struct PTZClientTests {
         client.stop()
         client.start(url: url)
         browser.find(service)
-        let local = try #require(transports.to(.service(service)))
+        let local = try #require(transports.local)
         try emit(.challenge(nonce: nonce), on: local)
         try emit(.error(code: .unpaired, message: "x"), on: local)
         #expect(local.closeCount >= 1)
@@ -271,7 +271,7 @@ struct PTZClientTests {
     func localErrorOnlyCandidate() throws {
         client.start(url: url)
         browser.find(service)
-        let local = try #require(transports.to(.service(service)))
+        let local = try #require(transports.local)
         tailscale.emit(.closed)
         try emit(.challenge(nonce: nonce), on: local)
         try emit(.error(code: .unpaired, message: "x"), on: local)
@@ -290,7 +290,7 @@ struct PTZClientTests {
         client.start(url: url)
         client.pair(code: "042917")
         browser.find(service)
-        let local = try #require(transports.to(.service(service)))
+        let local = try #require(transports.local)
         tailscale.emit(.closed)
         try emit(.challenge(nonce: nonce), on: local)
         #expect(decoded(local).isEmpty)
@@ -315,7 +315,7 @@ struct PTZClientTests {
     func unsolicitedAuthenticated() throws {
         client.start(url: url)
         browser.find(service)
-        let local = try #require(transports.to(.service(service)))
+        let local = try #require(transports.local)
         try emit(.authenticated, on: local)
         #expect(local.closeCount >= 1)
         #expect(client.link == .connecting)
@@ -330,7 +330,7 @@ struct PTZClientTests {
     func silentLocalService() throws {
         client.start(url: url)
         browser.find(service)
-        let local = try #require(transports.to(.service(service)))
+        let local = try #require(transports.local)
         tailscale.emit(.closed)
         local.emit(.opened)
         try emit(.challenge(nonce: nonce), on: local)
@@ -353,12 +353,43 @@ struct PTZClientTests {
         #expect(tailscale.closeCount == 0)
     }
 
+    @Test("Sans secret du réseau local : pas de recherche Bonjour, Tailscale seul")
+    func noLocalPathWithoutLANKey() throws {
+        keys.storedLANKey = nil
+        client.start(url: url)
+        #expect(browser.startCount == 0)
+        browser.find(service)
+        #expect(transports.local == nil)
+    }
+
+    @Test("Avec un secret : le service local est joint en TLS, identité = deviceID")
+    func localPathUsesTLSCredentials() throws {
+        client.start(url: url)
+        #expect(browser.isRunning)
+        browser.find(service)
+        let key = try #require(keys.key)
+        #expect(transports.local?.opened == [.service(service, LANCredentials(identity: key.deviceID, key: lanKey))])
+    }
+
+    @Test("Appairage : le secret reçu dans paired est gardé ; « Oublier » l'efface")
+    func lanKeyLifecycle() throws {
+        keys.storedLANKey = nil
+        client.start(url: url)
+        client.pair(code: "042917")
+        try emit(.challenge(nonce: nonce), on: tailscale)
+        let newKey = Data(repeating: 3, count: 32)
+        try emit(.paired(deviceID: try #require(keys.key).deviceID, lanKey: newKey), on: tailscale)
+        #expect(keys.storedLANKey == newKey)
+        client.forgetPairing()
+        #expect(keys.storedLANKey == nil)
+    }
+
     @Test("Problème d'une tentative précédente : effacé au début de la suivante, sauf s'il arrête les reconnexions")
     func authIssueClearedPerAttempt() throws {
         client.start(url: url)
         client.pair(code: "042917")
         browser.find(service)
-        let local = try #require(transports.to(.service(service)))
+        let local = try #require(transports.local)
         tailscale.emit(.closed)
         local.emit(.closed)
         scheduler.advance(by: PTZClient.discoveryWindow)

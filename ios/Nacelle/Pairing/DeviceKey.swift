@@ -54,8 +54,11 @@ protocol DeviceKeyStoring: AnyObject {
     func load() -> (any DeviceKey)?
     /// La clé existante, ou une nouvelle, enregistrée.
     func loadOrCreate() throws -> any DeviceKey
-    /// Oublie la clé.
+    /// Oublie la clé et le secret du réseau local.
     func delete()
+    /// Le secret du canal chiffré du réseau local, remis à l'appairage, ou nil.
+    func lanKey() -> Data?
+    func saveLANKey(_ key: Data) throws
 }
 
 enum DeviceKeyError: Error, Equatable {
@@ -70,6 +73,7 @@ final class KeychainDeviceKeyStore: DeviceKeyStoring {
     static let service = "io.github.djoko-cli.nacelle.device-key"
     private static let secureEnclaveAccount = "secure-enclave"
     private static let softwareAccount = "software"
+    private static let lanKeyAccount = "lan-key"
 
     private let useSecureEnclave: Bool
 
@@ -107,8 +111,16 @@ final class KeychainDeviceKeyStore: DeviceKeyStoring {
         return nil
     }
 
+    func lanKey() -> Data? {
+        (try? Self.read(Self.lanKeyAccount)) ?? nil
+    }
+
+    func saveLANKey(_ key: Data) throws {
+        try Self.write(key, account: Self.lanKeyAccount)
+    }
+
     func delete() {
-        for account in [Self.secureEnclaveAccount, Self.softwareAccount] {
+        for account in [Self.secureEnclaveAccount, Self.softwareAccount, Self.lanKeyAccount] {
             SecItemDelete(Self.query(account) as CFDictionary)
         }
     }
