@@ -31,7 +31,6 @@ final class PTZClient {
         /// QR code refusé : preuve fausse, appairage expiré ou déjà utilisé, ou aucun Mac n'a répondu
         /// avec le secret du QR (spec découverte et QR § 9).
         case badCode
-
     }
 
     /// Pourquoi une négociation vidéo n'a pas abouti.
@@ -93,7 +92,6 @@ final class PTZClient {
     @ObservationIgnored private var retry: (any Cancellable)?
     @ObservationIgnored private var repeater: (any Cancellable)?
     @ObservationIgnored private var currentMove = JoystickVector.zero
-    /// Code saisi dans les réglages, envoyé au prochain défi.
     /// QR code scanné, en attente d'appairage. Son secret n'est jamais rangé (spec découverte et QR § 8.3).
     @ObservationIgnored private var pendingPairing: PairingLink?
     @ObservationIgnored private var pairingCandidate: Candidate?
@@ -107,7 +105,7 @@ final class PTZClient {
     private final class Candidate {
         let id: Int
         let transport: any WebSocketTransport
-        /// Ouverte vers un service Bonjour du réseau local (pas le nom Tailscale).
+        /// Ouverte en TLS vers le réseau local (service Bonjour ou adresse locale), pas vers Tailscale.
         let isLocal: Bool
         /// Défi reçu, en attente de réponse.
         var nonce: Data?
@@ -426,6 +424,9 @@ final class PTZClient {
             pendingPairing = nil
             pairingCandidate = nil
             setPaired(true)
+            if let address = candidate.transport.remoteAddress {
+                onAddressLearned?(address)
+            }
             for waiting in candidates where waiting.nonce != nil {
                 authenticate(waiting)
             }
@@ -486,8 +487,6 @@ final class PTZClient {
                 return
             }
             pairingCandidate = candidate
-            // Transition (plan découverte et QR, tâche 1) : le code voyage dans `pairingID`, sans preuve ;
-            // la tâche 4 remplace ce passage par l'appairage du QR code.
             let proof = NacelleAuth.pairingProof(secret: pairing.secret, nonce: nonce, publicKeyX963: key.publicKeyX963)
             send(.pair(pairingID: pairing.pairingID, publicKey: key.publicKeyX963, name: deviceName, proof: proof), on: candidate)
         } else if keys.load() != nil {
