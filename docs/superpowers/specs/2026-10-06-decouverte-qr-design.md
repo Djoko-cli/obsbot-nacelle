@@ -4,7 +4,7 @@ Amende la spec de l'accès local ([2026-10-06-acces-local-design.md](2026-10-06-
 
 ## 1. Objectif
 
-- **Aucune adresse à saisir.** L'app découvre le Mac par Bonjour (« Recherche de la Nacelle à proximité… ») et retient son adresse locale.
+- **Aucune adresse à saisir.** L'app découvre le Mac par Bonjour (« Recherche du Mac à proximité… ») et retient son adresse locale.
 - **Une seule adresse partout.** Cette adresse locale sert à la maison, directement, et en 4G, par la route de sous-réseau que le NAS publie déjà dans le tailnet.
 - **Appairage par QR code seulement**, possible sur le réseau local, et sûr même face à un faux service sur le Wi-Fi.
 - Un champ d'adresse reste disponible **en repli**.
@@ -16,7 +16,8 @@ Dans le périmètre :
 - adresse retenue, utilisée en TLS sur le réseau local et à travers la route du NAS ;
 - appairage par QR code : `ptzd pair` affiche le QR ; l'app le scanne ;
 - champ « Adresse du Mac (repli) » ;
-- retrait du code à 6 chiffres et de la règle « appairage par Tailscale seulement ».
+- retrait du code à 6 chiffres et de la règle « appairage par Tailscale seulement » ;
+- nom affiché de l'app : PTZBot (§ 8.1).
 
 Hors périmètre :
 - la route de sous-réseau elle-même : le NAS publie déjà tout le réseau local dans le tailnet, réglage de Majid ;
@@ -31,6 +32,7 @@ Hors périmètre :
 | Chemin en 4G | Routage de sous-réseau (celui du NAS) |
 | Appairage | Possible sur le réseau local, par QR code seulement |
 | Repli | Un champ d'adresse visible dans les réglages |
+| Nom de l'app | PTZBot (demandé après la validation de la spec) |
 
 ## 4. Faits vérifiés (2026-10-06)
 
@@ -81,13 +83,14 @@ Messages ajoutés ou modifiés :
 
 ### 7.3 Annonce Bonjour
 
-Le nom du service devient « Nacelle sur <nom de l'ordinateur> » (nom de partage de macOS), pour distinguer plusieurs Mac. Type et TXT inchangés.
+Le nom du service devient « PTZBot sur <nom de l'ordinateur> » (nom de partage de macOS), pour distinguer plusieurs Mac. Type et TXT inchangés.
 
 ## 8. L'app iOS
 
 ### 8.1 Réglages et premier lancement
 
-- **Non appairé** : écran « Recherche de la Nacelle à proximité… » (indicateur d'activité) avec la liste des services `_nacelle._tcp` trouvés, et le bouton **« Scanner le QR code »**. La demande d'accès au réseau local d'iOS apparaît à ce moment.
+- **Nom affiché** : PTZBot (`CFBundleDisplayName`). Les noms internes ne changent pas : cible et schéma `Nacelle`, identifiant `io.github.djoko-cli.nacelle`, paquet `NacelleProtocol`, type Bonjour `_nacelle._tcp`. Changer l'identifiant installerait une autre app, sans l'appairage gardé dans le trousseau.
+- **Non appairé** : écran « Recherche du Mac à proximité… » (indicateur d'activité) avec la liste des services `_nacelle._tcp` trouvés, et le bouton **« Scanner le QR code »**. La demande d'accès au réseau local d'iOS apparaît à ce moment.
 - **Scanner** : lecteur de QR code plein écran (caméra). `NSCameraUsageDescription` : « Pour scanner le QR code affiché par ptzd pair sur le Mac. » Caméra refusée : message avec renvoi vers les Réglages d'iOS.
 - **Champ « Adresse du Mac (repli) »**, toujours visible dans les réglages : pré-rempli par l'adresse du QR (première de `h`) ou par celle du service Bonjour choisi ; modifiable à la main.
 - Section appairage : état « Appairé » ou « Non appairé », boutons « Scanner le QR code » et « Oublier cet appairage ». Le champ du code à 6 chiffres disparaît.
