@@ -21,6 +21,8 @@ public final class ControlTaker {
     private let isObsbotCenterRunning: @MainActor () -> Bool
     private let log: LogSink
     private var retried = false
+    private var explicitOrder = false
+    private var cutPending = false
 
     public init(
         runner: any AIRunner,
@@ -35,12 +37,13 @@ public final class ControlTaker {
     }
 
     /// Lance la coupure, avec un nouvel essai. Pendant une exécution (nouvel essai compris), une
-    /// nouvelle demande attend le même résultat.
+    /// nouvelle demande attend le même résultat. Une coupure demandée pendant un ordre explicite
+    /// est lancée quand cet ordre se termine.
     public func take() {
         if isObsbotCenterRunning() {
             log("OBSBOT Center est ouvert : ferme-le, il fausse la relecture du tilt.")
         }
-        guard state != .taking else { return }
+        guard state != .taking else { if explicitOrder { cutPending = true }; return }
         state = .taking
         retried = false
         onChange?()
@@ -57,6 +60,7 @@ public final class ControlTaker {
         let previous = state
         state = .taking
         onChange?()
+        explicitOrder = true
         runner.run(on: on) { [weak self] result in
             guard let self else { return }
             if result == .success {
@@ -67,7 +71,14 @@ public final class ControlTaker {
                 state = previous
             }
             onChange?()
+            explicitOrder = false
             completion(result)
+            if cutPending {
+                cutPending = false
+                if !(result == .success && !on) {
+                    take()
+                }
+            }
         }
     }
 

@@ -184,6 +184,19 @@ struct PTZControllerTests {
         #expect(controller.snapshot.aiTracking == .unknown)
     }
 
+    @Test("aiTracking(on: true) en vol, puis privacy(on: true) lance la coupure après succès")
+    func aiTrackingCutDuringPrivacyEntry() {
+        let controller = makeController()
+        _ = controller.handle(.aiTracking(on: true), from: 1)
+        #expect(runner.orders == [true])
+        _ = controller.handle(.privacy(on: true), from: 1)
+        runner.finish(.success)
+        #expect(runner.orders == [true, false])
+        #expect(runner.runCount == 2)
+        runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .off)
+    }
+
     @Test("Débranchement : caméra absente, mouvement oublié")
     func unplug() {
         let controller = makeController()

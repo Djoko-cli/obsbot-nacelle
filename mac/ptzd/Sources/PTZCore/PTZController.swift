@@ -155,7 +155,7 @@ public final class PTZController {
     }
 
     /// Fin de la coupure du suivi IA en vie privée : sur une caméra qui démarre,
-    /// obsbot-ai-off a pu tourner en même temps que la première réapplication.
+    /// obsbot-ai off a pu tourner en même temps que la première réapplication.
     private func controlChanged() {
         let previous = lastControl
         lastControl = control.state

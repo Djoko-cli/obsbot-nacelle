@@ -134,6 +134,38 @@ struct ControlTakerTests {
         makeTaker(centerRunning: true).take()
         #expect(log.lines.first?.contains("OBSBOT Center") == true)
     }
+
+    @Test("Coupure demandée pendant setTracking(on: true) réussie est lancée après")
+    func cutPendingDuringExplicitOn() {
+        let taker = makeTaker()
+        let results = ResultBox()
+        taker.setTracking(on: true) { results.values.append($0) }
+        #expect(runner.orders == [true])
+        taker.take()
+        #expect(runner.runCount == 1)
+        #expect(runner.orders == [true])
+        runner.finish(.success)
+        #expect(runner.orders == [true, false])
+        #expect(runner.runCount == 2)
+        runner.finish(.success)
+        #expect(taker.tracking == .off)
+        #expect(results.values == [.success])
+    }
+
+    @Test("Coupure demandée pendant setTracking(on: false) réussie n'est pas lancée")
+    func noCutPendingAfterSuccessfulOff() {
+        let taker = makeTaker()
+        let results = ResultBox()
+        taker.setTracking(on: false) { results.values.append($0) }
+        #expect(runner.orders == [false])
+        taker.take()
+        #expect(runner.runCount == 1)
+        #expect(runner.orders == [false])
+        runner.finish(.success)
+        #expect(runner.orders == [false])
+        #expect(taker.tracking == .off)
+        #expect(results.values == [.success])
+    }
 }
 
 /// Résultats reçus par les rappels (tests).
