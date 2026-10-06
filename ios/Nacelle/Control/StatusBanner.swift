@@ -24,6 +24,8 @@ enum StatusBanner {
             return "Code d'appairage refusé"
         case .rejected:
             return "Accès refusé par le Mac"
+        case .needsTailscale:
+            return "Appairage : active Tailscale sur l'iPhone"
         case nil:
             break
         }

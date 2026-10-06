@@ -24,6 +24,7 @@ struct StatusBannerTests {
         #expect(text(.unpaired) == "iPhone non appairé : lance ptzd pair sur le Mac")
         #expect(text(.badCode) == "Code d'appairage refusé")
         #expect(text(.rejected) == "Accès refusé par le Mac")
+        #expect(text(.needsTailscale) == "Appairage : active Tailscale sur l'iPhone")
         #expect(text(.unpaired, unreachable: true) == "Mac injoignable : Tailscale est-il actif ?")
     }
 

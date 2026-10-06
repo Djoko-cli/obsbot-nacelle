@@ -224,20 +224,90 @@ struct PTZClientTests {
         #expect(transports.all.count == 2)
     }
 
-    @Test("Appairage avec deux chemins : un seul envoie le code, l'autre s'authentifie après paired")
+    @Test("Appairage avec deux chemins : la locale, première au défi, n'envoie jamais le code ; elle s'authentifie après paired")
     func pairingWithTwoPaths() throws {
         keys.key = nil
         client.start(url: url)
         client.pair(code: "042917")
         browser.find(service)
         let local = try #require(transports.to(.service(service)))
-        try emit(.challenge(nonce: nonce), on: tailscale)
         try emit(.challenge(nonce: nonce), on: local)
-        let pairs = (decoded(tailscale) + decoded(local)).filter { if case .pair = $0 { true } else { false } }
-        #expect(pairs.count == 1)
-        try emit(.paired(deviceID: try #require(keys.key).deviceID), on: tailscale)
+        #expect(decoded(local).isEmpty)
+        try emit(.challenge(nonce: nonce), on: tailscale)
+        let key = try #require(keys.key)
+        #expect(decoded(tailscale) == [.pair(code: "042917", publicKey: key.publicKeyX963, name: "iPhone")])
+        #expect(decoded(local).isEmpty)
+        // Un faux « paired » venu du réseau local ne compte pas.
+        try emit(.paired(deviceID: key.deviceID), on: local)
+        #expect(decoded(local).isEmpty)
+        try emit(.paired(deviceID: key.deviceID), on: tailscale)
         #expect(decoded(local).contains { if case .auth = $0 { true } else { false } })
         #expect(decoded(tailscale).contains { if case .auth = $0 { true } else { false } })
+    }
+
+    @Test("Erreur « non appairé » d'un service local : seule sa connexion est fermée, Tailscale s'authentifie")
+    func localErrorClosesOnlyLocal() throws {
+        try connect()
+        client.stop()
+        client.start(url: url)
+        browser.find(service)
+        let local = try #require(transports.to(.service(service)))
+        try emit(.challenge(nonce: nonce), on: local)
+        try emit(.error(code: .unpaired, message: "x"), on: local)
+        #expect(local.closeCount >= 1)
+        #expect(tailscale.closeCount == 0)
+        #expect(client.isPaired)
+        #expect(record.isPaired)
+        #expect(client.link == .connecting)
+        try emit(.challenge(nonce: nonce), on: tailscale)
+        try emit(.authenticated, on: tailscale)
+        #expect(client.link == .connected)
+        #expect(client.authIssue == nil)
+        #expect(client.isPaired)
+    }
+
+    @Test("Erreur d'un service local seul : problème affiché, reconnexions espacées maintenues")
+    func localErrorOnlyCandidate() throws {
+        client.start(url: url)
+        browser.find(service)
+        let local = try #require(transports.to(.service(service)))
+        tailscale.emit(.closed)
+        try emit(.challenge(nonce: nonce), on: local)
+        try emit(.error(code: .unpaired, message: "x"), on: local)
+        #expect(client.authIssue == nil)
+        scheduler.advance(by: PTZClient.discoveryWindow)
+        #expect(client.authIssue == .unpaired)
+        #expect(client.link == .waitingToRetry)
+        let before = transports.all.count
+        scheduler.advance(by: 1)
+        #expect(transports.all.count == before + 1)
+        #expect(client.link == .connecting)
+    }
+
+    @Test("Code en attente sans Tailscale : « active Tailscale », puis le code part dès que Tailscale répond")
+    func needsTailscale() throws {
+        client.start(url: url)
+        client.pair(code: "042917")
+        browser.find(service)
+        let local = try #require(transports.to(.service(service)))
+        tailscale.emit(.closed)
+        try emit(.challenge(nonce: nonce), on: local)
+        #expect(decoded(local).isEmpty)
+        local.emit(.closed)
+        scheduler.advance(by: PTZClient.discoveryWindow)
+        #expect(client.authIssue == .needsTailscale)
+        #expect(client.link == .waitingToRetry)
+        let before = transports.all.count
+        scheduler.advance(by: 1)
+        #expect(transports.all.count == before + 1)
+        tailscale.emit(.opened)
+        try emit(.challenge(nonce: nonce), on: tailscale)
+        let key = try #require(keys.key)
+        #expect(decoded(tailscale) == [.pair(code: "042917", publicKey: key.publicKeyX963, name: "iPhone")])
+        try emit(.paired(deviceID: key.deviceID), on: tailscale)
+        try emit(.authenticated, on: tailscale)
+        #expect(client.link == .connected)
+        #expect(client.authIssue == nil)
     }
 
     // MARK: - Reconnexion
