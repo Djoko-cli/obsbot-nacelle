@@ -49,6 +49,14 @@ struct DeviceAuthorityTests {
         #expect(authority.lanKeys().isEmpty)
     }
 
+    @Test("Secrets du réseau local : fichier absent, aucun ; fichier illisible, une erreur")
+    func readLANKeys() throws {
+        #expect(try authority.readLANKeys().isEmpty)
+        try Data("pas du json".utf8).write(to: directory.appending(path: "devices.json"))
+        #expect(throws: (any Error).self) { try authority.readLANKeys() }
+        #expect(authority.lanKeys().isEmpty)
+    }
+
     @Test("Défi : 32 octets, différent à chaque fois")
     func nonce() {
         let first = DeviceAuthority.makeNonce()

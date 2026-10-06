@@ -83,12 +83,16 @@ public struct DeviceAuthority: Sendable {
         }
     }
 
-    /// Les secrets du réseau local, par appareil (fichier illisible : aucun).
-    public func lanKeys() -> [String: Data] {
-        let all = (try? devices.all()) ?? []
-        return all.reduce(into: [:]) { keys, device in
+    /// Les secrets du réseau local, par appareil (fichier absent : aucun) ; erreur si `devices.json` est illisible.
+    public func readLANKeys() throws -> [String: Data] {
+        try devices.all().reduce(into: [:]) { keys, device in
             keys[device.deviceID] = device.lanKey
         }
+    }
+
+    /// Les secrets du réseau local, par appareil (fichier illisible : aucun).
+    public func lanKeys() -> [String: Data] {
+        (try? readLANKeys()) ?? [:]
     }
 
     /// Le secret d'un appareil encore appairé, relu dans `devices.json`.
