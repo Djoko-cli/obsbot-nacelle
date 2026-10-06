@@ -78,19 +78,11 @@ final class KeychainDeviceKeyStore: DeviceKeyStoring {
     }
 
     func load() -> (any DeviceKey)? {
-        if useSecureEnclave, let data = Self.read(Self.secureEnclaveAccount),
-           let key = try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: data) {
-            return SecureEnclaveDeviceKey(key: key)
-        }
-        if !useSecureEnclave, let data = Self.read(Self.softwareAccount),
-           let key = try? P256.Signing.PrivateKey(rawRepresentation: data) {
-            return SoftwareDeviceKey(key: key)
-        }
-        return nil
+        try? existingKey()
     }
 
     func loadOrCreate() throws -> any DeviceKey {
-        if let key = load() {
+        if let key = try existingKey() {
             return key
         }
         if useSecureEnclave {
@@ -101,6 +93,18 @@ final class KeychainDeviceKeyStore: DeviceKeyStoring {
         let key = P256.Signing.PrivateKey()
         try Self.write(key.rawRepresentation, account: Self.softwareAccount)
         return SoftwareDeviceKey(key: key)
+    }
+
+    private func existingKey() throws -> (any DeviceKey)? {
+        if useSecureEnclave, let data = try Self.read(Self.secureEnclaveAccount),
+           let key = try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: data) {
+            return SecureEnclaveDeviceKey(key: key)
+        }
+        if !useSecureEnclave, let data = try Self.read(Self.softwareAccount),
+           let key = try? P256.Signing.PrivateKey(rawRepresentation: data) {
+            return SoftwareDeviceKey(key: key)
+        }
+        return nil
     }
 
     func delete() {
@@ -117,13 +121,20 @@ final class KeychainDeviceKeyStore: DeviceKeyStoring {
         ]
     }
 
-    private static func read(_ account: String) -> Data? {
+    private static func read(_ account: String) throws -> Data? {
         var query = query(account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else { return nil }
-        return result as? Data
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:
+            return result as? Data
+        case errSecItemNotFound:
+            return nil
+        default:
+            throw DeviceKeyError.keychain(status)
+        }
     }
 
     private static func write(_ data: Data, account: String) throws {
