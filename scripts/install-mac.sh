@@ -30,7 +30,7 @@ fi
 # macOS refuse de charger une bibliothèque téléchargée tant qu'elle est en quarantaine.
 # Le script ne retire pas l'attribut lui-même : c'est une décision de sécurité à prendre à la main.
 if xattr -p com.apple.quarantine "$LIB" >/dev/null 2>&1; then
-    echo "libdev.dylib est en quarantaine (téléchargée depuis internet). Pour l'autoriser, lance :" >&2
+    echo "libdev.dylib est en quarantaine (téléchargée depuis internet). Pour l'autoriser, lancez :" >&2
     echo "  xattr -d com.apple.quarantine \"$LIB\"" >&2
     exit 1
 fi
@@ -40,10 +40,15 @@ if ! command -v xcodegen >/dev/null; then
     exit 1
 fi
 
+# Tout est compilé avant la première installation : une compilation en échec ne laisse
+# pas un système à moitié installé.
 echo "Compilation de ptzd…"
 (cd "$ROOT/mac/ptzd" && swift build -c release)
 echo "Compilation de obsbot-ai…"
 "$ROOT/mac/ai/build.sh" >/dev/null
+echo "Compilation de PTZBot pour Mac…"
+(cd "$ROOT/mac/app" && xcodegen -q && xcodebuild build -project PTZBot.xcodeproj -scheme PTZBot \
+    -configuration Release -destination 'platform=macOS,arch=arm64' -derivedDataPath .build -quiet)
 
 mkdir -p "$SUPPORT/bin" "$SUPPORT/lib" "$LOGS" "$HOME/Library/LaunchAgents"
 install -m 755 "$ROOT/mac/ptzd/.build/release/ptzd" "$SUPPORT/bin/ptzd"
@@ -51,10 +56,6 @@ install -m 755 "$ROOT/mac/ai/build/bin/obsbot-ai" "$SUPPORT/bin/obsbot-ai"
 # L'ancien utilitaire (coupure seule) ne sert plus.
 rm -f "$SUPPORT/bin/obsbot-ai-off"
 install -m 644 "$LIB" "$SUPPORT/lib/libdev.dylib"
-
-echo "Compilation de PTZBot pour Mac…"
-(cd "$ROOT/mac/app" && xcodegen -q && xcodebuild build -project PTZBot.xcodeproj -scheme PTZBot \
-    -configuration Release -destination 'platform=macOS,arch=arm64' -derivedDataPath .build -quiet)
 # L'app en cours est fermée avant d'être remplacée.
 osascript -e "tell application id \"$APP_ID\" to quit" >/dev/null 2>&1 || true
 mkdir -p "$HOME/Applications"
@@ -64,7 +65,7 @@ cp -R "$ROOT/mac/app/.build/Build/Products/Release/PTZBot.app" "$APP"
 if [ ! -f "$SUPPORT/config.json" ]; then
     ADDRESS="$(tailscale ip -4 2>/dev/null | head -n 1 || true)"
     if [ -z "$ADDRESS" ]; then
-        echo "Adresse Tailscale introuvable : crée $SUPPORT/config.json avec {\"listenAddress\": \"<IPv4 Tailscale du Mac>\"}." >&2
+        echo "Adresse Tailscale introuvable : créez $SUPPORT/config.json avec {\"listenAddress\": \"<IPv4 Tailscale du Mac>\"}." >&2
         exit 1
     fi
     printf '{\n  "listenAddress": "%s"\n}\n' "$ADDRESS" > "$SUPPORT/config.json"
