@@ -8,7 +8,7 @@ import Testing
 struct PTZControllerTests {
     let camera = FakeCamera()
     let scheduler = FakeScheduler()
-    let runner = FakeAIOffRunner()
+    let runner = FakeAIRunner()
     let store = MemoryStateStore()
     let log = LogRecorder()
 
@@ -16,7 +16,7 @@ struct PTZControllerTests {
         PTZController(
             camera: camera,
             scheduler: scheduler,
-            aiOff: runner,
+            ai: runner,
             store: store,
             settings: MotionSettings(),
             isObsbotCenterRunning: { false },
@@ -108,13 +108,125 @@ struct PTZControllerTests {
         #expect(controller.handle(.zoom(value: 10), from: 1)?.code == .uvcFailed)
     }
 
-    @Test("takeControl : taking, puis ready quand l'utilitaire réussit")
+    @Test("takeControl ne touche plus au suivi IA")
     func takeControl() {
         let controller = makeController()
-        _ = controller.handle(.takeControl, from: 1)
+        #expect(controller.handle(.takeControl, from: 1) == nil)
+        #expect(runner.runCount == 0)
+        #expect(controller.snapshot.control == .idle)
+    }
+
+    @Test("Premier mouvement : coupe le suivi (inconnu ou allumé), une seule fois ; le mouvement part quand même")
+    func firstMoveCutsTracking() {
+        let controller = makeController()
+        #expect(controller.handle(.move(pan: 0, tilt: 0), from: 1) == nil)
+        #expect(runner.runCount == 0)
+        #expect(controller.handle(.move(pan: 1, tilt: 0), from: 1) == nil)
+        #expect(runner.orders == [false])
         #expect(controller.snapshot.control == .taking)
+        #expect(controller.snapshot.moving)
+        _ = controller.handle(.move(pan: 0.5, tilt: 0), from: 1)
+        #expect(runner.runCount == 1)
         runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .off)
         #expect(controller.snapshot.control == .ready)
+        _ = controller.handle(.move(pan: 1, tilt: 1), from: 1)
+        #expect(runner.runCount == 1)
+    }
+
+    @Test("aiTracking on : utilitaire lancé, état publié ; le mouvement suivant le recoupe")
+    func aiTrackingOn() {
+        let controller = makeController()
+        #expect(controller.handle(.aiTracking(on: true), from: 1) == nil)
+        #expect(runner.orders == [true])
+        runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .on)
+        _ = controller.handle(.move(pan: 1, tilt: 0), from: 1)
+        #expect(runner.orders == [true, false])
+    }
+
+    @Test("aiTracking refusé en vie privée et caméra débranchée")
+    func aiTrackingRefused() {
+        let controller = makeController()
+        _ = controller.handle(.privacy(on: true), from: 1)
+        runner.finish(.success)
+        #expect(controller.handle(.aiTracking(on: true), from: 1)?.code == .privacyActive)
+        camera.isPresent = false
+        controller.cameraPresenceChanged(false)
+        #expect(controller.handle(.aiTracking(on: true), from: 1)?.code == .cameraAbsent)
+    }
+
+    @Test("aiTracking échoué : erreur uvcFailed envoyée plus tard au client qui l'a demandé")
+    func aiTrackingFailure() {
+        let controller = makeController()
+        let errors = ClientErrorBox()
+        controller.onClientError = { errors.values.append(($0, $1, $2)) }
+        _ = controller.handle(.aiTracking(on: true), from: 7)
+        runner.finish(.sdkError)
+        #expect(errors.values.count == 1)
+        #expect(errors.values.first?.0 == 7)
+        #expect(errors.values.first?.1 == .uvcFailed)
+        #expect(errors.values.first?.2 == "Suivi IA non modifié (erreur du SDK OBSBOT).")
+        #expect(controller.snapshot.aiTracking == .unknown)
+    }
+
+    @Test("Entrer en vie privée coupe le suivi d'abord ; rebrancher hors vie privée le rend inconnu")
+    func privacyCutsTrackingAndReplugForgets() {
+        let controller = makeController()
+        _ = controller.handle(.aiTracking(on: true), from: 1)
+        runner.finish(.success)
+        _ = controller.handle(.privacy(on: true), from: 1)
+        #expect(runner.orders == [true, false])
+        runner.finish(.success)
+        _ = controller.handle(.privacy(on: false), from: 1)
+        #expect(controller.snapshot.aiTracking == .off)
+        controller.cameraPresenceChanged(true)
+        #expect(controller.snapshot.aiTracking == .unknown)
+    }
+
+    @Test("aiTracking(on: true) en vol, puis privacy(on: true) lance la coupure après succès")
+    func aiTrackingCutDuringPrivacyEntry() {
+        let controller = makeController()
+        _ = controller.handle(.aiTracking(on: true), from: 1)
+        #expect(runner.orders == [true])
+        _ = controller.handle(.privacy(on: true), from: 1)
+        runner.finish(.success)
+        #expect(runner.orders == [true, false])
+        #expect(runner.runCount == 2)
+        runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .off)
+    }
+
+    @Test("À partir de tracking .off : aiTracking(on: true) en vol, puis privacy(on: true) lance la coupure")
+    func aiTrackingCutFromOffDuringPrivacy() {
+        let controller = makeController()
+        _ = controller.handle(.aiTracking(on: false), from: 1)
+        runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .off)
+        _ = controller.handle(.aiTracking(on: true), from: 1)
+        #expect(runner.orders == [false, true])
+        _ = controller.handle(.privacy(on: true), from: 1)
+        runner.finish(.success)
+        #expect(runner.orders == [false, true, false])
+        #expect(runner.runCount == 3)
+        runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .off)
+    }
+
+    @Test("À partir de tracking .off : aiTracking(on: true) en vol, puis mouvement lance la coupure")
+    func aiTrackingCutFromOffDuringMove() {
+        let controller = makeController()
+        _ = controller.handle(.aiTracking(on: false), from: 1)
+        runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .off)
+        _ = controller.handle(.aiTracking(on: true), from: 1)
+        #expect(runner.orders == [false, true])
+        _ = controller.handle(.move(pan: 1, tilt: 0), from: 1)
+        runner.finish(.success)
+        #expect(runner.orders == [false, true, false])
+        #expect(runner.runCount == 3)
+        runner.finish(.success)
+        #expect(controller.snapshot.aiTracking == .off)
     }
 
     @Test("Débranchement : caméra absente, mouvement oublié")
@@ -249,20 +361,22 @@ struct PTZControllerTests {
         #expect(camera.absoluteCommands == Array(repeating: PanTiltPosition(pan: 12, tilt: PrivacyKeeper.privacyTilt), count: 2))
         scheduler.advance(by: PTZController.settleDelay)
         #expect(controller.snapshot.tilt == PrivacyKeeper.privacyTilt)
-        // Un échec de l'utilitaire réapplique aussi.
-        _ = controller.handle(.takeControl, from: 1)
+        // Un échec de l'utilitaire réapplique aussi (rebranchement en vie privée : réapplication, puis coupure).
+        controller.cameraPresenceChanged(true)
+        #expect(camera.absoluteCommands.count == 3)
         runner.finish(.sdkError)
         #expect(controller.snapshot.control == .taking)
         scheduler.advance(by: ControlTaker.retryDelay)
         runner.finish(.sdkError)
         #expect(controller.snapshot.control == .failed)
-        #expect(camera.absoluteCommands.count == 3)
+        #expect(camera.absoluteCommands.count == 4)
     }
 
     @Test("Fin de la coupure hors vie privée : aucun ordre absolu")
     func controlFinishOutsidePrivacy() {
         let controller = makeController()
-        _ = controller.handle(.takeControl, from: 1)
+        _ = controller.handle(.move(pan: 1, tilt: 0), from: 1)
+        _ = controller.handle(.move(pan: 0, tilt: 0), from: 1)
         runner.finish(.success)
         #expect(camera.absoluteCommands.isEmpty)
     }
@@ -291,4 +405,10 @@ struct PTZControllerTests {
         #expect(camera.absoluteCommands.count == 1)
         #expect(!log.lines.contains { $0.contains("ignoré") })
     }
+}
+
+/// Erreurs transmises par `onClientError` (tests).
+@MainActor
+final class ClientErrorBox {
+    var values: [(ClientID, ErrorCode, String)] = []
 }

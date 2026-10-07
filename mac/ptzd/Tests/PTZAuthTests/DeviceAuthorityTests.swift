@@ -131,6 +131,16 @@ struct DeviceAuthorityTests {
         #expect(try authority.devices.device(id: deviceID)?.name == "appareil")
         pairDevice(name: "  " + String(repeating: "a", count: 60))
         #expect(try authority.devices.device(id: deviceID)?.name == String(repeating: "a", count: 40))
+        pairDevice(name: "iPhone\n\u{1B}[2J\u{2028}de test\u{2029}")
+        #expect(try authority.devices.device(id: deviceID)?.name == "iPhone[2Jde test")
+    }
+
+    @Test("Retrait par identifiant exact : nil pour un inconnu, l'appareil sinon")
+    func removeByID() throws {
+        pairDevice()
+        #expect(try authority.devices.remove(id: String(deviceID.prefix(8))) == nil)
+        #expect(try authority.devices.remove(id: deviceID)?.deviceID == deviceID)
+        #expect(try authority.devices.device(id: deviceID) == nil)
     }
 
     @Test("revoke par début d'identifiant ; trop court, inconnu ou ambigu : erreur")

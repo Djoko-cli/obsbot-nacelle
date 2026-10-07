@@ -24,7 +24,7 @@ public enum AuthCommand {
         case ("revoke", 2):
             do {
                 let removed = try authority.devices.remove(prefix: arguments[1])
-                return (0, "Retiré : \(removed.deviceID.prefix(8))  \(removed.name). Ses connexions ouvertes durent jusqu'à leur fin ; relancer ptzd pour les couper tout de suite.")
+                return (0, "Retiré : \(removed.deviceID.prefix(8))  \(removed.name). Ses connexions ouvertes durent jusqu'à leur fin : pour les couper tout de suite, retirez-le plutôt depuis PTZBot sur le Mac.")
             } catch PairedDevicesError.ambiguous(let prefix) {
                 return (1, "Plusieurs appareils commencent par « \(prefix) » : donner plus de caractères.")
             } catch PairedDevicesError.noMatch(let prefix) {

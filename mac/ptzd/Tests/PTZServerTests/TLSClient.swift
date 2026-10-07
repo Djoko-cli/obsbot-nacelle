@@ -81,6 +81,16 @@ final class TLSClient {
         return try NacelleCodec.decodeServer(text)
     }
 
+    /// Le premier message du serveur qui satisfait la condition.
+    func receive(where matches: (ServerMessage) -> Bool) async throws -> ServerMessage {
+        while true {
+            let message = try await receive()
+            if matches(message) {
+                return message
+            }
+        }
+    }
+
     func close() {
         connection.cancel()
     }

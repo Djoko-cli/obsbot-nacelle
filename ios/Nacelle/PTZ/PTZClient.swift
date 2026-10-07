@@ -20,8 +20,8 @@ final class PTZClient {
     }
 
     /// Ce qui empêche l'authentification. Un verdict de ptzd par Tailscale (`unpaired`, `rejected`),
-    /// l'absence de clé et l'échec d'un appairage arrêtent les reconnexions jusqu'à ce que l'utilisateur
-    /// agisse. Les autres verdicts d'un service du réseau local les laissent continuer ; effacés à chaque
+    /// l'expulsion, l'absence de clé et l'échec d'un premier appairage arrêtent les reconnexions jusqu'à ce
+    /// que l'utilisateur agisse (ou le prochain retour au premier plan). Les autres verdicts d'un service du réseau local les laissent continuer ; effacés à chaque
     /// nouvelle tentative.
     enum AuthIssue: Equatable {
         /// Pas de clé, ou ptzd ne connaît pas cet iPhone.
@@ -31,6 +31,9 @@ final class PTZClient {
         /// QR code refusé : preuve fausse, appairage expiré ou déjà utilisé, ou aucun Mac n'a répondu
         /// avec le secret du QR (spec découverte et QR § 9).
         case badCode
+        /// Expulsé par le Mac pour quelques minutes (spec app Mac § 7.3). Le verdict vient d'une connexion
+        /// authentifiée (TLS à clé pré-partagée ou Tailscale) : il arrête les reconnexions par tous les chemins.
+        case blocked
     }
 
     /// Pourquoi une négociation vidéo n'a pas abouti.
@@ -48,6 +51,8 @@ final class PTZClient {
     static let repeatInterval: TimeInterval = 0.1
     /// Délai d'une négociation vidéo, attente de la connexion comprise.
     static let negotiationTimeout: TimeInterval = 10
+    /// Temps laissé au Mac pour fermer la connexion après `forgetMe`.
+    static let forgetTimeout: TimeInterval = 2
     static let retryDelays: [TimeInterval] = [1, 2, 4, 8]
     /// Temps laissé à Bonjour pour trouver ptzd sur le réseau local, à chaque tentative.
     static let discoveryWindow: TimeInterval = 3
@@ -86,7 +91,9 @@ final class PTZClient {
     @ObservationIgnored private let scheduler: any Scheduler
     @ObservationIgnored private let deviceName: String
     /// Adresse IPv4 du Mac qui vient d'appairer cet iPhone, à retenir dans le champ (spec découverte et QR § 8.3).
-    @ObservationIgnored var onAddressLearned: ((String) -> Void)?
+    @ObservationIgnored var onAddressLearned: ((_ host: String, _ port: Int) -> Void)?
+    /// QR code refusé alors que l'iPhone était déjà appairé : simple avis, la connexion normale reprend.
+    @ObservationIgnored var onPairingRefused: (() -> Void)?
     /// Réglages du dernier `start` ; nil à l'arrêt.
     @ObservationIgnored private var settings: ConnectionSettings?
     @ObservationIgnored private var attempt = 0
@@ -103,6 +110,8 @@ final class PTZClient {
     @ObservationIgnored private var discovery: (any Cancellable)?
     @ObservationIgnored private var retry: (any Cancellable)?
     @ObservationIgnored private var repeater: (any Cancellable)?
+    /// `forgetMe` envoyé : attente de la fermeture de la connexion, bornée par `forgetTimeout`.
+    @ObservationIgnored private var forgetTimer: (any Cancellable)?
     @ObservationIgnored private var currentMove = JoystickVector.zero
     /// QR code scanné, en attente d'appairage. Son secret n'est jamais rangé (spec découverte et QR § 8.3).
     private var pendingPairing: PairingLink?
@@ -154,6 +163,8 @@ final class PTZClient {
     }
 
     func start(settings: ConnectionSettings) {
+        forgetTimer?.cancel()
+        forgetTimer = nil
         self.settings = settings
         attempt = 0
         isUnreachable = false
@@ -164,6 +175,8 @@ final class PTZClient {
 
     /// Passage en arrière-plan : arrêt de la nacelle, puis fermeture.
     func stop() {
+        forgetTimer?.cancel()
+        forgetTimer = nil
         if currentMove != .zero {
             send(.move(pan: 0, tilt: 0))
         }
@@ -228,12 +241,34 @@ final class PTZClient {
         restart()
     }
 
-    /// Oublie la clé et l'appairage ; ptzd refusera cet iPhone jusqu'au prochain appairage.
+    /// Oublie la clé et l'appairage. Connecté, demande d'abord au Mac de retirer cet iPhone de sa liste
+    /// (`forgetMe`), puis attend la fermeture de la connexion, au plus `forgetTimeout` ; sinon, tout de suite.
+    /// Dans les deux cas ptzd refusera cet iPhone jusqu'au prochain appairage.
     func forgetPairing() {
+        guard link == .connected else {
+            forgetLocally()
+            return
+        }
+        guard forgetTimer == nil else { return }
+        send(.forgetMe)
+        forgetTimer = scheduler.schedule(after: Self.forgetTimeout) { [weak self] in
+            self?.forgetLocally()
+        }
+    }
+
+    /// Clé et appairage oubliés. `giveUp` : le Mac a retiré l'iPhone pendant la session ; on s'arrête sur
+    /// « non appairé » au lieu de relancer une connexion qu'il refuserait.
+    private func forgetLocally(giveUp stop: Bool = false) {
+        forgetTimer?.cancel()
+        forgetTimer = nil
         keys.delete()
         setPaired(false)
         pendingPairing = nil
-        restart()
+        if stop {
+            giveUp(.unpaired)
+        } else {
+            restart()
+        }
     }
 
     func setJoystick(_ vector: JoystickVector) {
@@ -254,6 +289,11 @@ final class PTZClient {
 
     func setZoom(_ value: Int) {
         send(.zoom(value: value))
+    }
+
+    /// Allume ou coupe le suivi IA de la caméra (spec app Mac § 7.5).
+    func setAITracking(_ on: Bool) {
+        send(.aiTracking(on: on))
     }
 
     func setPrivacy(_ on: Bool) {
@@ -406,7 +446,12 @@ final class PTZClient {
             }
             if candidate === active {
                 active = nil
-                lost()
+                if forgetTimer != nil {
+                    // Le Mac a coupé après `forgetMe` : on oublie sans attendre le délai.
+                    forgetLocally()
+                } else {
+                    lost()
+                }
             } else {
                 failAttemptIfOver()
             }
@@ -428,6 +473,7 @@ final class PTZClient {
             // Seule la connexion qui a envoyé la preuve peut confirmer l'appairage.
             guard candidate === pairingCandidate else { return }
             let qrHost = pendingPairing?.hosts.first
+            let qrPort = pendingPairing?.port
             // Sans le secret, le réseau local en TLS est impossible ; seule l'écoute Tailscale reste : l'appairage est valable quand même.
             do {
                 try keys.saveLANKey(lanKey)
@@ -438,8 +484,8 @@ final class PTZClient {
             pairingCandidate = nil
             setPaired(true)
             // L'adresse du Mac qui a répondu, sinon la première du QR (service Bonjour en IPv6 ou non résolu, spec découverte et QR § 8.1).
-            if let address = candidate.transport.remoteAddress ?? qrHost {
-                onAddressLearned?(address)
+            if let address = candidate.transport.remoteAddress ?? qrHost, let port = qrPort {
+                onAddressLearned?(address, port)
             }
             for waiting in candidates where waiting.nonce != nil {
                 authenticate(waiting)
@@ -470,13 +516,18 @@ final class PTZClient {
             issue = .rejected
         case .badCode, .pairingClosed, .notLocal:
             issue = .badCode
+        case .blocked:
+            issue = .blocked
         default:
             lastError = code
             return
         }
         if candidate === pairingCandidate {
-            pendingPairing = nil
-            giveUp(.badCode)
+            pairingRefused()
+            return
+        }
+        if issue == .blocked {
+            giveUp(.blocked)
             return
         }
         if candidate.isLocal {
@@ -549,21 +600,46 @@ final class PTZClient {
         switch message {
         case let .state(snapshot):
             state = snapshot
+        case .error(.blocked, _):
+            // Expulsé pendant la session : pas de reconnexion, qui serait refusée.
+            giveUp(.blocked)
+        case .error(.unpaired, _):
+            // Session ouverte : le Mac a retiré cet iPhone de sa liste. Oubli complet, puis écran d'appairage.
+            // Si l'oubli vient de cet iPhone (forgetMe en attente), il s'achève ici.
+            forgetLocally(giveUp: true)
+        case .error(.badMessage, _) where forgetTimer != nil:
+            // Un ptzd plus ancien ne connaît pas forgetMe : inutile d'attendre sa fermeture.
+            forgetLocally()
         case let .error(code, _):
             lastError = code
         case let .webrtcAnswer(id, sdp):
             negotiations.removeValue(forKey: id)?.resume(returning: sdp)
         case let .webrtcError(id, message):
             negotiations.removeValue(forKey: id)?.resume(throwing: NegotiationError.relay(message))
-        case .challenge, .authenticated, .paired, .pairingOpened:
+        case .challenge, .authenticated, .paired, .pairingOpened, .adminState:
             break
         }
+    }
+
+    /// QR code refusé. Sur un iPhone déjà appairé (scan depuis les réglages), simple avis et reconnexion
+    /// normale ; sinon, arrêt sur « QR code refusé » (spec app Mac § 9).
+    private func pairingRefused() {
+        pendingPairing = nil
+        guard isPaired, keys.load() != nil else {
+            giveUp(.badCode)
+            return
+        }
+        onPairingRefused?()
+        restart()
     }
 
     /// Plus de reconnexion : l'utilisateur doit appairer l'iPhone (spec accès local § 8.5).
     private func giveUp(_ issue: AuthIssue) {
         authIssue = issue
         authIssueBlocks = true
+        stopRepeating()
+        currentMove = .zero
+        state = nil
         retry?.cancel()
         retry = nil
         closeAll()
@@ -584,8 +660,7 @@ final class PTZClient {
     private func attemptFailed() {
         // Appairage sans réponse : le QR est refusé (mauvais secret, expiré) ou aucun Mac n'est joignable.
         if pendingPairing != nil {
-            pendingPairing = nil
-            giveUp(.badCode)
+            pairingRefused()
             return
         }
         closeAll()

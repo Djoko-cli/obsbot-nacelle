@@ -42,7 +42,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSLocalNetworkUsageDescription: "À la maison, l'app trouve le Mac et la caméra sur le Wi-Fi, sans Tailscale."
-        NSCameraUsageDescription: "Pour scanner le QR code affiché par ptzd pair sur le Mac."
+        NSCameraUsageDescription: "Pour scanner le QR code d'appairage affiché sur le Mac."
         NSBonjourServices:
           - _nacelle._tcp
         NSAppTransportSecurity:

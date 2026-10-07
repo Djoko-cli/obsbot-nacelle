@@ -28,6 +28,18 @@ public enum PairedDevicesError: Error, Equatable {
 
 /// `devices.json` : relu à chaque appel, pour qu'un `ptzd revoke` lancé à côté du service
 /// prenne effet dès la connexion suivante. Écrit avec les droits 600.
+extension PairedDevice {
+    /// Nom enregistré (spec app Mac § 7.4) : sans caractères de contrôle ni sauts de ligne (U+2028 et U+2029
+    /// compris), espaces aux bords retirés, 40 caractères au plus, « appareil » s'il est vide. Il ressort
+    /// ainsi propre dans le journal, `ptzd devices` et l'app Mac.
+    public static func cleanName(_ name: String) -> String {
+        let forbidden = CharacterSet.controlCharacters.union(.newlines)
+        let kept = String(String.UnicodeScalarView(name.unicodeScalars.filter { !forbidden.contains($0) }))
+        let trimmed = String(kept.trimmingCharacters(in: .whitespaces).prefix(40))
+        return trimmed.isEmpty ? "appareil" : trimmed
+    }
+}
+
 public struct PairedDevices: Sendable {
     public let url: URL
 
@@ -50,6 +62,15 @@ public struct PairedDevices: Sendable {
         var devices = try all().filter { $0.deviceID != device.deviceID }
         devices.append(device)
         try write(devices)
+    }
+
+    /// Retire l'appareil de cet identifiant exact ; nil s'il n'est pas appairé.
+    @discardableResult
+    public func remove(id: String) throws -> PairedDevice? {
+        let devices = try all()
+        guard let match = devices.first(where: { $0.deviceID == id }) else { return nil }
+        try write(devices.filter { $0.deviceID != id })
+        return match
     }
 
     /// Retire l'appareil dont l'identifiant commence par `prefix` (au moins 4 caractères).
