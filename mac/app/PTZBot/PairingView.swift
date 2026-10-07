@@ -19,8 +19,7 @@ struct PairingView: View {
                 }
                 Text("Dans PTZBot sur l'iPhone, touchez **Scanner le QR code**.")
                     .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 320)
+                    .fixedSize()
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     let total = invitation.expiresAt.timeIntervalSince(shownAt)
                     let remaining = max(0, invitation.expiresAt.timeIntervalSince(context.date))
