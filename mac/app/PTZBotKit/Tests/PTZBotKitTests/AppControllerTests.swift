@@ -375,6 +375,7 @@ struct ServiceLabelsTests {
         #expect(Labels.sdk(.quarantined) == "En quarantaine")
         #expect(Labels.sdk(.incompatible) == "Incompatible")
         #expect(Labels.sdk(.unloadable) == "Ne se charge pas")
+        #expect(Labels.sdk(.verifierMissing) == "obsbot-ai introuvable")
         #expect(Labels.sdk(nil) == "Vérification…")
         #expect(Labels.aiNeedsSDK(.absent, legacy: false))
         #expect(Labels.aiNeedsSDK(nil, legacy: false))
@@ -385,6 +386,7 @@ struct ServiceLabelsTests {
         #expect(Labels.sdkAction(.absent) == "Installer le SDK…")
         #expect(Labels.sdkAction(.quarantined) == "Installer le SDK…")
         #expect(Labels.sdkAction(nil) == nil)
+        #expect(Labels.sdkAction(.verifierMissing) == nil)
         #expect(Labels.replaceLegacy == "Remplacer l'ancienne installation…")
     }
 
@@ -437,6 +439,24 @@ struct ServiceLabelsTests {
         #expect(Labels.sdkChecks(bare).map(\.title) == ["Architecture", "Signature", "Provenance", "Quarantaine"])
         let dated = SDKCandidate(path: bare.path, architectures: ["arm64"], origin: SDKOrigin(url: nil, date: Date(timeIntervalSince1970: 0x6A00_0000)))
         #expect(Labels.sdkChecks(dated)[2].value.hasPrefix("le "))
+    }
+
+    @Test("Vérifications du SDK : signature invalide, provenance tirée de l'archive")
+    func checksWarnings() {
+        let altered = SDKCandidate(path: URL(fileURLWithPath: "/x/libdev.dylib"), architectures: ["arm64"], signatureValid: false)
+        #expect(Labels.sdkChecks(altered)[1] == Labels.SDKCheck(title: "Signature", value: "Signature invalide"))
+        let fromArchive = SDKCandidate(
+            path: URL(fileURLWithPath: "/x/libdev.dylib"),
+            architectures: ["arm64"],
+            origin: SDKOrigin(url: "https://example.com/libdev.zip", date: nil, fromInsideArchive: true)
+        )
+        #expect(Labels.sdkChecks(fromArchive)[2].value == "https://example.com/libdev.zip (indiquée dans l'archive)")
+        let direct = SDKCandidate(
+            path: URL(fileURLWithPath: "/x/libdev.dylib"),
+            architectures: ["arm64"],
+            origin: SDKOrigin(url: "https://example.com/libdev.zip", date: nil)
+        )
+        #expect(Labels.sdkChecks(direct)[2].value == "https://example.com/libdev.zip")
     }
 
     @Test("Emplacements : utilitaires dans Contents/Helpers, SDK et journal de l'utilisateur")

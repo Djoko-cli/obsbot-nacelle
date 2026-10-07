@@ -5,10 +5,14 @@ import Security
 public struct SDKOrigin: Equatable, Sendable {
     public var url: String?
     public var date: Date?
+    /// Vrai quand la valeur vient du fichier extrait et non de l'archive : ditto recopie les attributs du zip,
+    /// donc la provenance du fichier extrait peut être forgée. L'app le signale dans la fenêtre.
+    public var fromInsideArchive: Bool = false
 
-    public init(url: String?, date: Date?) {
+    public init(url: String?, date: Date?, fromInsideArchive: Bool = false) {
         self.url = url
         self.date = date
+        self.fromInsideArchive = fromInsideArchive
     }
 }
 
@@ -25,8 +29,11 @@ public struct SDKCandidate: Equatable, Sendable {
     public var origin: SDKOrigin?
     /// Dossier d'extraction d'une archive, à effacer avec `SDKInspector.discard`.
     public var temporaryDirectory: URL?
-    /// Les autres `libdev.dylib` du choix, ignorés (chemins relatifs à la racine du SDK).
+    /// Les autres `libdev.dylib` du choix, ignorés (chemins relatifs à la racine du choix ou au dossier décompressé).
     public var otherCopies: [String]
+    /// nil si le fichier n'est pas signé ; vrai si la signature est valide ; faux si elle est présente mais invalide
+    /// (fichier modifié). `signer` et `team` ne sont renseignés que lorsque la signature est valide.
+    public var signatureValid: Bool?
 
     public var isArm64: Bool {
         architectures.contains("arm64")
@@ -40,7 +47,8 @@ public struct SDKCandidate: Equatable, Sendable {
         quarantined: Bool = false,
         origin: SDKOrigin? = nil,
         temporaryDirectory: URL? = nil,
-        otherCopies: [String] = []
+        otherCopies: [String] = [],
+        signatureValid: Bool? = nil
     ) {
         self.path = path
         self.architectures = architectures
@@ -50,6 +58,7 @@ public struct SDKCandidate: Equatable, Sendable {
         self.origin = origin
         self.temporaryDirectory = temporaryDirectory
         self.otherCopies = otherCopies
+        self.signatureValid = signatureValid
     }
 }
 
@@ -60,6 +69,8 @@ public enum SDKRejection: Error, Equatable, Sendable {
     case notMachO
     case noArm64(architectures: [String])
     case extractionFailed(String)
+    /// Le chemin de `libdev.dylib` mène hors du choix (un dossier intermédiaire est un lien symbolique).
+    case outsideArchive
 
     public var message: String {
         switch self {
@@ -73,6 +84,8 @@ public enum SDKRejection: Error, Equatable, Sendable {
             "Ce SDK n'a pas de version pour Apple Silicon (\(architectures.joined(separator: ", ")))."
         case let .extractionFailed(reason):
             "L'archive n'a pas pu être décompressée : \(reason)"
+        case .outsideArchive:
+            "Ce choix contient un lien symbolique qui mène hors du dossier du SDK : il est refusé. Choisissez le SDK décompressé ou l'archive reçue."
         }
     }
 }
@@ -86,6 +99,8 @@ public enum SDKInspector {
 
     /// Profondeur maximale de la recherche des copies de `libdev.dylib` dans un dossier.
     static let maxSearchDepth = 5
+    /// Délai maximal de `ditto` : au-delà, le processus est arrêté et l'examen échoue.
+    static let extractionTimeout: TimeInterval = 60
 
     /// Bloquant (décompression, lecture des en-têtes et de la signature) : à appeler hors du fil principal.
     public static func inspect(_ url: URL) throws(SDKRejection) -> SDKCandidate {
@@ -94,12 +109,21 @@ public enum SDKInspector {
             throw .notFound
         }
         if isDirectory.boolValue {
-            guard let located = locate(in: url) else { throw .notFound }
+            guard let located = try locate(in: url) else { throw .notFound }
             return try describe(located.library, archive: nil, temporaryDirectory: nil, otherCopies: located.otherCopies)
         }
         if url.pathExtension.lowercased() == "zip" {
+            // Le zip lui-même doit être un fichier ordinaire : un lien vers une archive n'est pas décompressé.
+            guard isRegularFile(url) else { throw .notRegularFile }
             let directory = try extract(url)
-            guard let located = locate(in: directory) else {
+            let located: (library: URL, otherCopies: [String])?
+            do {
+                located = try locate(in: directory)
+            } catch {
+                try? FileManager.default.removeItem(at: directory)
+                throw error
+            }
+            guard let located else {
                 try? FileManager.default.removeItem(at: directory)
                 throw .notFound
             }
@@ -133,7 +157,8 @@ public enum SDKInspector {
     /// La bibliothèque au chemin que la compilation lie (`macos/arm64-release/libdev.dylib`), sous le dossier
     /// choisi ou sous un de ses sous-dossiers directs (le dossier de tête de l'archive d'OBSBOT). Les autres
     /// `libdev.dylib` (jusqu'à 5 niveaux, sans dossiers cachés ni paquets) sont seulement listés.
-    static func locate(in directory: URL) -> (library: URL, otherCopies: [String])? {
+    /// Refuse (`outsideArchive`) un chemin dont le dossier intermédiaire est un lien vers un autre emplacement.
+    static func locate(in directory: URL) throws(SDKRejection) -> (library: URL, otherCopies: [String])? {
         let manager = FileManager.default
         let subdirectories = ((try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
                                                                  options: [.skipsHiddenFiles])) ?? [])
@@ -147,7 +172,9 @@ public enum SDKInspector {
         }
         let library = root.appending(path: libraryPath)
         let rootPath = root.resolvingSymlinksInPath().path + "/"
+        let directoryPath = directory.resolvingSymlinksInPath().path + "/"
         let chosen = library.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: library.lastPathComponent).path
+        guard chosen.hasPrefix(rootPath) else { throw .outsideArchive }
         var others: [String] = []
         if let enumerator = manager.enumerator(at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles, .skipsPackageDescendants]) {
             for case let file as URL in enumerator {
@@ -157,26 +184,42 @@ public enum SDKInspector {
                 guard enumerator.level <= maxSearchDepth, file.lastPathComponent == "libdev.dylib" else { continue }
                 let path = file.deletingLastPathComponent().resolvingSymlinksInPath().appending(path: file.lastPathComponent).path
                 guard path != chosen else { continue }
-                others.append(path.hasPrefix(rootPath) ? String(path.dropFirst(rootPath.count)) : path)
+                // Chemins relatifs, jamais absolus : à la racine choisie, sinon au dossier choisi ; le reste est ignoré.
+                if path.hasPrefix(rootPath) {
+                    others.append(String(path.dropFirst(rootPath.count)))
+                } else if path.hasPrefix(directoryPath) {
+                    others.append(String(path.dropFirst(directoryPath.count)))
+                }
             }
         }
         return (library, others.sorted())
     }
 
-    /// Décompresse l'archive dans un dossier temporaire avec `ditto`.
-    static func extract(_ archive: URL) throws(SDKRejection) -> URL {
+    /// Décompresse l'archive dans un dossier temporaire avec `ditto`. Au-delà de `timeout`, `ditto` est arrêté et
+    /// le dossier partiel effacé.
+    static func extract(_ archive: URL, timeout: TimeInterval = extractionTimeout) throws(SDKRejection) -> URL {
         let directory = FileManager.default.temporaryDirectory.appending(path: "ptzbot-sdk-\(UUID().uuidString)")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         process.arguments = ["-x", "-k", archive.path, directory.path]
+        process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
         do {
             try process.run()
         } catch {
             throw .extractionFailed(error.localizedDescription)
         }
-        process.waitUntilExit()
+        guard finished.wait(timeout: .now() + timeout) == .success else {
+            if process.isRunning {
+                process.terminate()
+            }
+            finished.wait()
+            try? FileManager.default.removeItem(at: directory)
+            throw .extractionFailed("ditto n'a pas fini dans le délai imparti.")
+        }
         guard process.terminationStatus == 0 else {
             try? FileManager.default.removeItem(at: directory)
             throw .extractionFailed("ditto a échoué (code \(process.terminationStatus)).")
@@ -189,37 +232,52 @@ public enum SDKInspector {
         guard let architectures = MachO.architectures(of: library) else { throw .notMachO }
         guard architectures.contains("arm64") else { throw .noArm64(architectures: architectures) }
         let signing = signing(of: library)
-        // La provenance d'une archive est sur l'archive : ditto ne la recopie pas sur ce qu'il décompresse.
-        let sources = [library] + (archive.map { [$0] } ?? [])
-        let quarantine = sources.lazy.compactMap(quarantineValue).first
-        let whereFrom = sources.lazy.compactMap(whereFrom).first
-        let date = quarantine.flatMap(quarantineDate)
+        // La provenance vient d'abord de l'archive : ditto recopie sur le fichier extrait les attributs du zip
+        // (adresse forgeable) et lui donne une quarantaine à l'heure de l'extraction. Le fichier extrait ne sert
+        // de repli, et la valeur repliée est marquée.
+        let sources = archive.map { [$0, library] } ?? [library]
+        let quarantined = sources.contains { quarantineValue($0) != nil }
+        let urlSource = sources.first { whereFrom($0) != nil }
+        let dateSource = sources.first { quarantineValue($0).flatMap(quarantineDate) != nil }
+        let url = urlSource.flatMap(whereFrom)
+        let date = dateSource.flatMap { quarantineValue($0).flatMap(quarantineDate) }
+        let fromInsideArchive = archive != nil && (urlSource == library || dateSource == library)
         return SDKCandidate(
             path: library,
             architectures: architectures,
             signer: signing.signer,
             team: signing.team,
-            quarantined: quarantine != nil,
-            origin: whereFrom == nil && date == nil ? nil : SDKOrigin(url: whereFrom, date: date),
+            quarantined: quarantined,
+            origin: url == nil && date == nil ? nil : SDKOrigin(url: url, date: date, fromInsideArchive: fromInsideArchive),
             temporaryDirectory: temporaryDirectory,
-            otherCopies: otherCopies
+            otherCopies: otherCopies,
+            signatureValid: signing.valid
         )
     }
 
     // MARK: - Signature
 
-    /// Le résumé du certificat du signataire et l'équipe ; nil pour un fichier non signé ou signé ad hoc.
-    static func signing(of url: URL) -> (signer: String?, team: String?) {
+    /// Le résumé du certificat du signataire et l'équipe, lus seulement si la signature est valide. `valid` vaut nil
+    /// pour un fichier non signé, vrai si la signature est valide, faux si elle est présente mais invalide (fichier
+    /// modifié) ; dans ce dernier cas, signataire et équipe sont nil.
+    static func signing(of url: URL) -> (signer: String?, team: String?, valid: Bool?) {
         var code: SecStaticCode?
-        guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess, let code else { return (nil, nil) }
+        guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess, let code else { return (nil, nil, nil) }
+        // Sans `kSecCSCheckAllArchitectures`, la vérification statique ne lit pas les pages exécutables : un
+        // binaire modifié passerait pour valide (mesuré sur un /bin/ls altéré).
+        let validity = SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSCheckAllArchitectures), nil)
+        if validity == errSecCSUnsigned {
+            return (nil, nil, nil)
+        }
+        guard validity == errSecSuccess else { return (nil, nil, false) }
         var information: CFDictionary?
         guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
               let info = information as? [String: Any] else {
-            return (nil, nil)
+            return (nil, nil, true)
         }
         let certificates = info[kSecCodeInfoCertificates as String] as? [SecCertificate]
         let signer = certificates?.first.flatMap { SecCertificateCopySubjectSummary($0) as String? }
-        return (signer, info[kSecCodeInfoTeamIdentifier as String] as? String)
+        return (signer, info[kSecCodeInfoTeamIdentifier as String] as? String, true)
     }
 
     // MARK: - Attributs étendus

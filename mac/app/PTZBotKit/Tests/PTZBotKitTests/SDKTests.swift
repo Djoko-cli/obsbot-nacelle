@@ -67,6 +67,18 @@ enum FakeSDK {
     static func isQuarantined(_ url: URL) -> Bool {
         getxattr(url.path, "com.apple.quarantine", nil, 0, 0, 0) >= 0
     }
+
+    /// Archive `ditto` du dossier, comme l'archive d'OBSBOT (les attributs étendus des fichiers vont avec).
+    @discardableResult
+    static func zip(_ folder: URL, to archive: URL) throws -> URL {
+        let ditto = Process()
+        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        ditto.arguments = ["-c", "-k", "--keepParent", folder.path, archive.path]
+        try ditto.run()
+        ditto.waitUntilExit()
+        try #require(ditto.terminationStatus == 0)
+        return archive
+    }
 }
 
 @Suite("SDK : examen du fichier choisi")
@@ -215,6 +227,127 @@ struct SDKInspectorTests {
         #expect(SDKInspector.signing(of: URL(fileURLWithPath: "/bin/ls")).signer != nil)
         #expect(SDKInspector.quarantineDate("0083;6a000000;Safari;x") == Date(timeIntervalSince1970: 0x6A00_0000))
         #expect(SDKInspector.quarantineDate("0083") == nil)
+    }
+
+    @Test("Signature validée : valide pour /bin/ls, nil si non signé, invalide et sans signataire après modification")
+    func signatureValidity() throws {
+        let directory = try FakeSDK.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let signed = SDKInspector.signing(of: URL(fileURLWithPath: "/bin/ls"))
+        #expect(signed.valid == true)
+        #expect(signed.signer != nil)
+        // Un fichier sans signature : Security répond « not signed at all » (errSecCSUnsigned), donc nil.
+        let plain = try FakeSDK.write(Data("texte sans signature".utf8), to: directory.appending(path: "plain.dylib"))
+        #expect(SDKInspector.signing(of: plain).valid == nil)
+        // Un octet modifié au milieu du fichier, loin des en-têtes : la signature ne tient plus.
+        let copy = directory.appending(path: "ls-copie")
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/bin/ls"), to: copy)
+        let size = try #require(try FileManager.default.attributesOfItem(atPath: copy.path)[.size] as? Int)
+        let handle = try FileHandle(forUpdating: copy)
+        try handle.seek(toOffset: UInt64(size / 2))
+        let byte = try #require(try handle.read(upToCount: 1)?.first)
+        try handle.seek(toOffset: UInt64(size / 2))
+        try handle.write(contentsOf: Data([byte ^ 0xFF]))
+        try handle.close()
+        let altered = SDKInspector.signing(of: copy)
+        #expect(altered.valid == false)
+        #expect(altered.signer == nil)
+        #expect(altered.team == nil)
+    }
+
+    @Test("Provenance forgée : l'adresse de l'archive l'emporte sur celle que ditto recopie du fichier extrait")
+    func forgedProvenance() throws {
+        let directory = try FakeSDK.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = directory.appending(path: "libdev_v9")
+        let library = try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: root.appending(path: "macos/arm64-release/libdev.dylib"))
+        try FakeSDK.setWhereFroms(library, ["https://forge.example.com/libdev.dylib"])
+        let archive = try FakeSDK.zip(root, to: directory.appending(path: "libdev_v9.zip"))
+        FakeSDK.setQuarantine(archive)
+        try FakeSDK.setWhereFroms(archive, ["https://example.com/libdev_v9.zip"])
+
+        let candidate = try SDKInspector.inspect(archive)
+        defer { SDKInspector.discard(candidate) }
+        // L'attribut forgé est bien arrivé sur le fichier extrait : le test prouve que l'archive l'emporte.
+        #expect(SDKInspector.whereFrom(candidate.path) == "https://forge.example.com/libdev.dylib")
+        #expect(candidate.origin == SDKOrigin(url: "https://example.com/libdev_v9.zip", date: Date(timeIntervalSince1970: 0x6A00_0000)))
+        #expect(candidate.origin?.fromInsideArchive == false)
+        #expect(candidate.quarantined)
+    }
+
+    @Test("Provenance de repli : sans adresse dans l'archive, celle du fichier extrait est prise et marquée")
+    func fallbackProvenanceMarked() throws {
+        let directory = try FakeSDK.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = directory.appending(path: "libdev_v9")
+        let library = try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: root.appending(path: "macos/arm64-release/libdev.dylib"))
+        try FakeSDK.setWhereFroms(library, ["https://example.com/depuis-le-fichier.dylib"])
+        let archive = try FakeSDK.zip(root, to: directory.appending(path: "libdev_v9.zip"))
+
+        let candidate = try SDKInspector.inspect(archive)
+        defer { SDKInspector.discard(candidate) }
+        #expect(candidate.origin?.url == "https://example.com/depuis-le-fichier.dylib")
+        #expect(candidate.origin?.fromInsideArchive == true)
+        #expect(!candidate.quarantined)
+    }
+
+    @Test("Dossier intermédiaire lié hors du choix : refusé, même pour un dossier décompressé")
+    func intermediateSymlinkOutside() throws {
+        let directory = try FakeSDK.directory()
+        let elsewhere = try FakeSDK.directory()
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            try? FileManager.default.removeItem(at: elsewhere)
+        }
+        let root = directory.appending(path: "libdev_v9")
+        try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: elsewhere.appending(path: "macos/arm64-release/libdev.dylib"))
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: root.appending(path: "macos"), withDestinationURL: elsewhere.appending(path: "macos"))
+        #expect(throws: SDKRejection.outsideArchive) { try SDKInspector.inspect(directory) }
+        #expect(throws: SDKRejection.outsideArchive) { try SDKInspector.inspect(root) }
+        #expect(SDKRejection.outsideArchive.message.hasSuffix("Choisissez le SDK décompressé ou l'archive reçue."))
+    }
+
+    @Test("Autres copies : chemins relatifs au choix, jamais absolus")
+    func otherCopiesRelative() throws {
+        let directory = try FakeSDK.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: directory.appending(path: "libdev_v9/macos/arm64-release/libdev.dylib"))
+        // Hors de la racine libdev_v9, mais dans le choix : relatif au choix.
+        try FakeSDK.write(FakeSDK.thin(FakeSDK.x86_64), to: directory.appending(path: "autre/libdev.dylib"))
+        let candidate = try SDKInspector.inspect(directory)
+        #expect(candidate.otherCopies == ["autre/libdev.dylib"])
+        #expect(candidate.otherCopies.allSatisfy { !$0.hasPrefix("/") })
+    }
+
+    @Test("Le .zip doit être un fichier ordinaire : un lien vers une archive est refusé sans décompression")
+    func zipSymlinkRejected() throws {
+        let directory = try FakeSDK.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = directory.appending(path: "libdev_v9")
+        try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: root.appending(path: "macos/arm64-release/libdev.dylib"))
+        let archive = try FakeSDK.zip(root, to: directory.appending(path: "vrai.zip"))
+        let link = directory.appending(path: "lien.zip")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: archive)
+        #expect(throws: SDKRejection.notRegularFile) { try SDKInspector.inspect(link) }
+    }
+
+    @Test("ditto qui dépasse le délai : arrêté, extraction en échec")
+    func extractionTimeout() throws {
+        let directory = try FakeSDK.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = directory.appending(path: "libdev_v9")
+        try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: root.appending(path: "macos/arm64-release/libdev.dylib"))
+        let archive = try FakeSDK.zip(root, to: directory.appending(path: "libdev_v9.zip"))
+        do {
+            _ = try SDKInspector.extract(archive, timeout: 0)
+            Issue.record("ditto aurait dû dépasser un délai nul")
+        } catch {
+            guard case .extractionFailed = error else {
+                Issue.record("Motif inattendu : \(error)")
+                return
+            }
+        }
     }
 }
 
@@ -405,6 +538,69 @@ struct SDKInstallerTests {
         #expect(ko.status() == .quarantined)
     }
 
+    @Test("Plantage après le lien dur (.old et libdev.dylib sont un même fichier) : status() retire .old, install() réussit")
+    func hardLinkLeftover() throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let verifier = FakeVerifier(true)
+        let installer = SDKInstaller(sdkDirectory: sdk, verifier: verifier.verifier)
+        let current = FakeSDK.thin(FakeSDK.arm64, filler: 7)
+        try FakeSDK.write(current, to: installer.libraryURL)
+        try FileManager.default.linkItem(at: installer.libraryURL, to: installer.backupURL)
+        #expect(installer.status() == .ready)
+        #expect(!FileManager.default.fileExists(atPath: installer.backupURL.path))
+        #expect(try Data(contentsOf: installer.libraryURL) == current)
+        let chosen = try candidate()
+        try installer.install(chosen)
+        #expect(try Data(contentsOf: installer.libraryURL) == Data(contentsOf: chosen.path))
+        #expect(try leftovers().isEmpty)
+    }
+
+    @Test("Reprise et début d'installation exclusifs : begin() attend la fin de la reprise")
+    func recoveryHoldsLock() {
+        let progress = InstallProgress()
+        let order = Mutex<[String]>([])
+        let entered = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global().async {
+            progress.runIfIdle {
+                order.withLock { $0.append("reprise") }
+                entered.signal()
+                release.wait()
+                order.withLock { $0.append("reprise terminée") }
+            }
+            group.leave()
+        }
+        entered.wait()
+        group.enter()
+        DispatchQueue.global().async {
+            _ = progress.begin()
+            order.withLock { $0.append("installation") }
+            group.leave()
+        }
+        // Laisse à `begin()` le temps de passer s'il n'était pas bloqué : l'ordre doit rester celui-ci.
+        Thread.sleep(forTimeInterval: 0.2)
+        release.signal()
+        group.wait()
+        #expect(order.withLock { $0 } == ["reprise", "reprise terminée", "installation"])
+    }
+
+    @Test("obsbot-ai absent : état « introuvable », installation refusée sans rien copier")
+    func verifierMissing() throws {
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let verifier = FakeVerifier(true)
+        let installer = SDKInstaller(sdkDirectory: sdk, verifier: verifier.verifier, executableAvailable: { false })
+        let old = FakeSDK.thin(FakeSDK.arm64, filler: 7)
+        try FakeSDK.write(old, to: installer.libraryURL)
+        #expect(installer.status() == .verifierMissing)
+        #expect(throws: SDKInstallError.obsbotAIMissing) { try installer.install(try candidate()) }
+        #expect(try Data(contentsOf: installer.libraryURL) == old)
+        #expect(try leftovers().isEmpty)
+        #expect(verifier.calls.withLock { $0 }.isEmpty)
+        #expect(SDKInstallError.obsbotAIMissing.message == "obsbot-ai est introuvable dans l'app.")
+    }
+
     @Test("Vérificateur réel : code 3 attendu ; autre code, signal ou délai dépassé : refusé")
     func obsbotAIVerifier() {
         let sh = URL(fileURLWithPath: "/bin/sh")
@@ -413,6 +609,8 @@ struct SDKInstallerTests {
         #expect(!SDKInstaller.obsbotAIVerifier(executableURL: sh, arguments: ["-c", "kill -ABRT $$"])(sdk))
         #expect(!SDKInstaller.obsbotAIVerifier(executableURL: sh, arguments: ["-c", "exec sleep 5"], timeout: 0.3)(sdk))
         #expect(!SDKInstaller.obsbotAIVerifier(executableURL: URL(fileURLWithPath: "/nonexistent/obsbot-ai"))(sdk))
+        // L'entrée standard est vide : une lecture sur stdin rend la main aussitôt (sinon le délai de 5 s tombe).
+        #expect(SDKInstaller.obsbotAIVerifier(executableURL: sh, arguments: ["-c", "read ligne; exit 3"], timeout: 5)(sdk))
         try? FileManager.default.removeItem(at: directory)
     }
 }
