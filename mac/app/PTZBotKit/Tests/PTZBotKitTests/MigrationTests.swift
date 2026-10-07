@@ -234,6 +234,50 @@ struct LegacyAgentTests {
     }
 }
 
+extension LegacyAgentTests {
+    @Test("Migration interrompue : binaires à la corbeille et SDK de lib/ repris, sans toucher à launchd")
+    func leftovers() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        try installLegacy()
+        // La plist est déjà renommée et l'agent parti : il reste les binaires et lib/.
+        try FileManager.default.removeItem(at: agent().plistURL)
+        launchctl.state.withLock { $0.loaded = false }
+        let trash = FakeTrash(directory: root.appending(path: "Trash"))
+        let legacy = agent(trash: trash)
+        #expect(!legacy.detect())
+        let report = legacy.completeLeftovers()
+        #expect(report.trashed == LegacyAgent.binaries)
+        #expect(trash.trashed.withLock { $0 } == ["ptzd", "obsbot-ai", "obsbot-ai-off"])
+        #expect(report.movedSDK)
+        #expect(report.problems.isEmpty)
+        #expect(try Data(contentsOf: support.appending(path: "sdk/libdev.dylib")) == Data("sdk de lib".utf8))
+        #expect(!exists(support.appending(path: "lib/libdev.dylib")))
+        #expect(exists(support.appending(path: "devices.json")))
+        #expect(launchctl.state.withLock { $0.bootouts } == 0)
+        #expect(sleeper.slept.withLock { $0 } == 0)
+    }
+
+    @Test("Reprise des restes : idempotente et silencieuse quand il n'y a rien ; sdk/ déjà garni : lib/ laissé ; corbeille refusée : signalée")
+    func leftoversIdempotent() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(agent().completeLeftovers() == LegacyAgent.Report())
+        try installLegacy()
+        try FakeSDK.write(Data("sdk autorisé".utf8), to: support.appending(path: "sdk/libdev.dylib"))
+        let refusing = agent(trash: FakeTrash(directory: root.appending(path: "Trash"), failing: ["obsbot-ai"]))
+        let first = refusing.completeLeftovers()
+        #expect(first.trashed == ["bin/ptzd", "bin/obsbot-ai-off"])
+        #expect(first.problems == ["bin/obsbot-ai n'a pas pu être mis à la corbeille : refusé"])
+        #expect(!first.movedSDK)
+        #expect(try Data(contentsOf: support.appending(path: "sdk/libdev.dylib")) == Data("sdk autorisé".utf8))
+        #expect(exists(support.appending(path: "lib/libdev.dylib")))
+        // Une seconde passe, la corbeille répondant : il ne reste que le binaire refusé.
+        let second = agent().completeLeftovers()
+        #expect(second.trashed == ["bin/obsbot-ai"])
+        #expect(second.problems.isEmpty)
+        #expect(agent().completeLeftovers() == LegacyAgent.Report())
+    }
+}
+
 /// Interfaces simulées ; `addresses` seules : sur en0, en1…
 struct FakeInterfaces: InterfaceAddressProvider {
     var interfaces: [InterfaceAddress]
@@ -258,7 +302,10 @@ struct ConfigBootstrapTests {
         let directory = try FakeSDK.directory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appending(path: "ObsbotNacelle/config.json")
-        let outcome = try ConfigBootstrap.run(configURL: url, addresses: FakeInterfaces(addresses: ["127.0.0.1", "100.64.0.1"]))
+        let outcome = try ConfigBootstrap.run(configURL: url, addresses: FakeInterfaces(interfaces: [
+            InterfaceAddress(interface: "lo0", address: "127.0.0.1"),
+            InterfaceAddress(interface: "utun4", address: "100.64.0.1"),
+        ]))
         #expect(outcome == .created(listenAddress: "100.64.0.1"))
         let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: String]
         #expect(object == ["listenAddress": "100.64.0.1"])
@@ -291,17 +338,30 @@ struct ConfigBootstrapTests {
         #expect(!ConfigBootstrap.isTailscale("pas une adresse"))
     }
 
-    @Test("Interface utun préférée ; une autre interface en 100.64/10 seulement à défaut")
-    func prefersUtun() throws {
-        let other = InterfaceAddress(interface: "en5", address: "100.64.0.0")
+    @Test("Seule une interface utun en 100.64/10 compte : en0 en 100.64/10 (CGNAT) est ignorée")
+    func utunOnly() throws {
+        let other = InterfaceAddress(interface: "en0", address: "100.64.0.1")
         let utun = InterfaceAddress(interface: "utun4", address: "100.64.0.1")
+        let utunOutside = InterfaceAddress(interface: "utun2", address: "10.0.0.5")
         #expect(ConfigBootstrap.tailscaleAddress(in: [other, utun]) == "100.64.0.1")
-        #expect(ConfigBootstrap.tailscaleAddress(in: [other]) == "100.64.0.0")
+        #expect(ConfigBootstrap.tailscaleAddress(in: [other]) == nil)
+        #expect(ConfigBootstrap.tailscaleAddress(in: [other, utunOutside]) == nil)
         #expect(ConfigBootstrap.tailscaleAddress(in: [InterfaceAddress(interface: "lo0", address: "127.0.0.1")]) == nil)
         let directory = try FakeSDK.directory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appending(path: "config.json")
         #expect(try ConfigBootstrap.run(configURL: url, addresses: FakeInterfaces(interfaces: [other, utun])) == .created(listenAddress: "100.64.0.1"))
+    }
+
+    @Test("Sans utun, 100.64/10 sur en0 : 127.0.0.1 et Tailscale signalé absent")
+    func cgnatIgnored() throws {
+        let directory = try FakeSDK.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "config.json")
+        let outcome = try ConfigBootstrap.run(configURL: url, addresses: FakeInterfaces(interfaces: [InterfaceAddress(interface: "en0", address: "100.64.0.1")]))
+        #expect(outcome == .tailscaleMissing)
+        let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: String]
+        #expect(object == ["listenAddress": "127.0.0.1"])
     }
 
     @Test("Interfaces réelles : au moins la boucle locale, sur lo0")

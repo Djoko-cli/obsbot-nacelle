@@ -111,6 +111,21 @@ extension Labels {
         public var value: String
     }
 
+    /// La ligne « Signature » : le signataire (et l'équipe) seulement si la signature est intacte et d'un
+    /// certificat reconnu par Apple. Ces contrôles ne remplacent pas Gatekeeper.
+    static func signatureText(_ candidate: SDKCandidate) -> String {
+        switch candidate.signatureValid {
+        case false:
+            return "Signature invalide"
+        case true:
+            guard candidate.appleAnchored == true else { return "Signé, certificat non reconnu par Apple" }
+            guard let signer = candidate.signer else { return "Signé" }
+            return candidate.team.map { "\(signer) (équipe \($0))" } ?? signer
+        case nil:
+            return "non signé"
+        }
+    }
+
     /// Architecture, signature, provenance et quarantaine (§ 6.2).
     public static func sdkChecks(_ candidate: SDKCandidate) -> [SDKCheck] {
         let architecture = candidate.isArm64
@@ -127,7 +142,7 @@ extension Labels {
         if !origin.isEmpty, candidate.origin?.fromInsideArchive == true {
             provenance += " (indiquée dans l'archive)"
         }
-        let signature = candidate.signatureValid == false ? "Signature invalide" : (candidate.signer ?? "non signé")
+        let signature = signatureText(candidate)
         var checks = [
             SDKCheck(title: "Architecture", value: architecture),
             SDKCheck(title: "Signature", value: signature),

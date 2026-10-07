@@ -34,6 +34,10 @@ public struct SDKCandidate: Equatable, Sendable {
     /// nil si le fichier n'est pas signé ; vrai si la signature est valide ; faux si elle est présente mais invalide
     /// (fichier modifié). `signer` et `team` ne sont renseignés que lorsque la signature est valide.
     public var signatureValid: Bool?
+    /// nil si le fichier n'est pas signé ou si sa signature est invalide ; vrai si le certificat remonte à une
+    /// racine Apple (`anchor apple generic`) ; faux si la signature est intacte mais d'un certificat inconnu d'Apple
+    /// (auto-signé, ad hoc). Ce n'est pas un contrôle Gatekeeper.
+    public var appleAnchored: Bool?
 
     public var isArm64: Bool {
         architectures.contains("arm64")
@@ -48,7 +52,8 @@ public struct SDKCandidate: Equatable, Sendable {
         origin: SDKOrigin? = nil,
         temporaryDirectory: URL? = nil,
         otherCopies: [String] = [],
-        signatureValid: Bool? = nil
+        signatureValid: Bool? = nil,
+        appleAnchored: Bool? = nil
     ) {
         self.path = path
         self.architectures = architectures
@@ -59,6 +64,7 @@ public struct SDKCandidate: Equatable, Sendable {
         self.temporaryDirectory = temporaryDirectory
         self.otherCopies = otherCopies
         self.signatureValid = signatureValid
+        self.appleAnchored = appleAnchored
     }
 }
 
@@ -101,6 +107,8 @@ public enum SDKInspector {
     static let maxSearchDepth = 5
     /// Délai maximal de `ditto` : au-delà, le processus est arrêté et l'examen échoue.
     static let extractionTimeout: TimeInterval = 60
+    /// Délai laissé à `ditto` pour sortir après SIGTERM, avant SIGKILL.
+    static let terminationGrace: TimeInterval = 2
 
     /// Bloquant (décompression, lecture des en-têtes et de la signature) : à appeler hors du fil principal.
     public static func inspect(_ url: URL) throws(SDKRejection) -> SDKCandidate {
@@ -216,7 +224,11 @@ public enum SDKInspector {
             if process.isRunning {
                 process.terminate()
             }
-            finished.wait()
+            if finished.wait(timeout: .now() + terminationGrace) == .timedOut {
+                // Dernier recours : ditto ignore SIGTERM. C'est le processus que nous venons de lancer.
+                Darwin.kill(process.processIdentifier, SIGKILL)
+                finished.wait()
+            }
             try? FileManager.default.removeItem(at: directory)
             throw .extractionFailed("ditto n'a pas fini dans le délai imparti.")
         }
@@ -251,33 +263,55 @@ public enum SDKInspector {
             origin: url == nil && date == nil ? nil : SDKOrigin(url: url, date: date, fromInsideArchive: fromInsideArchive),
             temporaryDirectory: temporaryDirectory,
             otherCopies: otherCopies,
-            signatureValid: signing.valid
+            signatureValid: signing.valid,
+            appleAnchored: signing.appleAnchored
         )
     }
 
     // MARK: - Signature
 
-    /// Le résumé du certificat du signataire et l'équipe, lus seulement si la signature est valide. `valid` vaut nil
-    /// pour un fichier non signé, vrai si la signature est valide, faux si elle est présente mais invalide (fichier
-    /// modifié) ; dans ce dernier cas, signataire et équipe sont nil.
-    static func signing(of url: URL) -> (signer: String?, team: String?, valid: Bool?) {
+    /// Le contrôle d'ancrage : la signature, déjà reconnue intacte, remonte-t-elle à une racine Apple ?
+    /// Séparé pour que les tests le pilotent.
+    typealias AnchorCheck = @Sendable (SecStaticCode) -> Bool
+
+    static let appleAnchorRequirement = "anchor apple generic"
+
+    static let systemAnchorCheck: AnchorCheck = { code in
+        var requirement: SecRequirement?
+        guard SecRequirementCreateWithString(appleAnchorRequirement as CFString, [], &requirement) == errSecSuccess,
+              let requirement else { return false }
+        return SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSCheckAllArchitectures), requirement) == errSecSuccess
+    }
+
+    /// Le résumé du certificat du signataire et l'équipe, lus seulement si la signature est intacte et son
+    /// certificat reconnu par Apple. `valid` vaut nil pour un fichier non signé, vrai si la signature est intacte,
+    /// faux si elle est présente mais invalide (fichier modifié). `appleAnchored` vaut nil sans signature intacte,
+    /// vrai si le certificat remonte à Apple, faux sinon (auto-signé, ad hoc) ; dans les cas autres que vrai,
+    /// signataire et équipe sont nil (un certificat auto-signé peut porter n'importe quel nom).
+    static func signing(
+        of url: URL,
+        anchorCheck: AnchorCheck = systemAnchorCheck
+    ) -> (signer: String?, team: String?, valid: Bool?, appleAnchored: Bool?) {
         var code: SecStaticCode?
-        guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess, let code else { return (nil, nil, nil) }
+        guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess, let code else { return (nil, nil, nil, nil) }
         // Sans `kSecCSCheckAllArchitectures`, la vérification statique ne lit pas les pages exécutables : un
         // binaire modifié passerait pour valide (mesuré sur un /bin/ls altéré).
         let validity = SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSCheckAllArchitectures), nil)
         if validity == errSecCSUnsigned {
-            return (nil, nil, nil)
+            return (nil, nil, nil, nil)
         }
-        guard validity == errSecSuccess else { return (nil, nil, false) }
+        guard validity == errSecSuccess else { return (nil, nil, false, nil) }
+        // Sans exigence, n'importe quel certificat (même auto-signé) rend la signature « valide » : on demande
+        // en plus qu'il remonte à une racine Apple.
+        guard anchorCheck(code) else { return (nil, nil, true, false) }
         var information: CFDictionary?
         guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
               let info = information as? [String: Any] else {
-            return (nil, nil, true)
+            return (nil, nil, true, true)
         }
         let certificates = info[kSecCodeInfoCertificates as String] as? [SecCertificate]
         let signer = certificates?.first.flatMap { SecCertificateCopySubjectSummary($0) as String? }
-        return (signer, info[kSecCodeInfoTeamIdentifier as String] as? String, true)
+        return (signer, info[kSecCodeInfoTeamIdentifier as String] as? String, true, true)
     }
 
     // MARK: - Attributs étendus

@@ -81,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await controller.launch() }
     }
 
-    /// Attend l'arrêt de ptzd (5 s au plus), puis répond.
+    /// Attend l'arrêt de ptzd (6 s au plus), puis répond.
     ///
     /// Ne jamais appeler `NSApp.terminate` depuis un bloc de la file principale (`DispatchQueue.main.async`,
     /// `asyncAfter`, `Task` sur le MainActor) : `.terminateLater` fait tourner la boucle d'exécution à l'intérieur

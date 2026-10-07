@@ -219,7 +219,7 @@ struct PanelView: View {
                 Spacer()
                 Button("Quitter") {
                     // Un appairage ouvert est fermé avant de partir ; l'envoi est asynchrone, d'où le court délai.
-                    // La fin de l'app attend ensuite l'arrêt de ptzd, 5 s au plus (AppDelegate).
+                    // La fin de l'app attend ensuite l'arrêt de ptzd, 6 s au plus (AppDelegate).
                     // Par la boucle d'exécution, jamais depuis un bloc de la file principale : voir
                     // AppDelegate.applicationShouldTerminate.
                     model.closePairing()

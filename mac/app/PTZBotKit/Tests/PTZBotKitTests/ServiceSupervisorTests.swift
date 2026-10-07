@@ -199,8 +199,68 @@ struct ServiceSupervisorTests {
         let supervisor = makeSupervisor()
         supervisor.port = 19870
         supervisor.start()
+        scheduler.advance(by: ServiceSupervisor.earlyBusyWindow)
         try #require(launcher.last).exit(ProcessExit(status: 75, signaled: false))
         #expect(supervisor.state == .failed(reason: "Le port 19870 est déjà pris : un autre ptzd tourne peut-être encore"))
+        scheduler.advance(by: 300)
+        #expect(launcher.launched.count == 1)
+    }
+
+    @Test("Sortie 75 dans les 2 s du lancement : une seule relance après 1 s, puis ptzd tient")
+    func earlyBusyRetry() throws {
+        let supervisor = makeSupervisor()
+        supervisor.port = 19870
+        supervisor.start()
+        scheduler.advance(by: 1.9)
+        try #require(launcher.last).exit(ProcessExit(status: 75, signaled: false))
+        #expect(supervisor.state == .restarting(count: 1))
+        scheduler.advance(by: ServiceSupervisor.earlyBusyDelay - 0.1)
+        #expect(launcher.launched.count == 1)
+        scheduler.advance(by: 0.1)
+        #expect(launcher.launched.count == 2)
+        #expect(supervisor.state == .running)
+        scheduler.advance(by: 300)
+        #expect(supervisor.state == .running)
+        #expect(launcher.launched.count == 2)
+    }
+
+    @Test("Deuxième 75 précoce : failed comme d'habitude, sans seconde relance ; un nouveau start() redonne une relance")
+    func earlyBusyTwice() throws {
+        let supervisor = makeSupervisor()
+        supervisor.port = 19870
+        supervisor.start()
+        try #require(launcher.last).exit(ProcessExit(status: 75, signaled: false))
+        scheduler.advance(by: ServiceSupervisor.earlyBusyDelay)
+        #expect(launcher.launched.count == 2)
+        try #require(launcher.last).exit(ProcessExit(status: 75, signaled: false))
+        #expect(supervisor.state == .failed(reason: "Le port 19870 est déjà pris : un autre ptzd tourne peut-être encore"))
+        scheduler.advance(by: 300)
+        #expect(launcher.launched.count == 2)
+        supervisor.start()
+        #expect(launcher.launched.count == 3)
+        try #require(launcher.last).exit(ProcessExit(status: 75, signaled: false))
+        #expect(supervisor.state == .restarting(count: 1))
+    }
+
+    @Test("Sortie 75 tardive (2 s ou plus après le lancement) : failed, sans relance")
+    func lateBusy() throws {
+        let supervisor = makeSupervisor()
+        supervisor.start()
+        scheduler.advance(by: 2)
+        try #require(launcher.last).exit(ProcessExit(status: 75, signaled: false))
+        #expect(supervisor.state == .failed(reason: "Le port 1985 est déjà pris : un autre ptzd tourne peut-être encore"))
+        scheduler.advance(by: 300)
+        #expect(launcher.launched.count == 1)
+    }
+
+    @Test("75 précoce pendant l'arrêt demandé : arrêt ordinaire, aucune relance")
+    func earlyBusyThenStop() throws {
+        let supervisor = makeSupervisor()
+        supervisor.start()
+        try #require(launcher.last).exit(ProcessExit(status: 75, signaled: false))
+        #expect(supervisor.state == .restarting(count: 1))
+        supervisor.stop()
+        #expect(supervisor.state == .stopped)
         scheduler.advance(by: 300)
         #expect(launcher.launched.count == 1)
     }

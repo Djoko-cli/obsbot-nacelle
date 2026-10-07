@@ -52,6 +52,11 @@ public final class ServiceSupervisor {
     public static let configReason = "config.json est invalide : ouvrez le journal"
     public static let usageReason = "Arguments de ptzd refusés"
 
+    /// Un 75 dans les `earlyBusyWindow` secondes du lancement : un ptzd mourant tient peut-être encore le verrou ;
+    /// une seule relance, `earlyBusyDelay` secondes plus tard.
+    public static let earlyBusyWindow: TimeInterval = 2
+    public static let earlyBusyDelay: TimeInterval = 1
+
     public static func busyReason(port: Int) -> String {
         "Le port \(port) est déjà pris : un autre ptzd tourne peut-être encore"
     }
@@ -78,6 +83,8 @@ public final class ServiceSupervisor {
     @ObservationIgnored private var pendingKill: (any Cancellable)?
     /// Délai après SIGKILL : si ptzd vit encore, l'arrêt est abandonné (`unkillableReason`).
     @ObservationIgnored private var pendingWatchdog: (any Cancellable)?
+    /// La relance unique après un 75 précoce a déjà eu lieu ; remise à faux au prochain `start()` ou à une autre sortie.
+    @ObservationIgnored private var earlyBusyRetried = false
     @ObservationIgnored private var stopping = false
     /// L'interrupteur a été rallumé pendant un arrêt : ptzd repart à la fin de l'arrêt.
     @ObservationIgnored private var restartAfterStop = false
@@ -124,6 +131,7 @@ public final class ServiceSupervisor {
         case .stopped, .failed:
             restartCount = 0
             unexpectedExits = []
+            earlyBusyRetried = false
             launch()
         case .starting, .running, .restarting:
             break
@@ -233,6 +241,15 @@ public final class ServiceSupervisor {
             }
             return
         }
+        let busy = !exit.signaled && exit.status == Self.busyStatus
+        if busy, !earlyBusyRetried, scheduler.now - launchedAt < Self.earlyBusyWindow {
+            earlyBusyRetried = true
+            scheduleRestart(after: Self.earlyBusyDelay, count: 1)
+            return
+        }
+        if !busy {
+            earlyBusyRetried = false
+        }
         if !exit.signaled, let reason = permanentFailure(exit.status) {
             state = .failed(reason: reason)
             return
@@ -262,8 +279,11 @@ public final class ServiceSupervisor {
             return
         }
         restartCount += 1
-        state = .restarting(count: restartCount)
-        let delay = Self.restartDelays[min(restartCount, Self.restartDelays.count) - 1]
+        scheduleRestart(after: Self.restartDelays[min(restartCount, Self.restartDelays.count) - 1], count: restartCount)
+    }
+
+    private func scheduleRestart(after delay: TimeInterval, count: Int) {
+        state = .restarting(count: count)
         pendingRestart = scheduler.schedule(after: delay) { [weak self] in
             guard let self else { return }
             pendingRestart = nil
