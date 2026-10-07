@@ -18,3 +18,7 @@ Un bouton d'enregistrement (rec) dans l'app iOS, à côté du son et de la vie p
 ## Suivi IA instantané (utilitaire résident)
 
 `obsbot-ai serve` garde le SDK OBSBOT chargé pendant qu'un client pilote : un ordre de suivi IA part en quelques millisecondes au lieu de 4,2 s (attente interne du SDK à chaque lancement). Prototypé, relu et essayé au banc le 07/10/2026 sur la branche locale `proto/ai-resident`, puis retiré du service : le SDK utilise AVFoundation et CoreAudio, et un test en cours sur les blocages de coreaudiod doit rester à une seule variable. À activer après la conclusion de ce test, puis à mesurer seul quelques jours, avant d'embarquer go2rtc (sous-projet B3). Ordre décidé le 07/10/2026 : B1 (`ptzd` dans l'app), B2 (distribution), suivi IA instantané dès la fin du test, puis B3.
+
+## Exposition automatique
+
+Un bouton dans l'app iOS, et dans le panneau du Mac, pour l'exposition automatique, à côté du bouton d'enregistrement. Le SDK OBSBOT expose le mode d'exposition (`cameraSetExposureModeR`), l'exposition sur le visage (`cameraSetFaceAER`), le verrouillage (`cameraSetAELockR`) et la correction d'exposition (`cameraSetPAEEvBiasR`). À vérifier d'abord : la commande UVC standard du mode d'exposition (`CT_AE_MODE`), que `ptzd` envoie déjà par IOKit pour la nacelle, éviterait le SDK et ses 4,2 s de lancement. Le choix exact (automatique ou manuel, visage, correction) est à trancher.
