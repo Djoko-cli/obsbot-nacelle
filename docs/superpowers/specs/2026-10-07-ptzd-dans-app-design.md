@@ -162,3 +162,42 @@ Compilation et installation par `install-mac.sh`, premier lancement, migration c
 - `obsbot-ai` est compilé avec les en-têtes du SDK. Pouvoir livrer ce binaire dans une image disque publique est une question de licence, à trancher dans la spec de B2.
 - go2rtc reste l'agent indépendant `com.majid.go2rtc` jusqu'à B3.
 - `ptzd pair`, `ptzd devices` et `ptzd revoke` restent utilisables en ligne de commande avec le binaire de l'app (`PTZBot.app/Contents/Helpers/ptzd`) ; `ptzd pair` demande que le service tourne.
+
+## 11. Amendements (08/10/2026, après le prototype et le banc)
+
+Le prototype a été relu deux fois et essayé au banc avec Majid le 07/10, migration réelle comprise. Les quatre points du § 4 sont vérifiés : chargement du SDK par `DYLD_LIBRARY_PATH`, réseau local, pare-feu et surveillance du parent (arrêt en environ 200 ms après un SIGKILL de l'app).
+
+### Codes de sortie et verrou
+
+- `ptzd` sort avec **64** si ses arguments sont refusés. Il sort avec **75** si un autre `ptzd` tient le verrou `<support>/ptzd.lock` (`flock`, pris dans tout le mode service sauf `pair`) ou si, sous `--parent`, le port de 127.0.0.1 est déjà pris. Il sort avec **78** si `config.json` est invalide.
+- Le superviseur ne relance pas après 64, 75 ou 78. Il passe en échec avec « Arguments de ptzd refusés », « Le port <port> est déjà pris : un autre ptzd tourne peut-être encore » ou « config.json est invalide : ouvrez le journal ».
+- Au démarrage, `ptzd` s'arrête aussi si `getppid()` n'est pas le PID donné par `--parent`.
+- À la fin du parent, `ptzd` sort avec le code 0 sans fermer ses écoutes une à une. Le noyau ferme les sockets, et l'annonce Bonjour disparaît avec le processus.
+
+### SDK
+
+- **Statuts.** Le statut « Ne se charge pas » s'ajoute aux statuts du § 6.1. C'est le test de chargement par `obsbot-ai` qui décide de « Prêt » ; la quarantaine n'est qu'une information.
+- **Choix de la bibliothèque.** L'app choisit la bibliothèque au même chemin relatif que celle avec laquelle la construction lie `obsbot-ai` : `macos/arm64-release/libdev.dylib`. Les autres copies trouvées sont signalées (« Autres copies ignorées »), sans qu'on demande de choisir.
+- **Fichiers refusés.** Seuls les fichiers ordinaires sont acceptés : pas de lien symbolique ni de fichier spécial. La copie préparée est revérifiée avant l'échange.
+- **Échange.** L'ancien SDK est gardé par un lien dur `.old` jusqu'à la vérification, puis remis en place si elle échoue. Une installation interrompue est reprise au lancement suivant, mais jamais pendant une installation en cours.
+- **Recherche dans un dossier.** Elle est limitée à 5 niveaux, sans les dossiers cachés ni les paquets.
+- **Ligne SDK du panneau.** Le bouton « Changer… » rouvre la fenêtre quand le SDK est prêt.
+
+### Migration
+
+- Après le `bootout`, l'app attend jusqu'à 10 s. Une erreur de `bootout` est tolérée si l'agent n'est plus chargé.
+- Une ancienne `.plist.bak` est mise à la corbeille, jamais effacée.
+- Après « Plus tard » ou un échec, le panneau propose « Remplacer l'ancienne installation… ».
+
+### Panneau
+
+Validé par Majid sur maquette puis au banc.
+- **Trois sections titrées.** « Service » regroupe Service ptzd et SDK OBSBOT. « Caméra · branchée », ou « débranchée », regroupe la vie privée et le suivi IA. « iPhone connectés · n » regroupe les iPhone.
+- **Alignement.** Les interrupteurs et les valeurs sont alignés à droite. Les messages s'affichent en petites lignes sous ce qu'ils concernent.
+- **Liste des clients.** La connexion de confiance de l'app elle-même n'est **pas** un client et n'est pas listée. La section ne montre que les iPhone, ou « Aucun iPhone connecté ».
+
+### Divers
+
+- **« Quitter ».** Il passe par la boucle d'événements de l'app, jamais par un bloc de la file principale, sinon il y a interblocage (constaté au banc). Il attend `ptzd` 6 s au plus.
+- **`install-mac.sh`.** Il attend la fin de l'ancienne app, jusqu'à 15 s, avant de la remplacer et de la lancer. Le modèle de plist `mac/launchd/` est retiré.
+- **Création de `config.json`.** Elle préfère une interface `utun*` en 100.64/10.
