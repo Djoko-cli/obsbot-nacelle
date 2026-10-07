@@ -64,6 +64,15 @@ public enum ConfigBootstrap {
         return (candidates.first { $0.interface.hasPrefix("utun") } ?? candidates.first)?.address
     }
 
+    /// `config.json` écoute sur 127.0.0.1 seulement : le panneau signale l'absence de Tailscale.
+    public static func listensOnLoopbackOnly(configURL: URL) -> Bool {
+        guard let data = try? Data(contentsOf: configURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return false
+        }
+        return object["listenAddress"] as? String == loopback
+    }
+
     public static func run(configURL: URL, addresses: any InterfaceAddressProvider) throws -> Outcome {
         let manager = FileManager.default
         guard !manager.fileExists(atPath: configURL.path) else { return .existing }

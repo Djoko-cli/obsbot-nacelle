@@ -123,6 +123,8 @@ final class FakeProcess: LaunchedProcess {
     private(set) var kills = 0
     /// SIGTERM ignoré (ptzd bloqué) : seul SIGKILL l'arrête.
     var ignoresTerminate = false
+    /// Fin jamais signalée, même après SIGKILL (processus bloqué dans le noyau).
+    var ignoresKill = false
 
     init(pid: pid_t, arguments: [String], outputURL: URL, onExit: @escaping @MainActor (ProcessExit) -> Void) {
         self.pid = pid
@@ -140,6 +142,7 @@ final class FakeProcess: LaunchedProcess {
 
     func kill() {
         kills += 1
+        guard !ignoresKill else { return }
         exit(ProcessExit(status: SIGKILL, signaled: true))
     }
 
