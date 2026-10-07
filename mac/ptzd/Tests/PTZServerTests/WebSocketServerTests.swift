@@ -856,6 +856,63 @@ struct WebSocketServerTests {
         withExtendedLifetime(server) {}
     }
 
+    @Test("Oubli depuis l'iPhone : appareil retiré, connexion coupée, journalisé ; la poignée de main suivante est refusée")
+    func forgetMeRemovesDevice() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let lines = LineBox()
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], log: { lines.values.append($0) }, localHosts: ["::1"])
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        #expect(reply == .authenticated)
+        _ = try await nextAdmin(admin)
+
+        try iPhone.send(.forgetMe)
+        await #expect(throws: TLSClientError.noChannel) {
+            while true {
+                _ = try await iPhone.receive()
+            }
+        }
+        #expect(try await nextAdmin(admin).devices.isEmpty)
+        #expect(try authority.devices.device(id: deviceID) == nil)
+        #expect(lines.values.contains("Appareil \(deviceID.prefix(8)) (iPhone de test) retiré depuis l'iPhone."))
+        let again = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: lanKey)
+        defer { again.close() }
+        await #expect(throws: TLSClientError.noChannel) { try await again.open() }
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Oubli demandé par le Mac (confiance) : badMessage, rien n'est retiré")
+    func forgetMeFromTrustedClient() async throws {
+        try pairTestDevice()
+        let (server, ports) = await startServer()
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        try await send(.forgetMe, on: admin)
+        #expect(try await next(admin) { if case .error = $0 { true } else { false } } == .error(code: .badMessage, message: "Message réservé à un iPhone appairé."))
+        #expect(try authority.devices.device(id: deviceID) != nil)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Oubli demandé avant l'authentification : badMessage, rien n'est retiré")
+    func forgetMeWithoutDevice() async throws {
+        try pairTestDevice()
+        let (server, ports) = await startServer(trustLoopback: false)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await challenge(task)
+        try await send(.forgetMe, on: task)
+        #expect(try await next(task) { _ in true } == .error(code: .badMessage, message: "Message réservé à un iPhone appairé."))
+        #expect(try authority.devices.device(id: deviceID) != nil)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("forgetMe n'est pas un message d'administration")
+    func forgetMeIsNotAdministration() {
+        #expect(!WebSocketServer.isAdministration(.forgetMe))
+    }
+
     @Test("Expulser, débloquer ou retirer un appareil inconnu : « Appareil inconnu. »", arguments: [
         ClientMessage.kick(deviceID: "00112233445566778899aabbccddeeff"),
         .unblock(deviceID: "00112233445566778899aabbccddeeff"),

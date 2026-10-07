@@ -31,6 +31,9 @@ public enum ClientMessage: Equatable, Sendable {
     case unblock(deviceID: String)
     /// Annule l'appairage en cours ; 127.0.0.1 seulement.
     case closePairing
+    /// L'iPhone oublie son appairage : ptzd retire cet appareil de sa liste et coupe ses connexions.
+    /// Accepté d'un iPhone authentifié seulement.
+    case forgetMe
 }
 
 /// Présence de la caméra côté Mac.

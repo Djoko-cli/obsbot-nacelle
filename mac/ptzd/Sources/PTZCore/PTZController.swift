@@ -114,7 +114,7 @@ public final class PTZController {
                 self?.onClientError?(client, .uvcFailed, "Suivi IA non modifié (\(result.userDescription)).")
             }
             return nil
-        case .pair, .openPairing, .auth, .webrtcOffer, .adminWatch, .revoke, .kick, .unblock, .closePairing:
+        case .pair, .openPairing, .auth, .webrtcOffer, .adminWatch, .revoke, .kick, .unblock, .closePairing, .forgetMe:
             // Messages de session et d'administration : le serveur les traite et ne les transmet jamais.
             return (.badMessage, "Message de session inattendu.")
         }

@@ -455,6 +455,16 @@ public final class WebSocketServer {
         case let .auth(deviceID, signature):
             guard !client.authenticated else { return }
             verify(id, deviceID: deviceID, signature: signature)
+        case .forgetMe:
+            // « Oublier cet appairage » sur l'iPhone : le Mac retire l'appareil aussi.
+            guard client.authenticated, !client.trusted, let device = client.device else {
+                log("Client \(id) : oubli d'appairage refusé (\(client.address)).")
+                send(.error(code: .badMessage, message: "Message réservé à un iPhone appairé."), to: id)
+                return
+            }
+            if !removeDevice(device.id, name: device.name, origin: "l'iPhone") {
+                send(.error(code: .badMessage, message: "Liste des appareils illisible sur le Mac."), to: id)
+            }
         case let .webrtcOffer(offerID, sdp):
             guard client.authenticated else {
                 send(.error(code: .notAuthenticated, message: "Authentification d'abord."), to: id)
@@ -515,22 +525,31 @@ public final class WebSocketServer {
         }
     }
 
-    /// Retire l'appareil, coupe tout de suite ses connexions et relance les écoutes du réseau local.
+    /// Retire l'appareil sur demande du Mac.
     private func revoke(_ deviceID: String, from id: ClientID) {
         guard let device = pairedDevice(deviceID, for: id) else { return }
+        if !removeDevice(deviceID, name: device.name, origin: "le Mac") {
+            send(.error(code: .badMessage, message: "Liste des appareils illisible sur le Mac."), to: id)
+        }
+    }
+
+    /// Retire l'appareil de la liste, lève son blocage, coupe tout de suite ses connexions et relance les
+    /// écoutes du réseau local. `origin` dit qui l'a demandé, pour le journal. Renvoie false si la liste
+    /// n'a pas pu être modifiée.
+    private func removeDevice(_ deviceID: String, name: String, origin: String) -> Bool {
         do {
             try authority.devices.remove(id: deviceID)
         } catch {
-            send(.error(code: .badMessage, message: "Liste des appareils illisible sur le Mac."), to: id)
-            return
+            return false
         }
         blocks.removeValue(forKey: deviceID)?.timer.cancel()
-        log("Appareil \(Self.logID(deviceID)) (\(device.name)) retiré depuis le Mac.")
+        log("Appareil \(Self.logID(deviceID)) (\(name)) retiré depuis \(origin).")
         for (other, client) in clients where client.device?.id == deviceID {
             drop(other)
         }
         rebuildLocalListeners()
         publishAdmin()
+        return true
     }
 
     /// Coupe les connexions de l'appareil et le bloque `blockDuration` ; l'appairage est gardé.

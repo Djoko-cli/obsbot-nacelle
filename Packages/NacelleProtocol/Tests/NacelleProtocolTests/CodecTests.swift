@@ -21,6 +21,7 @@ struct ClientMessageTests {
         .kick(deviceID: "00112233445566778899aabbccddeeff"),
         .unblock(deviceID: "00112233445566778899aabbccddeeff"),
         .closePairing,
+        .forgetMe,
     ])
     func roundTrip(_ message: ClientMessage) throws {
         let text = try NacelleCodec.encode(message)
@@ -39,6 +40,12 @@ struct ClientMessageTests {
         #expect(try NacelleCodec.encode(ClientMessage.adminWatch) == #"{"type":"adminWatch"}"#)
         #expect(try NacelleCodec.encode(ClientMessage.closePairing) == #"{"type":"closePairing"}"#)
         #expect(try NacelleCodec.encode(ClientMessage.aiTracking(on: true)) == #"{"on":true,"type":"aiTracking"}"#)
+    }
+
+    @Test("forgetMe s'écrit avec son seul type")
+    func forgetMeFormat() throws {
+        #expect(try NacelleCodec.encode(ClientMessage.forgetMe) == #"{"type":"forgetMe"}"#)
+        #expect(try NacelleCodec.decodeClient(#"{"type":"forgetMe"}"#) == .forgetMe)
     }
 
     @Test("takeControl s'écrit avec son seul type")
