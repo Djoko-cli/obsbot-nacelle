@@ -223,7 +223,7 @@ Durée attendue : environ 4 s, davantage quand la vidéo démarre au même momen
 | Condition | Texte |
 |---|---|
 | WebSocket ou vidéo en cours de connexion | « Connexion… » |
-| `control = taking` | « Prise en main… » |
+| `control = taking` | « Prise en main… » *(bandeau supprimé le 07/10/2026 : voir les amendements de la [spec de l'app Mac](2026-10-06-app-mac-design.md))* |
 | `control = failed` | « Suivi IA non coupé : les mouvements peuvent être contrés » |
 | `camera = absent` | « Caméra débranchée » |
 | Mac injoignable | « Mac injoignable : Tailscale est-il actif ? » |
