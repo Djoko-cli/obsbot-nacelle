@@ -256,13 +256,19 @@ final class PTZClient {
         }
     }
 
-    private func forgetLocally() {
+    /// Clé et appairage oubliés. `giveUp` : le Mac a retiré l'iPhone pendant la session ; on s'arrête sur
+    /// « non appairé » au lieu de relancer une connexion qu'il refuserait.
+    private func forgetLocally(giveUp stop: Bool = false) {
         forgetTimer?.cancel()
         forgetTimer = nil
         keys.delete()
         setPaired(false)
         pendingPairing = nil
-        restart()
+        if stop {
+            giveUp(.unpaired)
+        } else {
+            restart()
+        }
     }
 
     func setJoystick(_ vector: JoystickVector) {
@@ -597,6 +603,10 @@ final class PTZClient {
         case .error(.blocked, _):
             // Expulsé pendant la session : pas de reconnexion, qui serait refusée.
             giveUp(.blocked)
+        case .error(.unpaired, _):
+            // Session ouverte : le Mac a retiré cet iPhone de sa liste. Oubli complet, puis écran d'appairage.
+            // Si l'oubli vient de cet iPhone (forgetMe en attente), il s'achève ici.
+            forgetLocally(giveUp: true)
         case .error(.badMessage, _) where forgetTimer != nil:
             // Un ptzd plus ancien ne connaît pas forgetMe : inutile d'attendre sa fermeture.
             forgetLocally()

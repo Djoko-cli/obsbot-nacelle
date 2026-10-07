@@ -462,7 +462,7 @@ public final class WebSocketServer {
                 send(.error(code: .badMessage, message: "Message réservé à un iPhone appairé."), to: id)
                 return
             }
-            if !removeDevice(device.id, name: device.name, origin: "l'iPhone") {
+            if !removeDevice(device.id, name: device.name, origin: "l'iPhone", informDevice: false) {
                 send(.error(code: .badMessage, message: "Liste des appareils illisible sur le Mac."), to: id)
             }
         case let .webrtcOffer(offerID, sdp):
@@ -528,15 +528,16 @@ public final class WebSocketServer {
     /// Retire l'appareil sur demande du Mac.
     private func revoke(_ deviceID: String, from id: ClientID) {
         guard let device = pairedDevice(deviceID, for: id) else { return }
-        if !removeDevice(deviceID, name: device.name, origin: "le Mac") {
+        if !removeDevice(deviceID, name: device.name, origin: "le Mac", informDevice: true) {
             send(.error(code: .badMessage, message: "Liste des appareils illisible sur le Mac."), to: id)
         }
     }
 
     /// Retire l'appareil de la liste, lève son blocage, coupe tout de suite ses connexions et relance les
-    /// écoutes du réseau local. `origin` dit qui l'a demandé, pour le journal. Renvoie false si la liste
-    /// n'a pas pu être modifiée.
-    private func removeDevice(_ deviceID: String, name: String, origin: String) -> Bool {
+    /// écoutes du réseau local. `origin` dit qui l'a demandé, pour le journal. `informDevice` : l'appareil
+    /// reçoit `unpaired` avant la coupure (retrait demandé par le Mac) ; sinon, coupure sans message (l'iPhone
+    /// a demandé le retrait et attend la fermeture). Renvoie false si la liste n'a pas pu être modifiée.
+    private func removeDevice(_ deviceID: String, name: String, origin: String, informDevice: Bool) -> Bool {
         do {
             try authority.devices.remove(id: deviceID)
         } catch {
@@ -545,7 +546,12 @@ public final class WebSocketServer {
         blocks.removeValue(forKey: deviceID)?.timer.cancel()
         log("Appareil \(Self.logID(deviceID)) (\(name)) retiré depuis \(origin).")
         for (other, client) in clients where client.device?.id == deviceID {
-            drop(other)
+            if informDevice {
+                // Comme l'expulsion : la place est libérée une fois l'envoi parti.
+                refuse(other, .unpaired, "Appareil retiré depuis le Mac.", reason: "retiré depuis le Mac")
+            } else {
+                drop(other)
+            }
         }
         rebuildLocalListeners()
         publishAdmin()

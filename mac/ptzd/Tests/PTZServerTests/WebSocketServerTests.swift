@@ -831,7 +831,7 @@ struct WebSocketServerTests {
         withExtendedLifetime(server) {}
     }
 
-    @Test("Retirer depuis le Mac : appareil retiré, sa connexion coupée tout de suite, journalisé")
+    @Test("Retirer depuis le Mac : appareil retiré, unpaired envoyé à l'iPhone connecté puis connexion coupée, journalisé")
     func revokeCutsConnections() async throws {
         let lanKey = NacelleTLS.makeKey()
         try pairTestDevice(lanKey: lanKey)
@@ -844,6 +844,8 @@ struct WebSocketServerTests {
         _ = try await nextAdmin(admin)
 
         try await send(.revoke(deviceID: deviceID), on: admin)
+        let removed = try await iPhone.receive(where: { if case .error = $0 { true } else { false } })
+        #expect(removed == .error(code: .unpaired, message: "Appareil retiré depuis le Mac."))
         await #expect(throws: TLSClientError.noChannel) {
             while true {
                 _ = try await iPhone.receive()
