@@ -8,6 +8,8 @@ public protocol Cancellable: AnyObject {
 /// Minuteries, injectées pour que les tests maîtrisent le temps.
 @MainActor
 public protocol Scheduler: AnyObject {
+    /// Temps monotone, en secondes.
+    var now: TimeInterval { get }
     @discardableResult
     func schedule(after delay: TimeInterval, _ action: @escaping @MainActor @Sendable () -> Void) -> any Cancellable
 }
@@ -16,6 +18,10 @@ public protocol Scheduler: AnyObject {
 @MainActor
 public final class MainScheduler: Scheduler {
     public init() {}
+
+    public var now: TimeInterval {
+        ProcessInfo.processInfo.systemUptime
+    }
 
     @discardableResult
     public func schedule(after delay: TimeInterval, _ action: @escaping @MainActor @Sendable () -> Void) -> any Cancellable {
