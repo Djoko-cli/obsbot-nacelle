@@ -152,6 +152,11 @@ final class FakeProcess: LaunchedProcess {
         isRunning = false
         onExit(exit)
     }
+
+    /// Fin reçue une seconde fois, comme une fin tardive après relance : `onExit` est rappelé sans le garde `isRunning`.
+    func fireLateExit(_ exit: ProcessExit = ProcessExit(status: 1, signaled: false)) {
+        onExit(exit)
+    }
 }
 
 /// Lanceur simulé : retient chaque processus lancé.

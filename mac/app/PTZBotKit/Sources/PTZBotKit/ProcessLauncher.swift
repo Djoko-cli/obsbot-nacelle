@@ -51,6 +51,8 @@ public final class FoundationProcessLauncher: ProcessLauncher {
         process.executableURL = executableURL
         process.arguments = arguments
         let output = try Self.appendingHandle(outputURL)
+        // Le processus ne lit jamais l'entrée standard de l'app.
+        process.standardInput = FileHandle.nullDevice
         process.standardOutput = output
         process.standardError = output
         process.terminationHandler = { finished in
