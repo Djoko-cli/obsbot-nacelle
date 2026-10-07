@@ -210,3 +210,11 @@ Au **vouvoiement**, en français : « Appairer un iPhone… », « Expulser », 
 - L'état du suivi IA est le dernier ordre de `ptzd` ; un geste de la main devant la caméra peut le changer.
 - L'interrupteur du service, l'image disque, Sparkle et l'accompagnement du SDK arrivent avec le sous-projet B.
 - Le QR en texte de `ptzd pair` reste peu lisible : c'est un repli.
+
+## Amendements (07/10/2026, après le banc)
+
+- **`forgetMe` (« Oublier cet appairage »)** : l'iPhone demande d'abord au Mac de le retirer de sa liste, attend la fermeture de la connexion pendant 2 s au plus, puis supprime sa clé. Un `ptzd` plus ancien, qui ne connaît pas `forgetMe`, répond `badMessage` : l'iPhone oublie alors tout de suite. Un `forgetMe` déjà parti s'achève toujours en local, même si l'app passe en arrière-plan avant la réponse.
+- **Retrait depuis le Mac** : `ptzd` envoie `unpaired` « Appareil retiré depuis le Mac. » à l'iPhone connecté avant de couper. L'iPhone ne supprime sa clé que sur la route locale en TLS, où le Mac est authentifié ; par Tailscale (WebSocket simple, serveur non authentifié), il garde ses clés, passe à « non appairé » et cesse de se reconnecter. Un oubli demandé par l'iPhone lui-même s'achève sur les deux routes. `ptzd` ne journalise « retiré depuis … » que si un appareil a réellement été retiré de la liste (pas pour un oubli qui suit un retrait concurrent), mais coupe les connexions et rafraîchit l'état dans tous les cas.
+- **Interrupteur du suivi IA** : grisé, avec une roue d'attente, tant que `control == taking`.
+- **Bandeau « Prise en main… »** : supprimé de l'app iOS ; l'état `taking` n'affiche plus de texte (voir le § 7.3 de la [spec de la nacelle](2026-10-05-nacelle-design.md)).
+- **Délai du suivi IA** : les 4,2 s viennent d'une attente interne du SDK OBSBOT à chaque lancement de `obsbot-ai`, pas de `ptzd`. L'utilitaire résident qui les supprimerait est reporté : voir [docs/backlog.md](../../backlog.md).
