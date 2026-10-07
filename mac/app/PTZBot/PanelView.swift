@@ -12,6 +12,11 @@ struct PanelView: View {
         model.service == .active
     }
 
+    /// Un ordre de suivi IA est en cours (`control == .taking`).
+    private var aiBusy: Bool {
+        model.state?.control == .taking
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -36,8 +41,14 @@ struct PanelView: View {
                 LabeledContent("Caméra", value: model.state?.camera == .connected ? "branchée" : "débranchée")
                 Toggle("Vie privée", isOn: Binding(get: { model.state?.privacy ?? false }, set: { model.setPrivacy($0) }))
                 VStack(alignment: .leading, spacing: 2) {
-                    Toggle("Suivi IA", isOn: Binding(get: { model.state?.aiTracking == .on }, set: { model.setAITracking($0) }))
-                        .disabled(model.state?.privacy != false)
+                    HStack {
+                        Toggle("Suivi IA", isOn: Binding(get: { model.state?.aiTracking == .on }, set: { model.setAITracking($0) }))
+                            .disabled(model.state?.privacy != false || aiBusy)
+                        if aiBusy {
+                            // obsbot-ai démarre ou travaille : l'interrupteur attend la fin de l'ordre.
+                            ProgressView().controlSize(.small)
+                        }
+                    }
                     if model.state?.aiTracking == .unknown {
                         Text("État inconnu").font(.caption).foregroundStyle(.secondary)
                     }
