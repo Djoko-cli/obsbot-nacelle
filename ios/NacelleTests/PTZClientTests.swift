@@ -66,6 +66,18 @@ struct PTZClientTests {
         try emit(.authenticated, on: tailscale)
     }
 
+    /// Connexion authentifiée par le réseau local (TLS, service Bonjour) ; renvoie ce transport.
+    private func connectLocal() throws -> FakeTransport {
+        client.start(settings: settings)
+        browser.find(service)
+        let local = try #require(transports.local)
+        local.emit(.opened)
+        try emit(.challenge(nonce: nonce), on: local)
+        try emit(.authenticated, on: local)
+        try #require(client.link == .connected)
+        return local
+    }
+
     /// Messages envoyés après l'authentification.
     private func commands(_ transport: FakeTransport) -> [ClientMessage] {
         decoded(transport).filter { if case .auth = $0 { false } else { true } }
@@ -280,14 +292,31 @@ struct PTZClientTests {
         #expect(transports.all.count == opened)
     }
 
-    @Test("Retiré par le Mac pendant la session (unpaired reçu) : clé supprimée, « non appairé », plus de reconnexion")
+    @Test("Retiré par le Mac pendant la session locale (TLS, unpaired reçu) : clé supprimée, « non appairé », plus de reconnexion")
     func unpairedDuringSession() throws {
-        try connect()
+        let local = try connectLocal()
         #expect(client.isPaired)
-        try emit(.error(code: .unpaired, message: "Appareil retiré depuis le Mac."), on: tailscale)
+        try emit(.error(code: .unpaired, message: "Appareil retiré depuis le Mac."), on: local)
         #expect(keys.key == nil)
         #expect(keys.storedLANKey == nil)
         #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+        #expect(client.link == .idle)
+        #expect(client.state == nil)
+        let opened = transports.all.count
+        scheduler.advance(by: 30)
+        #expect(transports.all.count == opened)
+    }
+
+    @Test("unpaired reçu par Tailscale (WebSocket simple, Mac non authentifié) : clés gardées, « non appairé », plus de reconnexion")
+    func unpairedOverTailscaleKeepsKeys() throws {
+        try connect()
+        #expect(client.isPaired)
+        try emit(.error(code: .unpaired, message: "Appareil retiré depuis le Mac."), on: tailscale)
+        #expect(keys.key != nil)
+        #expect(keys.storedLANKey != nil)
+        #expect(!client.isPaired)
+        #expect(!record.isPaired)
         #expect(client.authIssue == .unpaired)
         #expect(client.link == .idle)
         #expect(client.state == nil)
@@ -375,14 +404,33 @@ struct PTZClientTests {
         #expect(client.authIssue == .unpaired)
     }
 
-    @Test("Oubli en attente puis retour en arrière-plan : la minuterie est annulée, rien n'est oublié")
-    func forgetCancelledByStop() throws {
+    @Test("Oubli en attente puis retour en arrière-plan : forgetMe déjà parti, l'oubli local s'achève tout de suite")
+    func forgetFinishedByStop() throws {
         try connect()
         client.forgetPairing()
-        client.stop()
-        scheduler.advance(by: PTZClient.forgetTimeout * 2)
         #expect(keys.key != nil)
-        #expect(client.isPaired)
+        client.stop()
+        #expect(keys.key == nil)
+        #expect(keys.storedLANKey == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+        #expect(client.link == .idle)
+        let opened = transports.all.count
+        scheduler.advance(by: PTZClient.forgetTimeout * 2)
+        #expect(transports.all.count == opened)
+        #expect(client.authIssue == .unpaired)
+    }
+
+    @Test("Oubli en attente puis nouveau start : l'oubli local s'achève, la connexion s'arrête sur « non appairé »")
+    func forgetFinishedByStart() throws {
+        try connect()
+        client.forgetPairing()
+        client.start(settings: settings)
+        #expect(keys.key == nil)
+        #expect(keys.storedLANKey == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+        #expect(client.link == .idle)
     }
 
     @Test("Oublier l'appairage connecté, le Mac ne coupe pas : oubli local au bout de 2 s")
