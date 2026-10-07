@@ -162,6 +162,7 @@ Compilation et installation par `install-mac.sh`, premier lancement, migration c
 - `obsbot-ai` est compilé avec les en-têtes du SDK. Pouvoir livrer ce binaire dans une image disque publique est une question de licence, à trancher dans la spec de B2.
 - go2rtc reste l'agent indépendant `com.majid.go2rtc` jusqu'à B3.
 - `ptzd pair`, `ptzd devices` et `ptzd revoke` restent utilisables en ligne de commande avec le binaire de l'app (`PTZBot.app/Contents/Helpers/ptzd`) ; `ptzd pair` demande que le service tourne.
+- Les contrôles d'intégrité et d'ancrage Apple de la fenêtre « SDK OBSBOT » ne remplacent pas Gatekeeper : ils renseignent l'utilisateur, ils ne prouvent pas que le fichier est celui d'OBSBOT.
 
 ## 11. Amendements (08/10/2026, après le prototype et le banc)
 
@@ -200,4 +201,14 @@ Validé par Majid sur maquette puis au banc.
 
 - **« Quitter ».** Il passe par la boucle d'événements de l'app, jamais par un bloc de la file principale, sinon il y a interblocage (constaté au banc). Il attend `ptzd` 6 s au plus.
 - **`install-mac.sh`.** Il attend la fin de l'ancienne app, jusqu'à 15 s, avant de la remplacer et de la lancer. Le modèle de plist `mac/launchd/` est retiré.
-- **Création de `config.json`.** Elle préfère une interface `utun*` en 100.64/10.
+- **Création de `config.json`.** Elle prend l'adresse d'une interface `utun*` en 100.64/10 (voir plus bas : plus de repli sur une autre interface).
+
+### Après la relecture finale (08/10)
+
+- **Garde-fou du superviseur.** Si `ptzd` vit encore 5 s après le SIGKILL, l'arrêt est abandonné : état « failed » avec « ptzd ne s'arrête pas : ouvrez le journal », completions appelées, aucune relance par ce chemin.
+- **Signature.** La fenêtre « SDK OBSBOT » distingue « Signature invalide » (fichier modifié) de « Signé, certificat non reconnu par Apple ». Après le contrôle d'intégrité, l'app évalue l'exigence `anchor apple generic` ; sans ancrage, signataire et équipe ne sont pas affichés (un certificat auto-signé peut porter n'importe quel nom). Avec ancrage, la ligne montre le signataire suivi de « (équipe XXXXXXXXXX) », l'identifiant lu dans le fichier à l'exécution.
+- **Provenance.** Elle est lue d'abord sur l'archive reçue ; le fichier extrait ne sert que de repli, et la valeur est alors marquée « (indiquée dans l'archive) », car `ditto` recopie les attributs du zip.
+- **« obsbot-ai introuvable ».** Statut du SDK quand le vérificateur lui-même manque dans l'app : aucune installation n'est possible, le bouton est absent.
+- **Plus de repli CGNAT.** `config.json` ne prend que l'adresse d'une interface `utun*` en 100.64/10. La même plage sert aux opérateurs mobiles sur d'autres interfaces : sans `utun`, `config.json` écoute sur 127.0.0.1 et le panneau signale Tailscale absent.
+- **Migration interrompue.** Si l'app est quittée entre la plist renommée et le reste, le lancement suivant (aucune ancienne installation détectée) met les anciens binaires de `bin/` à la corbeille et reprend `lib/libdev.dylib` dans `sdk/` s'il n'y en a pas. Sans effet et silencieux s'il n'y a rien à faire ; les échecs vont dans les problèmes de migration.
+- **Sortie 75 précoce.** Si `ptzd` sort avec 75 moins de 2 s après son lancement (un ptzd mourant tient encore le verrou), le superviseur le relance une seule fois, 1 s plus tard. Un second 75 passe en échec comme avant.

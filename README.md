@@ -39,7 +39,7 @@ Prérequis :
 
 - un Mac Apple Silicon sous macOS 15 ou plus récent, avec Xcode et [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) ;
 - Tailscale sur le Mac pour piloter hors de la maison (sans lui, `ptzd` n'écoute que sur 127.0.0.1 et sur le réseau local) ;
-- le SDK OBSBOT, à demander sur [obsbot.com/sdk](https://www.obsbot.com/sdk), décompressé dans `vendor/obsbot-sdk/` : ses en-têtes servent à compiler `obsbot-ai`. Il n'est pas versionné : sa licence n'en autorise pas la redistribution ;
+- le SDK OBSBOT, à demander sur [obsbot.com/sdk](https://www.obsbot.com/sdk), décompressé dans `vendor/obsbot-sdk/` : ses en-têtes servent à compiler `obsbot-ai`, et `macos/arm64-release/libdev.dylib` à l'édition de liens (il n'est jamais copié dans l'app). Il n'est pas versionné : sa licence n'en autorise pas la redistribution ;
 - OBSBOT Center fermé : ouvert, il fausse la relecture du tilt.
 
 Puis installer :
@@ -61,11 +61,11 @@ Au premier lancement :
 
 | Clé | Rôle | Défaut |
 |---|---|---|
-| `listenAddress` | Adresse IPv4 Tailscale du Mac | obligatoire |
+| `listenAddress` | Adresse Tailscale du Mac, ou 127.0.0.1 sans Tailscale ; créée par PTZBot au premier lancement | obligatoire |
 | `port` | Port WebSocket | 1985 |
 | `panMaxSpeed`, `tiltMaxSpeed` | Vitesses UVC maximales (pan 1–80, tilt 1–120) | 40, 60 |
 | `panDirection`, `tiltDirection` | Sens de chaque axe, +1 ou -1 | +1, +1 |
-| `aiPath` | Chemin de `obsbot-ai` pour un `ptzd` lancé à la main, relatif au dossier de travail ; ignoré quand PTZBot lance `ptzd` (l'ancienne clé `aiOffPath` est lue si elle manque, sauf si elle nomme `obsbot-ai-off`) | `bin/obsbot-ai` |
+| `aiPath` | Chemin de `obsbot-ai`, relatif à `~/Library/Application Support/ObsbotNacelle` (ou absolu) ; quand PTZBot lance `ptzd`, c'est `--ai` qui compte (l'ancienne clé `aiOffPath` est lue si elle manque, sauf si elle nomme `obsbot-ai-off`) | `bin/obsbot-ai` |
 | `localNetwork` | Écoute et annonce Bonjour sur le Wi-Fi et l'Ethernet | `true` |
 | `go2rtcAPI` | API locale de go2rtc, pour relayer la vidéo | `http://127.0.0.1:1984` |
 | `streamName` | Flux go2rtc relayé | `obsbot` |
@@ -92,13 +92,13 @@ Le Mac ne peut pas se joindre lui-même par son adresse Tailscale : en local, pa
 Installée par `scripts/install-mac.sh`, elle vit dans la barre des menus (icône de la Tiny 2), sans icône dans le Dock. L'iPhone ne pilote la caméra que pendant que PTZBot est ouvert : **Ouvrir à la connexion** en fait l'usage normal. Son panneau montre :
 
 - l'interrupteur **Service ptzd**, retenu d'un lancement à l'autre, et l'état de `ptzd` (« Actif », « Démarrage… », « Arrêté », « Relancé après un arrêt inattendu (n) », « Ne répond pas » avec un lien vers son journal) et de la caméra. Au-delà de 5 arrêts en 2 min, PTZBot cesse de relancer `ptzd` : « ptzd s'arrête sans cesse : ouvrez le journal ». Il ne le relance pas non plus si un autre `ptzd` tourne déjà (verrou `ptzd.lock` ou port de 127.0.0.1 pris : « Le port 1985 est déjà pris… »), si `config.json` est invalide ou si ses arguments sont refusés ;
-- la ligne **SDK OBSBOT** (« Prêt », « Absent », « En quarantaine », « Incompatible ») et **Installer le SDK…** ; sans SDK prêt, **Suivi IA** est grisé (« SDK OBSBOT requis ») ;
+- la ligne **SDK OBSBOT** (« Prêt », « Absent », « En quarantaine », « Incompatible », « Ne se charge pas », « obsbot-ai introuvable »), **Installer le SDK…** et, quand le SDK est prêt, **Changer…** ; sans SDK prêt, **Suivi IA** est grisé (« SDK OBSBOT requis ») ;
 - les interrupteurs **Vie privée** et **Suivi IA** (le suivi affiche le dernier ordre : l'état réel ne se lit pas, un geste devant la caméra peut le changer) ;
 - les clients connectés, avec **Expulser** : la connexion est coupée et l'appareil refusé 10 min (tant que `ptzd` tourne), sans perdre son appairage ;
 - **Appairer un iPhone…** : le QR code en image, valable 5 min ; fermer la fenêtre l'annule ;
 - **Appareils…** : les appareils appairés, **Débloquer** et **Retirer…** (l'appareil est retiré et ses connexions coupées tout de suite) ;
 - **Ouvrir à la connexion** : l'app se lance à l'ouverture de session (macOS peut demander un accord dans Réglages › Général › Ouverture) ;
-- **Quitter** : arrête `ptzd` (5 s au plus), puis l'app.
+- **Quitter** : arrête `ptzd` (6 s au plus), puis l'app.
 
 Si l'accès au réseau local est refusé à PTZBot, le panneau l'indique, avec un bouton vers les réglages de confidentialité : les iPhone ne trouvent alors le Mac que par Tailscale.
 
