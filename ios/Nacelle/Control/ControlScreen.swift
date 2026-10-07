@@ -104,15 +104,22 @@ struct ControlScreen: View {
         Button {
             model.toggleAITracking()
         } label: {
-            Image(systemName: model.aiTrackingOn ? "person.crop.square.fill" : "person.crop.square")
-                .font(.title3)
-                .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
+            Group {
+                if model.aiTrackingBusy {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: model.aiTrackingOn ? "person.crop.square.fill" : "person.crop.square")
+                        .font(.title3)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .background(.ultraThinMaterial, in: Circle())
         }
         .foregroundStyle(.white)
         .disabled(!model.aiToggleEnabled)
-        .opacity(model.aiToggleEnabled ? 1 : 0.4)
-        .accessibilityLabel(model.aiTrackingOn ? "Couper le suivi IA" : "Allumer le suivi IA")
+        .opacity(model.aiToggleEnabled || model.aiTrackingBusy ? 1 : 0.4)
+        .accessibilityLabel(model.aiTrackingBusy ? "Suivi IA en cours de changement" : model.aiTrackingOn ? "Couper le suivi IA" : "Allumer le suivi IA")
     }
 
     private var privacyButton: some View {

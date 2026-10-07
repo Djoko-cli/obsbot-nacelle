@@ -143,8 +143,8 @@ struct AppModelTests {
         return transport
     }
 
-    private func send(privacy: Bool, aiTracking: AITracking = .unknown, on transport: FakeTransport) throws {
-        let snapshot = StateSnapshot(camera: .connected, control: .ready, privacy: privacy, pan: 0, tilt: 0, zoom: 0, moving: false, aiTracking: aiTracking)
+    private func send(privacy: Bool, aiTracking: AITracking = .unknown, control: ControlState = .ready, on transport: FakeTransport) throws {
+        let snapshot = StateSnapshot(camera: .connected, control: control, privacy: privacy, pan: 0, tilt: 0, zoom: 0, moving: false, aiTracking: aiTracking)
         transport.emit(.message(try NacelleCodec.encode(ServerMessage.state(snapshot))))
     }
 
@@ -183,6 +183,24 @@ struct AppModelTests {
         #expect(sent.filter { if case .aiTracking = $0 { true } else { false } } == [.aiTracking(on: true), .aiTracking(on: false)])
         try send(privacy: true, aiTracking: .off, on: transport)
         #expect(!model.aiToggleEnabled)
+        model.deactivate()
+    }
+
+    @Test("Suivi IA : bouton grisé et occupé tant qu'un ordre est en cours (control == taking), puis rendu")
+    func aiTrackingBusy() throws {
+        SettingsStore(defaults: defaults).save(complete)
+        let model = makeModel()
+        model.activate()
+        #expect(!model.aiTrackingBusy)
+        let transport = try connect(privacy: false)
+        #expect(model.aiToggleEnabled)
+        #expect(!model.aiTrackingBusy)
+        try send(privacy: false, control: .taking, on: transport)
+        #expect(model.aiTrackingBusy)
+        #expect(!model.aiToggleEnabled)
+        try send(privacy: false, aiTracking: .on, control: .ready, on: transport)
+        #expect(!model.aiTrackingBusy)
+        #expect(model.aiToggleEnabled)
         model.deactivate()
     }
 
