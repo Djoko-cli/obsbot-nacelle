@@ -58,10 +58,10 @@ public enum ConfigBootstrap {
         return UInt32(bigEndian: address.s_addr) & 0xFFC0_0000 == 0x6440_0000
     }
 
-    /// L'adresse 100.64/10 d'une interface `utun*` (Tailscale), sinon celle d'une autre interface.
+    /// L'adresse 100.64/10 d'une interface `utun*` (Tailscale), et d'elle seule : la même plage sert aux
+    /// opérateurs mobiles (CGNAT) sur d'autres interfaces, où Tailscale n'est pas en cause. Sans `utun`, nil.
     public static func tailscaleAddress(in interfaces: [InterfaceAddress]) -> String? {
-        let candidates = interfaces.filter { isTailscale($0.address) }
-        return (candidates.first { $0.interface.hasPrefix("utun") } ?? candidates.first)?.address
+        interfaces.first { $0.interface.hasPrefix("utun") && isTailscale($0.address) }?.address
     }
 
     /// `config.json` écoute sur 127.0.0.1 seulement : le panneau signale l'absence de Tailscale.

@@ -61,7 +61,7 @@ public struct FileManagerTrash: Trash {
 /// Échec de la migration : l'app reste branchée sur l'ancien ptzd (spec ptzd dans l'app § 5.6).
 public enum LegacyMigrationError: Error, Equatable, Sendable {
     case bootoutFailed(String)
-    /// L'ancien ptzd est encore chargé 5 s après le `bootout`.
+    /// L'ancien ptzd est encore chargé 10 s après le `bootout`.
     case stillLoaded
     case renameFailed(String)
 
@@ -182,6 +182,14 @@ public struct LegacyAgent: Sendable {
             }
         }
 
+        return completeLeftovers()
+    }
+
+    /// Ce qui reste d'une migration interrompue (plist déjà renommée, mais app quittée avant la corbeille ou la
+    /// reprise du SDK) : anciens binaires à la corbeille, SDK de `lib/` repris dans `sdk/` seulement s'il n'y en
+    /// a pas. Sans effet et silencieux quand il n'y a plus rien ; sans lien avec launchd.
+    public func completeLeftovers() -> Report {
+        let manager = FileManager.default
         var report = Report()
         for path in Self.binaries {
             let url = supportDirectory.appending(path: path)

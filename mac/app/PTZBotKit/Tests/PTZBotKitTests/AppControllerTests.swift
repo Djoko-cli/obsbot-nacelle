@@ -21,6 +21,7 @@ struct AppControllerTests {
 
     private func controller(
         addresses: [String] = ["127.0.0.1"],
+        interfaces: [InterfaceAddress]? = nil,
         sdkLoads: Bool = true,
         confirm: Bool = true,
         asked: Counter = Counter(),
@@ -36,7 +37,7 @@ struct AppControllerTests {
                 sleep: { _ in }
             ),
             configURL: paths.config,
-            interfaces: FakeInterfaces(addresses: addresses),
+            interfaces: interfaces.map { FakeInterfaces(interfaces: $0) } ?? FakeInterfaces(addresses: addresses),
             sdkInstaller: SDKInstaller(sdkDirectory: paths.sdkDirectory, verifier: FakeVerifier(sdkLoads).verifier),
             scheduler: scheduler,
             confirmMigration: {
@@ -78,7 +79,10 @@ struct AppControllerTests {
     @Test("Interface Tailscale : pas de message")
     func tailscale() async {
         defer { try? FileManager.default.removeItem(at: root) }
-        let app = controller(addresses: ["127.0.0.1", "100.64.0.1"])
+        let app = controller(interfaces: [
+            InterfaceAddress(interface: "lo0", address: "127.0.0.1"),
+            InterfaceAddress(interface: "utun4", address: "100.64.0.1"),
+        ])
         await app.launch()
         #expect(!app.tailscaleMissing)
     }
@@ -110,6 +114,24 @@ struct AppControllerTests {
         #expect(app.sdkStatus == .ready)
         #expect(FileManager.default.fileExists(atPath: paths.sdkDirectory.appending(path: "libdev.dylib").path))
         #expect(!app.tailscaleMissing)
+    }
+
+    @Test("Migration interrompue : au lancement suivant, les restes sont achevés avant ptzd ; problèmes signalés")
+    func interruptedMigration() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        // Ni plist ni agent chargé, mais les binaires et lib/ sont restés.
+        try FakeSDK.write(Data("ptzd".utf8), to: paths.support.appending(path: "bin/ptzd"))
+        try FakeSDK.write(Data("ai".utf8), to: paths.support.appending(path: "bin/obsbot-ai"))
+        try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: paths.support.appending(path: "lib/libdev.dylib"))
+        let app = controller()
+        await app.launch()
+        #expect(app.legacy == .none)
+        #expect(app.migrationProblems.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: paths.support.appending(path: "bin/ptzd").path))
+        #expect(!FileManager.default.fileExists(atPath: paths.support.appending(path: "bin/obsbot-ai").path))
+        #expect(FileManager.default.fileExists(atPath: paths.sdkDirectory.appending(path: "libdev.dylib").path))
+        #expect(app.sdkStatus == .ready)
+        #expect(supervisor.state == .running)
     }
 
     @Test("Ancienne installation, « Plus tard » : aucun ptzd lancé, ancienne installation gardée")
@@ -183,6 +205,7 @@ struct AppControllerTests {
         try FakeSDK.write(Data(#"{"listenAddress":"127.0.0.1","port":19870}"#.utf8), to: paths.config)
         let app = controller()
         await app.launch()
+        scheduler.advance(by: ServiceSupervisor.earlyBusyWindow)
         try #require(launcher.last).exit(ProcessExit(status: 75, signaled: false))
         #expect(supervisor.state == .failed(reason: "Le port 19870 est déjà pris : un autre ptzd tourne peut-être encore"))
         #expect(Labels.service(supervisor.state, connection: .unreachable, legacy: false) == "Arrêté")
@@ -417,14 +440,16 @@ struct ServiceLabelsTests {
         let signed = SDKCandidate(
             path: URL(fileURLWithPath: "/x/libdev.dylib"),
             architectures: ["arm64"],
-            signer: "Developer ID Application: Exemple (ABCDE12345)",
+            signer: "Developer ID Application: Exemple",
             team: "ABCDE12345",
             quarantined: true,
-            origin: SDKOrigin(url: "https://example.com/libdev.zip", date: nil)
+            origin: SDKOrigin(url: "https://example.com/libdev.zip", date: nil),
+            signatureValid: true,
+            appleAnchored: true
         )
         #expect(Labels.sdkChecks(signed).map(\.value) == [
             "Apple Silicon : ✓",
-            "Developer ID Application: Exemple (ABCDE12345)",
+            "Developer ID Application: Exemple (équipe ABCDE12345)",
             "https://example.com/libdev.zip",
             "oui",
         ])
@@ -445,6 +470,19 @@ struct ServiceLabelsTests {
     func checksWarnings() {
         let altered = SDKCandidate(path: URL(fileURLWithPath: "/x/libdev.dylib"), architectures: ["arm64"], signatureValid: false)
         #expect(Labels.sdkChecks(altered)[1] == Labels.SDKCheck(title: "Signature", value: "Signature invalide"))
+        // Signature intacte mais certificat inconnu d'Apple : ni signataire ni équipe, même s'ils étaient renseignés.
+        let unanchored = SDKCandidate(
+            path: URL(fileURLWithPath: "/x/libdev.dylib"),
+            architectures: ["arm64"],
+            signer: "Apple Inc.",
+            team: "ABCDE12345",
+            signatureValid: true,
+            appleAnchored: false
+        )
+        #expect(Labels.sdkChecks(unanchored)[1] == Labels.SDKCheck(title: "Signature", value: "Signé, certificat non reconnu par Apple"))
+        // Signé par un certificat Apple sans équipe (binaire du système) : le signataire seul.
+        let system = SDKCandidate(path: unanchored.path, architectures: ["arm64"], signer: "Software Signing", signatureValid: true, appleAnchored: true)
+        #expect(Labels.sdkChecks(system)[1].value == "Software Signing")
         let fromArchive = SDKCandidate(
             path: URL(fileURLWithPath: "/x/libdev.dylib"),
             architectures: ["arm64"],

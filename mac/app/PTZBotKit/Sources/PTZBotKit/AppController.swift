@@ -72,6 +72,9 @@ public final class AppController {
             await offerMigration()
         } else {
             legacy = .none
+            // Une migration interrompue (app quittée entre la plist renommée et le reste) s'achève ici.
+            let leftovers = await Task.detached { agent.completeLeftovers() }.value
+            migrationProblems = leftovers.problems
             await startService()
         }
         await refreshSDK()

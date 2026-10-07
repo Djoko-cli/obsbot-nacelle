@@ -253,6 +253,41 @@ struct SDKInspectorTests {
         #expect(altered.valid == false)
         #expect(altered.signer == nil)
         #expect(altered.team == nil)
+        #expect(altered.appleAnchored == nil)
+    }
+
+    @Test("Ancrage Apple : /bin/ls oui ; copie signée ad hoc intacte mais non reconnue, sans signataire ; non signé : nil")
+    func appleAnchor() throws {
+        let directory = try FakeSDK.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let system = SDKInspector.signing(of: URL(fileURLWithPath: "/bin/ls"))
+        #expect(system.valid == true)
+        #expect(system.appleAnchored == true)
+
+        // Seule la copie temporaire est re-signée.
+        let copy = directory.appending(path: "ls-adhoc")
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/bin/ls"), to: copy)
+        let codesign = Process()
+        codesign.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        codesign.arguments = ["-f", "-s", "-", copy.path]
+        codesign.standardOutput = FileHandle.nullDevice
+        codesign.standardError = FileHandle.nullDevice
+        try codesign.run()
+        codesign.waitUntilExit()
+        try #require(codesign.terminationStatus == 0)
+        let adHoc = SDKInspector.signing(of: copy)
+        #expect(adHoc.valid == true)
+        #expect(adHoc.appleAnchored == false)
+        #expect(adHoc.signer == nil)
+        #expect(adHoc.team == nil)
+
+        // Le contrôle d'ancrage est injectable : refusé, même /bin/ls perd signataire et équipe.
+        let refused = SDKInspector.signing(of: URL(fileURLWithPath: "/bin/ls"), anchorCheck: { _ in false })
+        #expect(refused.valid == true)
+        #expect(refused.appleAnchored == false)
+        #expect(refused.signer == nil)
+        let plain = try FakeSDK.write(Data("texte sans signature".utf8), to: directory.appending(path: "plain.dylib"))
+        #expect(SDKInspector.signing(of: plain).appleAnchored == nil)
     }
 
     @Test("Provenance forgée : l'adresse de l'archive l'emporte sur celle que ditto recopie du fichier extrait")
