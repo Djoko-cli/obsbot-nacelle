@@ -22,3 +22,15 @@ Un bouton d'enregistrement (rec) dans l'app iOS, à côté du son et de la vie p
 ## Exposition automatique
 
 Un bouton dans l'app iOS, et dans le panneau du Mac, pour l'exposition automatique, à côté du bouton d'enregistrement. Le SDK OBSBOT expose le mode d'exposition (`cameraSetExposureModeR`), l'exposition sur le visage (`cameraSetFaceAER`), le verrouillage (`cameraSetAELockR`) et la correction d'exposition (`cameraSetPAEEvBiasR`). À vérifier d'abord : la commande UVC standard du mode d'exposition (`CT_AE_MODE`), que `ptzd` envoie déjà par IOKit pour la nacelle, éviterait le SDK et ses 4,2 s de lancement. Comportement voulu par Majid : **activé**, la caméra est en exposition automatique continue ; **désactivé**, elle revient au réglage fait dans OBSBOT Center. Il faut donc lire et retenir le réglage en place (mode, valeurs manuelles, correction) avant d'activer, puis le remettre à la désactivation, y compris après un redémarrage de `ptzd`.
+
+## Licence de redistribution du SDK OBSBOT
+
+Après B2, quand l'app sera présentable : demander à OBSBOT une licence pour **livrer `libdev.dylib` en binaire dans PTZBot.app**. L'app est gratuite et open source, et les en-têtes ne seraient pas redistribués. Avec cette licence, l'image disque marcherait dès l'installation, sans étape manuelle, et la question de livrer `obsbot-ai` dans B2 serait réglée.
+
+À demander précisément :
+- l'autorisation de re-signer la bibliothèque, ou de la charger avec la signature de l'éditeur ;
+- l'attribution ;
+- les versions et les mises à jour ;
+- un éventuel usage commercial.
+
+Garder l'installation manuelle par l'app comme repli. Claude peut rédiger la demande en brouillon ; Majid l'envoie.
