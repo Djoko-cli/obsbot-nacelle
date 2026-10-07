@@ -280,6 +280,35 @@ struct PTZClientTests {
         #expect(transports.all.count == opened)
     }
 
+    @Test("Retiré par le Mac pendant la session (unpaired reçu) : clé supprimée, « non appairé », plus de reconnexion")
+    func unpairedDuringSession() throws {
+        try connect()
+        #expect(client.isPaired)
+        try emit(.error(code: .unpaired, message: "Appareil retiré depuis le Mac."), on: tailscale)
+        #expect(keys.key == nil)
+        #expect(keys.storedLANKey == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+        #expect(client.link == .idle)
+        #expect(client.state == nil)
+        let opened = transports.all.count
+        scheduler.advance(by: 30)
+        #expect(transports.all.count == opened)
+    }
+
+    @Test("unpaired reçu pendant un oubli en attente : l'oubli s'achève, minuterie annulée")
+    func unpairedDuringPendingForget() throws {
+        try connect()
+        client.forgetPairing()
+        try emit(.error(code: .unpaired, message: "Appareil retiré depuis le Mac."), on: tailscale)
+        #expect(keys.key == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+        scheduler.advance(by: PTZClient.forgetTimeout * 2)
+        #expect(client.authIssue == .unpaired)
+        #expect(client.link == .idle)
+    }
+
     @Test("Suivi IA : l'ordre part sur la connexion active")
     func aiTrackingOrder() throws {
         try connect()
