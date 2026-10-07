@@ -50,6 +50,11 @@ public struct AppPaths: Equatable, Sendable {
 extension SDKInstaller {
     /// L'installateur de l'app : `sdk/` de l'utilisateur, vérifié par l'obsbot-ai du paquet.
     public static func system(paths: AppPaths) -> SDKInstaller {
-        SDKInstaller(sdkDirectory: paths.sdkDirectory, verifier: obsbotAIVerifier(executableURL: paths.obsbotAI))
+        let obsbotAI = paths.obsbotAI
+        return SDKInstaller(
+            sdkDirectory: paths.sdkDirectory,
+            verifier: obsbotAIVerifier(executableURL: obsbotAI),
+            executableAvailable: { FileManager.default.isExecutableFile(atPath: obsbotAI.path) }
+        )
     }
 }

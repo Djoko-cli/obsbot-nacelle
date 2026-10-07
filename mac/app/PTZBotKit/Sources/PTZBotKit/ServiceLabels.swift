@@ -48,6 +48,7 @@ extension Labels {
         case .quarantined: "En quarantaine"
         case .incompatible: "Incompatible"
         case .unloadable: "Ne se charge pas"
+        case .verifierMissing: "obsbot-ai introuvable"
         case nil: "Vérification…"
         }
     }
@@ -59,6 +60,7 @@ extension Labels {
         case nil: nil
         case .ready: "Changer…"
         case .absent, .quarantined, .incompatible, .unloadable: "Installer le SDK…"
+        case .verifierMissing: nil
         }
     }
 
@@ -121,10 +123,15 @@ extension Labels {
         if let date = candidate.origin?.date {
             origin.append("le \(date.formatted(Date.FormatStyle(date: .long, time: .shortened).locale(Locale(identifier: "fr_FR"))))")
         }
+        var provenance = origin.isEmpty ? "inconnue" : origin.joined(separator: " · ")
+        if !origin.isEmpty, candidate.origin?.fromInsideArchive == true {
+            provenance += " (indiquée dans l'archive)"
+        }
+        let signature = candidate.signatureValid == false ? "Signature invalide" : (candidate.signer ?? "non signé")
         var checks = [
             SDKCheck(title: "Architecture", value: architecture),
-            SDKCheck(title: "Signature", value: candidate.signer ?? "non signé"),
-            SDKCheck(title: "Provenance", value: origin.isEmpty ? "inconnue" : origin.joined(separator: " · ")),
+            SDKCheck(title: "Signature", value: signature),
+            SDKCheck(title: "Provenance", value: provenance),
             SDKCheck(title: "Quarantaine", value: candidate.quarantined ? "oui" : "non"),
         ]
         if !candidate.otherCopies.isEmpty {
