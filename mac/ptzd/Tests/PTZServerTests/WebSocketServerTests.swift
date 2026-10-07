@@ -205,6 +205,37 @@ struct WebSocketServerTests {
         withExtendedLifetime(server) {}
     }
 
+    @Test("Port de 127.0.0.1 déjà pris (EADDRINUSE) : signalé par onAddressInUse")
+    func addressInUse() async throws {
+        // Un socket ordinaire, sans SO_REUSEPORT, tient un port choisi par le système (port 0).
+        let holder = socket(AF_INET, SOCK_STREAM, 0)
+        try #require(holder >= 0)
+        defer { close(holder) }
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        address.sin_port = 0
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let bound = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
+                bind(holder, pointer, length) == 0 && listen(holder, 1) == 0 && getsockname(holder, pointer, &length) == 0
+            }
+        }
+        try #require(bound)
+        let port = UInt16(bigEndian: address.sin_port)
+        let server = WebSocketServer(
+            hosts: ["127.0.0.1"], port: port, controller: controller, authority: authority,
+            relay: FakeRelay { $0 }, scheduler: DispatchScheduler(), log: { _ in }
+        )
+        var inUse: [String] = []
+        server.onAddressInUse = { inUse.append($0) }
+        server.start()
+        try await waitUntil { !inUse.isEmpty }
+        #expect(inUse.first == "127.0.0.1")
+        withExtendedLifetime(server) {}
+    }
+
     @Test("Au-delà de 4 clients, la connexion est refusée")
     func maxClients() async throws {
         let (server, ports) = await startServer()

@@ -36,6 +36,8 @@ public final class ProcessAIRunner: AIRunner {
     private let arguments: [String]
     private let timeout: TimeInterval
     private let outputURL: URL?
+    /// Variables ajoutées à l'environnement hérité (`DYLD_LIBRARY_PATH` du SDK, spec ptzd dans l'app § 5.4).
+    private let environment: [String: String]
     private let scheduler: any Scheduler
     /// Dernier utilitaire lancé : retenu jusqu'au suivant, pour refuser un chevauchement.
     private(set) var current: Process?
@@ -48,12 +50,14 @@ public final class ProcessAIRunner: AIRunner {
         arguments: [String] = [],
         timeout: TimeInterval = 15,
         outputURL: URL? = nil,
+        environment: [String: String] = [:],
         scheduler: any Scheduler
     ) {
         self.executableURL = executableURL
         self.arguments = arguments
         self.timeout = timeout
         self.outputURL = outputURL
+        self.environment = environment
         self.scheduler = scheduler
     }
 
@@ -67,6 +71,9 @@ public final class ProcessAIRunner: AIRunner {
         let process = Process()
         process.executableURL = executableURL
         process.arguments = arguments + [on ? "on" : "off"]
+        if !environment.isEmpty {
+            process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+        }
         let output = appendingHandle()
         if let output {
             process.standardOutput = output

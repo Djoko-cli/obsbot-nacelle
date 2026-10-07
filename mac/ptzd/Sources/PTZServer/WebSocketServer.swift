@@ -43,6 +43,10 @@ public final class WebSocketServer {
     /// ouvert (utile quand on demande le port 0).
     public var onReady: ((_ host: String, _ port: UInt16) -> Void)?
 
+    /// Appelé quand l'écoute sur une adresse échoue parce que le port y est déjà pris (EADDRINUSE).
+    /// L'écoute est réessayée quand même ; ptzd lancé par PTZBot s'arrête (code 75).
+    public var onAddressInUse: ((_ host: String) -> Void)?
+
     private let hosts: [String]
     private let port: UInt16
     private let controller: PTZController
@@ -226,6 +230,7 @@ public final class WebSocketServer {
         do {
             listener = try NWListener(using: parameters)
         } catch {
+            reportAddressInUse(host, error)
             retryLater(host, after: error)
             return
         }
@@ -253,9 +258,16 @@ public final class WebSocketServer {
             onReady?(host, actual)
         case let .failed(error), let .waiting(error):
             listeners.removeValue(forKey: host)?.cancel()
+            reportAddressInUse(host, error)
             retryLater(host, after: error)
         default:
             break
+        }
+    }
+
+    private func reportAddressInUse(_ host: String, _ error: any Error) {
+        if case .posix(.EADDRINUSE) = error as? NWError {
+            onAddressInUse?(host)
         }
     }
 

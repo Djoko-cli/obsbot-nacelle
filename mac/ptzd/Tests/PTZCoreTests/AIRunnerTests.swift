@@ -65,6 +65,34 @@ struct AIRunnerTests {
         #expect(try String(contentsOf: url, encoding: .utf8) == "un on\ndeux off\n")
     }
 
+    @Test("environment s'ajoute à l'environnement hérité : DYLD_LIBRARY_PATH est donné à l'utilitaire")
+    func environment() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "ai-env-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let output = directory.appending(path: "env.txt")
+        // /bin/sh est protégé par SIP : dyld lui retire les variables DYLD_*. La transmission est donc
+        // vérifiée par une variable ordinaire, et DYLD_LIBRARY_PATH sur l'environnement du processus lancé.
+        let runner = ProcessAIRunner(
+            executableURL: URL(fileURLWithPath: "/bin/sh"),
+            arguments: ["-c", "printf '%s|%s' \"$PTZD_ESSAI\" \"${HOME:+hérité}\" > \"$1\"", "sh", output.path],
+            environment: ["DYLD_LIBRARY_PATH": "/sdk/dossier", "PTZD_ESSAI": "transmis"],
+            scheduler: DispatchScheduler()
+        )
+        #expect(await runOnce(runner) == .success)
+        #expect(try String(contentsOf: output, encoding: .utf8) == "transmis|hérité")
+        let environment = try #require(runner.current?.environment)
+        #expect(environment["DYLD_LIBRARY_PATH"] == "/sdk/dossier")
+        #expect(environment["HOME"] == ProcessInfo.processInfo.environment["HOME"])
+    }
+
+    @Test("Sans environment : l'environnement hérité tel quel")
+    func inheritedEnvironment() async throws {
+        let runner = ProcessAIRunner(executableURL: URL(fileURLWithPath: "/usr/bin/true"), scheduler: DispatchScheduler())
+        #expect(await runOnce(runner) == .success)
+        #expect(runner.current?.environment == nil)
+    }
+
     @Test("Exécutable absent")
     func launchFailure() async {
         guard case .launchFailed = await run("/nonexistent/obsbot-ai") else {
@@ -113,9 +141,10 @@ struct AIRunnerTests {
         }
         let after = Self.openDescriptors()
         // Le compte exact sur le fichier de sortie ne dépend pas des autres tests ;
-        // le compte global tolère le bruit des suites lancées en parallèle (la fuite en ajoutait 30).
+        // le compte global tolère le bruit des suites lancées en parallèle, qui lancent elles aussi des processus
+        // (ptzd de bout en bout, verrou de service) ; la fuite en ajoutait 30.
         #expect(Self.descriptors(on: url) == 0)
-        #expect(abs(after - before) <= 5, "descripteurs : \(before) avant, \(after) après")
+        #expect(abs(after - before) <= 12, "descripteurs : \(before) avant, \(after) après")
     }
 
     @Test("Les processus terminés sont libérés")
