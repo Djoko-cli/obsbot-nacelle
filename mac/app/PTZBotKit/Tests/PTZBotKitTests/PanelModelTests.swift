@@ -43,6 +43,31 @@ struct PanelModelTests {
         #expect(model.admin?.devices == [device])
     }
 
+    @Test("iPhone connectés : la connexion de confiance du Mac n'est pas un client")
+    func iPhoneClients() throws {
+        try connect()
+        #expect(model.iPhoneClients.isEmpty)
+        let since = Date(timeIntervalSince1970: 1_791_301_000)
+        let mac = AdminClient(id: 1, deviceID: nil, name: nil, route: .mac, address: "127.0.0.1", since: since)
+        let phone = AdminClient(id: 2, deviceID: device.deviceID, name: "iPhone", route: .localNetwork, address: "192.0.2.89", since: since)
+        let remote = AdminClient(id: 3, deviceID: device.deviceID, name: "iPhone", route: .tailscale, address: "100.64.0.1", since: since)
+        try receive(.adminState(AdminState(devices: [device], clients: [mac, phone, remote], pairing: nil)))
+        #expect(model.iPhoneClients.map(\.id) == [2, 3])
+        #expect(Labels.iPhoneSection(count: model.iPhoneClients.count) == "iPhone connectés · 2")
+        transport.emit(.closed)
+        #expect(model.iPhoneClients.isEmpty)
+    }
+
+    @Test("config.json relu : la reconnexion suivante prend le nouveau port")
+    func reloadConfig() throws {
+        try connect()
+        model.reloadConfig(PTZDConfig(port: 19870, isFallback: false))
+        #expect(!model.config.isFallback)
+        transport.emit(.closed)
+        scheduler.advance(by: PanelModel.retryDelay)
+        #expect(transport.opened.last == URL(string: "ws://127.0.0.1:19870")!)
+    }
+
     @Test("ptzd ne répond pas : état effacé, nouvel essai toutes les 2 s")
     func reconnects() throws {
         try connect()

@@ -29,6 +29,10 @@ targets:
         CFBundleDisplayName: PTZBot
         # Dans la barre des menus seulement, sans icône dans le Dock.
         LSUIElement: true
+        # ptzd, enfant de l'app, écoute et s'annonce sur le réseau local (spec ptzd dans l'app § 4.2).
+        NSLocalNetworkUsageDescription: PTZBot accepte les connexions des iPhone appairés sur votre réseau local.
+        NSBonjourServices:
+          - _nacelle._tcp
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.djoko-cli.ptzbot
@@ -40,6 +44,20 @@ targets:
         # Signature locale (ad hoc) jusqu'au sous-projet B.
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
+        # La phase des utilitaires compile mac/ptzd et lit les en-têtes du SDK dans vendor/.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      # ptzd et obsbot-ai dans Contents/Helpers ; jamais de libdev.dylib dans le paquet (spec ptzd dans l'app § 5.1).
+      # Toujours exécutée : swift build sait ce qui a changé dans mac/ptzd.
+      - name: Utilitaires ptzd et obsbot-ai
+        script: '"$SRCROOT/build-helpers.sh"'
+        basedOnDependencyAnalysis: false
+        inputFiles:
+          - $(SRCROOT)/build-helpers.sh
+          - $(SRCROOT)/../ai/main.cpp
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/ptzd
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/obsbot-ai
 schemes:
   PTZBot:
     build:
