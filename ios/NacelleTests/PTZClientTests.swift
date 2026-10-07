@@ -304,12 +304,68 @@ struct PTZClientTests {
         #expect(transports.all.count == opened)
     }
 
-    @Test("Oublier l'appairage : clé et secret supprimés, puis « non appairé »")
+    @Test("Oublier l'appairage sans connexion : clé et secret supprimés tout de suite, rien envoyé")
     func forget() throws {
-        try connect()
+        client.start(settings: settings)
+        tailscale.emit(.opened)
         client.forgetPairing()
         #expect(keys.key == nil)
         #expect(keys.storedLANKey == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+        #expect(!decoded(tailscale).contains(.forgetMe))
+    }
+
+    @Test("Oublier l'appairage connecté : forgetMe d'abord, puis l'oubli local à la fermeture de la connexion")
+    func forgetWhenConnected() throws {
+        try connect()
+        client.forgetPairing()
+        #expect(commands(tailscale).suffix(1) == [.forgetMe])
+        // Rien n'est encore oublié : on attend que le Mac coupe.
+        #expect(keys.key != nil)
+        #expect(client.isPaired)
+        tailscale.emit(.closed)
+        #expect(keys.key == nil)
+        #expect(keys.storedLANKey == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+        // La minuterie du délai ne refait rien.
+        scheduler.advance(by: PTZClient.forgetTimeout * 2)
+        #expect(client.authIssue == .unpaired)
+        #expect(commands(tailscale).filter { $0 == .forgetMe }.count == 1)
+    }
+
+    @Test("Oublier l'appairage connecté, ptzd ancien (badMessage) : oubli local tout de suite")
+    func forgetWithOlderPTZD() throws {
+        try connect()
+        client.forgetPairing()
+        #expect(keys.key != nil)
+        try emit(.error(code: .badMessage, message: "Message illisible."), on: tailscale)
+        #expect(keys.key == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+    }
+
+    @Test("Oubli en attente puis retour en arrière-plan : la minuterie est annulée, rien n'est oublié")
+    func forgetCancelledByStop() throws {
+        try connect()
+        client.forgetPairing()
+        client.stop()
+        scheduler.advance(by: PTZClient.forgetTimeout * 2)
+        #expect(keys.key != nil)
+        #expect(client.isPaired)
+    }
+
+    @Test("Oublier l'appairage connecté, le Mac ne coupe pas : oubli local au bout de 2 s")
+    func forgetWhenConnectedTimesOut() throws {
+        try connect()
+        client.forgetPairing()
+        client.forgetPairing()
+        #expect(commands(tailscale).filter { $0 == .forgetMe }.count == 1)
+        scheduler.advance(by: PTZClient.forgetTimeout - 0.1)
+        #expect(keys.key != nil)
+        scheduler.advance(by: 0.2)
+        #expect(keys.key == nil)
         #expect(!client.isPaired)
         #expect(client.authIssue == .unpaired)
     }

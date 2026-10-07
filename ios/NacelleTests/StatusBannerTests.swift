@@ -34,18 +34,19 @@ struct StatusBannerTests {
         #expect(text(state(camera: .absent)) == "Caméra débranchée")
         #expect(text(state(privacy: true)) == "Vie privée")
         #expect(text(state(control: .failed)) == "Suivi IA non coupé : les mouvements peuvent être contrés")
-        #expect(text(state(control: .taking)) == "Prise en main…")
+        // Un ordre de suivi IA en cours n'a pas de bandeau : le bouton du suivi IA l'indique.
+        #expect(text(state(control: .taking)) == nil)
         #expect(text(connecting: true) == "Connexion…")
         #expect(text(state()) == nil)
     }
 
-    @Test("Priorité : injoignable, débranchée, vie privée, suivi IA, prise en main, connexion")
+    @Test("Priorité : injoignable, débranchée, vie privée, suivi IA, connexion")
     func priority() {
         let everything = state(camera: .absent, control: .taking, privacy: true)
         #expect(text(unreachable: true, connecting: true, everything) == "Mac injoignable : Tailscale est-il actif ?")
         #expect(text(connecting: true, everything) == "Caméra débranchée")
         #expect(text(connecting: true, state(control: .failed, privacy: true)) == "Vie privée")
         #expect(text(connecting: true, state(control: .failed)) == "Suivi IA non coupé : les mouvements peuvent être contrés")
-        #expect(text(connecting: true, state(control: .taking)) == "Prise en main…")
+        #expect(text(connecting: true, state(control: .taking)) == "Connexion…")
     }
 }

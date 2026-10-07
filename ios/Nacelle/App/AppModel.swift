@@ -199,9 +199,14 @@ final class AppModel {
         ptz.state?.aiTracking == .on
     }
 
-    /// Bouton du suivi IA utilisable : connecté, caméra présente, hors vie privée.
+    /// Un ordre de suivi IA est en cours : obsbot-ai démarre ou travaille (`control == .taking`).
+    var aiTrackingBusy: Bool {
+        ptz.state?.control == .taking
+    }
+
+    /// Bouton du suivi IA utilisable : connecté, caméra présente, hors vie privée, aucun ordre en cours.
     var aiToggleEnabled: Bool {
-        ptz.link == .connected && ptz.state?.camera == .connected && ptz.state?.privacy == false
+        ptz.link == .connected && ptz.state?.camera == .connected && ptz.state?.privacy == false && !aiTrackingBusy
     }
 
     /// Allume le suivi s'il n'est pas allumé (coupé ou inconnu), le coupe sinon.

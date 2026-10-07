@@ -51,6 +51,8 @@ final class PTZClient {
     static let repeatInterval: TimeInterval = 0.1
     /// Délai d'une négociation vidéo, attente de la connexion comprise.
     static let negotiationTimeout: TimeInterval = 10
+    /// Temps laissé au Mac pour fermer la connexion après `forgetMe`.
+    static let forgetTimeout: TimeInterval = 2
     static let retryDelays: [TimeInterval] = [1, 2, 4, 8]
     /// Temps laissé à Bonjour pour trouver ptzd sur le réseau local, à chaque tentative.
     static let discoveryWindow: TimeInterval = 3
@@ -108,6 +110,8 @@ final class PTZClient {
     @ObservationIgnored private var discovery: (any Cancellable)?
     @ObservationIgnored private var retry: (any Cancellable)?
     @ObservationIgnored private var repeater: (any Cancellable)?
+    /// `forgetMe` envoyé : attente de la fermeture de la connexion, bornée par `forgetTimeout`.
+    @ObservationIgnored private var forgetTimer: (any Cancellable)?
     @ObservationIgnored private var currentMove = JoystickVector.zero
     /// QR code scanné, en attente d'appairage. Son secret n'est jamais rangé (spec découverte et QR § 8.3).
     private var pendingPairing: PairingLink?
@@ -159,6 +163,8 @@ final class PTZClient {
     }
 
     func start(settings: ConnectionSettings) {
+        forgetTimer?.cancel()
+        forgetTimer = nil
         self.settings = settings
         attempt = 0
         isUnreachable = false
@@ -169,6 +175,8 @@ final class PTZClient {
 
     /// Passage en arrière-plan : arrêt de la nacelle, puis fermeture.
     func stop() {
+        forgetTimer?.cancel()
+        forgetTimer = nil
         if currentMove != .zero {
             send(.move(pan: 0, tilt: 0))
         }
@@ -233,8 +241,24 @@ final class PTZClient {
         restart()
     }
 
-    /// Oublie la clé et l'appairage ; ptzd refusera cet iPhone jusqu'au prochain appairage.
+    /// Oublie la clé et l'appairage. Connecté, demande d'abord au Mac de retirer cet iPhone de sa liste
+    /// (`forgetMe`), puis attend la fermeture de la connexion, au plus `forgetTimeout` ; sinon, tout de suite.
+    /// Dans les deux cas ptzd refusera cet iPhone jusqu'au prochain appairage.
     func forgetPairing() {
+        guard link == .connected else {
+            forgetLocally()
+            return
+        }
+        guard forgetTimer == nil else { return }
+        send(.forgetMe)
+        forgetTimer = scheduler.schedule(after: Self.forgetTimeout) { [weak self] in
+            self?.forgetLocally()
+        }
+    }
+
+    private func forgetLocally() {
+        forgetTimer?.cancel()
+        forgetTimer = nil
         keys.delete()
         setPaired(false)
         pendingPairing = nil
@@ -416,7 +440,12 @@ final class PTZClient {
             }
             if candidate === active {
                 active = nil
-                lost()
+                if forgetTimer != nil {
+                    // Le Mac a coupé après `forgetMe` : on oublie sans attendre le délai.
+                    forgetLocally()
+                } else {
+                    lost()
+                }
             } else {
                 failAttemptIfOver()
             }
@@ -568,6 +597,9 @@ final class PTZClient {
         case .error(.blocked, _):
             // Expulsé pendant la session : pas de reconnexion, qui serait refusée.
             giveUp(.blocked)
+        case .error(.badMessage, _) where forgetTimer != nil:
+            // Un ptzd plus ancien ne connaît pas forgetMe : inutile d'attendre sa fermeture.
+            forgetLocally()
         case let .error(code, _):
             lastError = code
         case let .webrtcAnswer(id, sdp):
