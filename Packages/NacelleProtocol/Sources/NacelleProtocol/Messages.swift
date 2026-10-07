@@ -2,7 +2,7 @@ import Foundation
 
 /// Message de l'app vers ptzd (spec § 5).
 public enum ClientMessage: Equatable, Sendable {
-    /// Coupe le suivi IA de la caméra (spec § 6.4).
+    /// Prise en main ; ne coupe plus le suivi IA, gardé pour la compatibilité (spec app Mac § 7.5).
     case takeControl
     /// Consigne de vitesse, de -1 à 1 sur chaque axe. 0,0 arrête le mouvement.
     case move(pan: Double, tilt: Double)
@@ -19,6 +19,21 @@ public enum ClientMessage: Equatable, Sendable {
     case auth(deviceID: String, signature: Data)
     /// Offre WebRTC à relayer à go2rtc ; `id` croît à chaque offre (spec accès local § 6.5).
     case webrtcOffer(id: Int, sdp: String)
+    /// Allume (true) ou coupe (false) le suivi IA de la caméra (spec app Mac § 7.5).
+    case aiTracking(on: Bool)
+    /// Demande l'état d'administration, puis ses changements ; 127.0.0.1 seulement (spec app Mac § 6).
+    case adminWatch
+    /// Retire l'appareil et coupe ses connexions ; 127.0.0.1 seulement.
+    case revoke(deviceID: String)
+    /// Coupe les connexions de l'appareil et le bloque 10 min ; 127.0.0.1 seulement.
+    case kick(deviceID: String)
+    /// Lève le blocage de l'appareil ; 127.0.0.1 seulement.
+    case unblock(deviceID: String)
+    /// Annule l'appairage en cours ; 127.0.0.1 seulement.
+    case closePairing
+    /// L'iPhone oublie son appairage : ptzd retire cet appareil de sa liste et coupe ses connexions.
+    /// Accepté d'un iPhone authentifié seulement.
+    case forgetMe
 }
 
 /// Présence de la caméra côté Mac.
@@ -27,7 +42,15 @@ public enum CameraPresence: String, Codable, Sendable {
     case absent
 }
 
-/// Avancement de la prise en main, c'est-à-dire de la coupure du suivi IA.
+/// Dernier ordre de suivi IA envoyé par ptzd : l'état réel ne se lit pas (spec app Mac § 7.5).
+public enum AITracking: String, Codable, Sendable {
+    case on
+    case off
+    /// Au démarrage de ptzd et après un rebranchement de la caméra hors vie privée.
+    case unknown
+}
+
+/// Avancement de la coupure du suivi IA (prise en main).
 public enum ControlState: String, Codable, Sendable {
     case idle
     case taking
@@ -51,8 +74,10 @@ public enum ErrorCode: String, Codable, Sendable {
     case pairingClosed
     /// Message refusé avant l'authentification.
     case notAuthenticated
-    /// `openPairing` hors de 127.0.0.1, ou `pair` hors de l'écoute du réseau local.
+    /// Message d'administration ou `openPairing` hors de 127.0.0.1, ou `pair` hors de l'écoute du réseau local.
     case notLocal
+    /// Appareil expulsé par le Mac, pour quelques minutes (spec app Mac § 7.3).
+    case blocked
 }
 
 /// État complet publié par ptzd.
@@ -67,6 +92,7 @@ public struct StateSnapshot: Equatable, Sendable {
     /// De 0 à 100, ou nil si inconnu.
     public var zoom: Int?
     public var moving: Bool
+    public var aiTracking: AITracking
 
     public init(
         camera: CameraPresence,
@@ -75,7 +101,8 @@ public struct StateSnapshot: Equatable, Sendable {
         pan: Double?,
         tilt: Double?,
         zoom: Int?,
-        moving: Bool
+        moving: Bool,
+        aiTracking: AITracking = .unknown
     ) {
         self.camera = camera
         self.control = control
@@ -84,6 +111,7 @@ public struct StateSnapshot: Equatable, Sendable {
         self.tilt = tilt
         self.zoom = zoom
         self.moving = moving
+        self.aiTracking = aiTracking
     }
 }
 
@@ -104,6 +132,8 @@ public enum ServerMessage: Equatable, Sendable {
     case webrtcAnswer(id: Int, sdp: String)
     /// go2rtc injoignable ou en erreur pour l'offre `id`.
     case webrtcError(id: Int, message: String)
+    /// État d'administration, aux connexions qui l'ont demandé par `adminWatch`.
+    case adminState(AdminState)
 }
 
 /// Un appairage ouvert par ptzd : identifiant, secret, échéance, et où joindre le Mac.

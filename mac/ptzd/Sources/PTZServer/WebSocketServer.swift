@@ -5,7 +5,8 @@ import PTZAuth
 import PTZCore
 
 /// Serveur WebSocket de ptzd : quelques adresses précises (jamais 0.0.0.0),
-/// 4 clients authentifiés au plus (spec § 6.1 et § 6.10). Chaque connexion s'authentifie, sauf sur
+/// 4 iPhone authentifiés au plus, et 4 connexions de confiance du Mac à part (spec § 6.1 et § 6.10,
+/// spec app Mac § 7.1). L'administration (app Mac) ne passe que par 127.0.0.1 de confiance. Chaque connexion s'authentifie, sauf sur
 /// 127.0.0.1 (spec accès local § 6.3). Les connexions anonymes ont leurs propres réserves, bornées
 /// en tout et par adresse : un appareil du Wi-Fi ne peut pas occuper les places des clients.
 /// Une place n'est jamais gardée par une connexion morte ou anonyme : 10 s pour s'authentifier,
@@ -15,8 +16,13 @@ import PTZCore
 /// sur 127.0.0.1, et `openPairing` n'est accepté que de 127.0.0.1 de confiance.
 @MainActor
 public final class WebSocketServer {
-    /// Clients authentifiés ou de confiance (127.0.0.1 compris).
+    /// Appareils authentifiés (iPhone).
     public nonisolated static let maxClients = 4
+    /// Connexions de confiance du Mac (app Mac, ptzd pair, nacelle-ws), à part : elles ne prennent
+    /// jamais la place d'un iPhone.
+    public nonisolated static let maxTrustedClients = 4
+    /// Durée d'une expulsion (spec app Mac § 7.3).
+    public static let blockDuration: TimeInterval = 600
     /// Connexions anonymes en attente d'authentification, en tout.
     public nonisolated static let maxPending = 8
     /// Connexions anonymes en attente d'authentification, par adresse distante.
@@ -55,6 +61,9 @@ public final class WebSocketServer {
     private var expiry: (any Cancellable)?
     private var clients: [ClientID: Client] = [:]
     private var nextID: ClientID = 1
+    /// Appareils expulsés : fin du blocage et minuterie qui le lève. Perdus au redémarrage de ptzd.
+    private var blocks: [String: (until: Date, timer: any Cancellable)] = [:]
+    private let now: @Sendable () -> Date
 
     /// Une place occupée : la connexion, son authentification et ses minuteries, toutes annulées par `drop`.
     private struct Client {
@@ -66,6 +75,16 @@ public final class WebSocketServer {
         /// Arrivée par le réseau local (canal TLS) : le seul endroit où `pair` est accepté.
         let local: Bool
         var authenticated = false
+        /// L'appareil authentifié ; nil pour une connexion de confiance.
+        var device: (id: String, name: String)?
+        /// Heure de l'authentification.
+        var since: Date?
+        /// A demandé l'état d'administration (`adminWatch`).
+        var watchesAdmin = false
+
+        var route: ClientRoute {
+            trusted ? .mac : local ? .localNetwork : .tailscale
+        }
         /// Défi en cours ; consommé par le premier `auth`.
         var nonce: Data?
         var deadline: (any Cancellable)?
@@ -100,7 +119,8 @@ public final class WebSocketServer {
         log: @escaping LogSink,
         trustLoopback: Bool = true,
         localNetwork: Bool = false,
-        localHosts: Set<String> = []
+        localHosts: Set<String> = [],
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.hosts = hosts.reduce(into: []) { unique, host in
             if !unique.contains(host) {
@@ -116,8 +136,12 @@ public final class WebSocketServer {
         self.trustLoopback = trustLoopback
         self.localNetwork = localNetwork
         self.localHosts = localHosts
+        self.now = now
         controller.onStateChange = { [weak self] snapshot in
             self?.broadcast(.state(snapshot))
+        }
+        controller.onClientError = { [weak self] id, code, message in
+            self?.send(.error(code: code, message: message), to: id)
         }
     }
 
@@ -272,13 +296,13 @@ public final class WebSocketServer {
         return "\(endpoint)"
     }
 
-    /// Décide d'admettre une nouvelle connexion, sans toucher au réseau. `authenticated` compte
-    /// les clients authentifiés ou de confiance, `pendingAddresses` les connexions anonymes en
-    /// attente (une adresse par connexion). Une connexion de confiance ne dépend que de la
-    /// première réserve ; une anonyme que de la seconde.
-    nonisolated static func admits(trusted: Bool, address: String, authenticated: Int, pendingAddresses: [String]) -> Bool {
+    /// Décide d'admettre une nouvelle connexion, sans toucher au réseau. `trustedCount` compte les
+    /// connexions de confiance, `pendingAddresses` les connexions anonymes en attente (une adresse par
+    /// connexion). Une connexion de confiance ne dépend que de sa réserve ; une anonyme que de la sienne.
+    /// Les iPhone authentifiés ont la leur, vérifiée à l'authentification.
+    nonisolated static func admits(trusted: Bool, address: String, trustedCount: Int, pendingAddresses: [String]) -> Bool {
         if trusted {
-            return authenticated < maxClients
+            return trustedCount < maxTrustedClients
         }
         return pendingAddresses.count < maxPending
             && pendingAddresses.filter { $0 == address }.count < maxPendingPerAddress
@@ -291,9 +315,14 @@ public final class WebSocketServer {
         return String(deviceID.prefix(8))
     }
 
-    /// Clients authentifiés ou de confiance : ceux qui occupent les `maxClients` places.
-    private var reservedCount: Int {
-        clients.values.filter { $0.authenticated || $0.trusted }.count
+    /// iPhone authentifiés : ceux qui occupent les `maxClients` places.
+    private var deviceCount: Int {
+        clients.values.filter { $0.authenticated && !$0.trusted }.count
+    }
+
+    /// Connexions de confiance : celles qui occupent les `maxTrustedClients` places.
+    private var trustedCount: Int {
+        clients.values.filter(\.trusted).count
     }
 
     private func accept(_ connection: NWConnection, trusted: Bool, local: Bool = false, tailscaleOnly: Bool = false) {
@@ -304,9 +333,9 @@ public final class WebSocketServer {
             return
         }
         let pending = clients.values.filter { !$0.authenticated && !$0.trusted }.map(\.address)
-        guard Self.admits(trusted: trusted, address: address, authenticated: reservedCount, pendingAddresses: pending) else {
+        guard Self.admits(trusted: trusted, address: address, trustedCount: trustedCount, pendingAddresses: pending) else {
             if trusted {
-                log("Connexion refusée : déjà \(Self.maxClients) clients.")
+                log("Connexion refusée : déjà \(Self.maxTrustedClients) clients du Mac.")
             } else {
                 log("Connexion refusée : trop de connexions anonymes (\(address)).")
             }
@@ -390,6 +419,16 @@ public final class WebSocketServer {
             return
         }
         guard let client = clients[id] else { return }
+        if Self.isAdministration(message) {
+            // L'app Mac seulement (spec app Mac § 6).
+            guard client.trusted else {
+                log("Client \(id) : administration refusée hors du Mac (\(client.address)).")
+                send(.error(code: .notLocal, message: "Administration depuis le Mac seulement."), to: id)
+                return
+            }
+            administer(message, from: id)
+            return
+        }
         switch message {
         case .openPairing:
             // Seul un programme du Mac (ptzd pair) ouvre un appairage (spec découverte et QR § 7.1).
@@ -416,6 +455,16 @@ public final class WebSocketServer {
         case let .auth(deviceID, signature):
             guard !client.authenticated else { return }
             verify(id, deviceID: deviceID, signature: signature)
+        case .forgetMe:
+            // « Oublier cet appairage » sur l'iPhone : le Mac retire l'appareil aussi.
+            guard client.authenticated, !client.trusted, let device = client.device else {
+                log("Client \(id) : oubli d'appairage refusé (\(client.address)).")
+                send(.error(code: .badMessage, message: "Message réservé à un iPhone appairé."), to: id)
+                return
+            }
+            if !removeDevice(device.id, name: device.name, origin: "l'iPhone", informDevice: false) {
+                send(.error(code: .badMessage, message: "Liste des appareils illisible sur le Mac."), to: id)
+            }
         case let .webrtcOffer(offerID, sdp):
             guard client.authenticated else {
                 send(.error(code: .notAuthenticated, message: "Authentification d'abord."), to: id)
@@ -433,6 +482,170 @@ public final class WebSocketServer {
         }
     }
 
+    nonisolated static func isAdministration(_ message: ClientMessage) -> Bool {
+        switch message {
+        case .adminWatch, .revoke, .kick, .unblock, .closePairing:
+            true
+        default:
+            false
+        }
+    }
+
+    // MARK: - Administration (spec app Mac § 7)
+
+    private func administer(_ message: ClientMessage, from id: ClientID) {
+        switch message {
+        case .adminWatch:
+            clients[id]?.watchesAdmin = true
+            send(.adminState(adminState()), to: id)
+        case let .revoke(deviceID):
+            revoke(deviceID, from: id)
+        case let .kick(deviceID):
+            kick(deviceID, from: id)
+        case let .unblock(deviceID):
+            unblock(deviceID, from: id)
+        case .closePairing:
+            closePairing()
+        default:
+            break
+        }
+    }
+
+    /// L'appareil appairé de cet identifiant ; sinon, l'erreur est déjà envoyée à `id`.
+    private func pairedDevice(_ deviceID: String, for id: ClientID) -> PairedDevice? {
+        do {
+            guard let device = try authority.devices.device(id: deviceID) else {
+                send(.error(code: .badMessage, message: "Appareil inconnu."), to: id)
+                return nil
+            }
+            return device
+        } catch {
+            send(.error(code: .badMessage, message: "Liste des appareils illisible sur le Mac."), to: id)
+            return nil
+        }
+    }
+
+    /// Retire l'appareil sur demande du Mac.
+    private func revoke(_ deviceID: String, from id: ClientID) {
+        guard let device = pairedDevice(deviceID, for: id) else { return }
+        if !removeDevice(deviceID, name: device.name, origin: "le Mac", informDevice: true) {
+            send(.error(code: .badMessage, message: "Liste des appareils illisible sur le Mac."), to: id)
+        }
+    }
+
+    /// Retire l'appareil de la liste, lève son blocage, coupe tout de suite ses connexions et relance les
+    /// écoutes du réseau local. `origin` dit qui l'a demandé, pour le journal. `informDevice` : l'appareil
+    /// reçoit `unpaired` avant la coupure (retrait demandé par le Mac) ; sinon, coupure sans message (l'iPhone
+    /// a demandé le retrait et attend la fermeture). Renvoie false si la liste n'a pas pu être modifiée.
+    private func removeDevice(_ deviceID: String, name: String, origin: String, informDevice: Bool) -> Bool {
+        do {
+            try authority.devices.remove(id: deviceID)
+        } catch {
+            return false
+        }
+        blocks.removeValue(forKey: deviceID)?.timer.cancel()
+        log("Appareil \(Self.logID(deviceID)) (\(name)) retiré depuis \(origin).")
+        for (other, client) in clients where client.device?.id == deviceID {
+            if informDevice {
+                // Comme l'expulsion : la place est libérée une fois l'envoi parti.
+                refuse(other, .unpaired, "Appareil retiré depuis le Mac.", reason: "retiré depuis le Mac")
+            } else {
+                drop(other)
+            }
+        }
+        rebuildLocalListeners()
+        publishAdmin()
+        return true
+    }
+
+    /// Coupe les connexions de l'appareil et le bloque `blockDuration` ; l'appairage est gardé.
+    private func kick(_ deviceID: String, from id: ClientID) {
+        guard let device = pairedDevice(deviceID, for: id) else { return }
+        let until = now() + Self.blockDuration
+        blocks.removeValue(forKey: deviceID)?.timer.cancel()
+        let timer = scheduler.schedule(after: Self.blockDuration) { [weak self] in
+            self?.blockExpired(deviceID)
+        }
+        blocks[deviceID] = (until, timer)
+        log("Appareil \(Self.logID(deviceID)) (\(device.name)) expulsé jusqu'à \(Self.clock(until)).")
+        for (other, client) in clients where client.device?.id == deviceID {
+            refuse(other, .blocked, Self.blockedMessage(until), reason: "expulsé depuis le Mac")
+        }
+        publishAdmin()
+    }
+
+    private func unblock(_ deviceID: String, from id: ClientID) {
+        guard let device = pairedDevice(deviceID, for: id) else { return }
+        if let block = blocks.removeValue(forKey: deviceID) {
+            block.timer.cancel()
+            log("Appareil \(Self.logID(deviceID)) (\(device.name)) débloqué.")
+        }
+        publishAdmin()
+    }
+
+    private func blockExpired(_ deviceID: String) {
+        guard let block = blocks.removeValue(forKey: deviceID) else { return }
+        block.timer.cancel()
+        publishAdmin()
+    }
+
+    private func closePairing() {
+        guard let pairingID = authority.pairing.current?.pairingID, authority.pairing.close(pairingID) else { return }
+        expiry?.cancel()
+        expiry = nil
+        log("Appairage \(pairingID) annulé.")
+        rebuildLocalListeners()
+        publishAdmin()
+    }
+
+    nonisolated static func blockedMessage(_ until: Date) -> String {
+        "Expulsé par le Mac jusqu'à \(clock(until))."
+    }
+
+    /// Heure locale, « HH:mm ».
+    nonisolated static func clock(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "fr_FR")
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+
+    /// Les adresses de l'invitation : celles du réseau local d'abord, 4 au plus (spec app Mac § 7.4).
+    /// Seules les IPv4 locales restent : l'app iPhone rejette tout le QR code sur une autre adresse.
+    nonisolated static func invitationHosts(_ hosts: [String]) -> [String] {
+        Array(hosts.filter(LocalAddress.isLocalIPv4).prefix(PairingLink.maxHosts))
+    }
+
+    /// Les adresses des écoutes réelles du réseau local, filtrées ; `localHosts` (tests seulement, vide en
+    /// service) est ajouté tel quel : les tests y mettent « ::1 », qui n'est pas une IPv4 locale.
+    private func invitationAddresses() -> [String] {
+        let listening = Self.invitationHosts(localListeners?.addresses ?? [])
+        return Array((listening + localHosts.sorted()).prefix(PairingLink.maxHosts))
+    }
+
+    /// L'état d'administration : appareils, clients authentifiés ou de confiance, appairage en cours.
+    func adminState() -> AdminState {
+        let devices = ((try? authority.devices.all()) ?? []).map { device in
+            AdminDevice(deviceID: device.deviceID, name: device.name, pairedAt: device.pairedAt, blockedUntil: blocks[device.deviceID].flatMap { $0.until > now() ? $0.until : nil })
+        }
+        let connected = clients.sorted { $0.key < $1.key }.compactMap { id, client -> AdminClient? in
+            guard client.authenticated, let since = client.since else { return nil }
+            return AdminClient(id: id, deviceID: client.device?.id, name: client.device?.name, route: client.route, address: client.address, since: since)
+        }
+        let pairing = authority.pairing.current.map { AdminPairing(pairingID: $0.pairingID, expiresAt: $0.expiresAt) }
+        return AdminState(devices: devices, clients: connected, pairing: pairing)
+    }
+
+    /// Aux connexions qui ont demandé l'état d'administration.
+    private func publishAdmin() {
+        let watchers = clients.filter(\.value.watchesAdmin).map(\.key)
+        guard !watchers.isEmpty else { return }
+        let state = adminState()
+        for id in watchers {
+            send(.adminState(state), to: id)
+        }
+    }
+
     /// Ouvre un appairage, l'annonce aux écoutes du réseau local et renvoie de quoi faire le QR code.
     private func openPairing(_ id: ClientID) {
         let opened = authority.pairing.open()
@@ -443,10 +656,11 @@ public final class WebSocketServer {
         log("Appairage ouvert (\(opened.pairingID)), valable \(Int(PairingWindow.lifetime / 60)) min.")
         let invitation = PairingInvitation(
             pairingID: opened.pairingID, secret: opened.secret, expiresAt: opened.expiresAt,
-            hosts: (localListeners?.addresses ?? []) + localHosts.sorted(), port: Int(port)
+            hosts: invitationAddresses(), port: Int(port)
         )
         send(.pairingOpened(invitation), to: id)
         rebuildLocalListeners()
+        publishAdmin()
     }
 
     private func pairingExpired(_ pairingID: String) {
@@ -454,6 +668,7 @@ public final class WebSocketServer {
         guard authority.pairing.close(pairingID) else { return }
         log("Appairage \(pairingID) expiré.")
         rebuildLocalListeners()
+        publishAdmin()
     }
 
     /// Preuve du QR code sur le défi de la connexion : une preuve fausse laisse la connexion ouverte.
@@ -464,25 +679,22 @@ public final class WebSocketServer {
         case let .paired(deviceID, lanKey):
             expiry?.cancel()
             expiry = nil
-            log("Appareil appairé : \(deviceID.prefix(8)) (\(Self.logName(name))).")
+            log("Appareil appairé : \(deviceID.prefix(8)) (\(PairedDevice.cleanName(name))).")
             send(.paired(deviceID: deviceID, lanKey: lanKey), to: id)
             rebuildLocalListeners()
+            publishAdmin()
         case .badCode:
             log("Appairage \(Self.logID(pairingID)) : preuve fausse (\(clients[id]?.address ?? "?")).")
             send(.error(code: .badCode, message: "QR code refusé."), to: id)
             if wasOpen, authority.pairing.current == nil {
                 rebuildLocalListeners()
+                publishAdmin()
             }
         case .closed:
-            send(.error(code: .pairingClosed, message: "QR code expiré ou déjà utilisé : relancer ptzd pair."), to: id)
+            send(.error(code: .pairingClosed, message: "QR code expiré ou déjà utilisé : relancez l'appairage sur le Mac."), to: id)
         case .invalidKey:
             send(.error(code: .badMessage, message: "Clé publique illisible."), to: id)
         }
-    }
-
-    /// Un nom d'appareil n'entre dans le journal que sans caractère de contrôle, 40 caractères au plus.
-    nonisolated static func logName(_ name: String) -> String {
-        String(name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.prefix(40))
     }
 
     /// Réponse au défi. Le défi ne sert qu'une fois ; un échec ferme la connexion.
@@ -491,17 +703,29 @@ public final class WebSocketServer {
         clients[id]?.nonce = nil
         switch authority.check(deviceID: deviceID, signature: signature, nonce: nonce) {
         case let .accepted(device):
-            // Les 4 places sont aux clients authentifiés : un anonyme qui s'authentifie
+            // Vérifié après la signature : un inconnu n'apprend rien des expulsions.
+            if let block = blocks[deviceID] {
+                if block.until <= now() {
+                    // Le minuteur du planificateur est en pause pendant la veille du Mac, pas l'heure :
+                    // un blocage échu est levé ici sans attendre le minuteur.
+                    blockExpired(deviceID)
+                } else {
+                    refuse(id, .blocked, Self.blockedMessage(block.until), reason: "appareil \(Self.logID(deviceID)) expulsé jusqu'à \(Self.clock(block.until))")
+                    return
+                }
+            }
+            // Les 4 places sont aux iPhone authentifiés : un anonyme qui s'authentifie
             // alors qu'elles sont prises est refusé.
-            guard reservedCount < Self.maxClients else {
+            guard deviceCount < Self.maxClients else {
                 log("Connexion refusée : déjà \(Self.maxClients) clients.")
                 drop(id)
                 return
             }
             log("Client \(id) authentifié : \(device.name) (\(Self.logID(deviceID))).")
+            clients[id]?.device = (device.deviceID, device.name)
             authenticate(id)
         case .unknownDevice:
-            refuse(id, .unpaired, "Appareil inconnu : l'appairer avec ptzd pair.", reason: "appareil inconnu \(Self.logID(deviceID))")
+            refuse(id, .unpaired, "Appareil inconnu : appairez-le depuis PTZBot sur le Mac.", reason: "appareil inconnu \(Self.logID(deviceID))")
         case .badSignature:
             refuse(id, .authFailed, "Signature refusée.", reason: "signature refusée pour \(Self.logID(deviceID))")
         case .registryUnreadable:
@@ -530,10 +754,12 @@ public final class WebSocketServer {
 
     private func authenticate(_ id: ClientID) {
         clients[id]?.authenticated = true
+        clients[id]?.since = now()
         clients[id]?.deadline?.cancel()
         clients[id]?.deadline = nil
         send(.authenticated, to: id)
         send(.state(controller.snapshot), to: id)
+        publishAdmin()
     }
 
     /// Envoie l'erreur, puis libère la place une fois l'envoi parti.
@@ -593,6 +819,9 @@ public final class WebSocketServer {
         client.cancelTimers()
         client.connection.cancel()
         controller.clientDisconnected(id)
+        if client.authenticated {
+            publishAdmin()
+        }
     }
 
     /// Aux seuls clients authentifiés.

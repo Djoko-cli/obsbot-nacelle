@@ -23,5 +23,8 @@ spike/sdk-probe/sdk-probe
 # App iOS : projet et Info.plist générés par xcodegen, équipe de signature locale
 ios/Nacelle.xcodeproj/
 ios/Nacelle/Info.plist
+# App Mac : projet et Info.plist générés par xcodegen
+mac/app/PTZBot.xcodeproj/
+mac/app/PTZBot/Info.plist
 ios/Config/Local.xcconfig
 ios/Local/

@@ -155,7 +155,7 @@ struct PTZClientTests {
         keys.key = nil
         keys.storedLANKey = nil
         var learned: [String] = []
-        client.onAddressLearned = { learned.append($0) }
+        client.onAddressLearned = { learned.append("\($0):\($1)") }
         client.start(settings: settings)
         #expect(!client.isPairing)
         client.pair(with: link)
@@ -172,7 +172,7 @@ struct PTZClientTests {
         #expect(keys.storedLANKey == newKey)
         #expect(client.isPaired)
         #expect(!client.isPairing)
-        #expect(learned == ["192.0.2.30"])
+        #expect(learned == ["192.0.2.30:1985"])
         guard case let .auth(deviceID, signature) = decoded(first).last else {
             Issue.record("auth attendu après paired")
             return
@@ -193,7 +193,7 @@ struct PTZClientTests {
     func pairingWithTwoPaths() throws {
         keys.key = nil
         var learned: [String] = []
-        client.onAddressLearned = { learned.append($0) }
+        client.onAddressLearned = { learned.append("\($0):\($1)") }
         client.start(settings: settings)
         client.pair(with: link)
         browser.find(service)
@@ -211,7 +211,7 @@ struct PTZClientTests {
         #expect(decoded(local).contains { if case .auth = $0 { true } else { false } })
         #expect(decoded(first).contains { if case .auth = $0 { true } else { false } })
         // Service Bonjour sans adresse résolue : la première adresse du QR est retenue.
-        #expect(learned == ["192.0.2.30"])
+        #expect(learned == ["192.0.2.30:1985"])
     }
 
     @Test("QR code refusé par ptzd : « QR code refusé », plus de reconnexion, QR oublié", arguments: [ErrorCode.badCode, .pairingClosed, .notLocal])
@@ -234,6 +234,89 @@ struct PTZClientTests {
         #expect(transports.last?.opened == [.url(url)])
     }
 
+    @Test("QR refusé sur un iPhone déjà appairé : simple avis, pas d'arrêt, reconnexion normale")
+    func pairingRefusedWhenPaired() throws {
+        try connect()
+        var refused = 0
+        client.onPairingRefused = { refused += 1 }
+        client.pair(with: link)
+        let first = try #require(qr("192.0.2.30"))
+        try emit(.challenge(nonce: nonce), on: first)
+        try emit(.error(code: .pairingClosed, message: "x"), on: first)
+        #expect(refused == 1)
+        #expect(client.authIssue == nil)
+        #expect(!client.isPairing)
+        #expect(client.link == .connecting)
+        #expect(transports.last?.opened == [.url(url)])
+    }
+
+    @Test("Expulsé à l'authentification, par Tailscale ou par le réseau local : « expulsé », plus de reconnexion")
+    func blockedAtAuthentication() throws {
+        try connect()
+        #expect(client.isPaired == true)
+        client.stop()
+        client.start(settings: settings)
+        browser.find(service)
+        let local = try #require(transports.local)
+        try emit(.challenge(nonce: nonce), on: local)
+        try emit(.error(code: .blocked, message: "Expulsé par le Mac jusqu'à 20:14."), on: local)
+        #expect(client.authIssue == .blocked)
+        #expect(client.link == .idle)
+        let opened = transports.all.count
+        scheduler.advance(by: 30)
+        #expect(transports.all.count == opened)
+        #expect(client.isPaired == true)
+    }
+
+    @Test("Expulsé pendant la session : arrêt tout de suite, sans tentative refusée d'avance")
+    func blockedDuringSession() throws {
+        try connect()
+        try emit(.error(code: .blocked, message: "Expulsé par le Mac jusqu'à 20:14."), on: tailscale)
+        #expect(client.authIssue == .blocked)
+        #expect(client.link == .idle)
+        #expect(client.state == nil)
+        let opened = transports.all.count
+        scheduler.advance(by: 30)
+        #expect(transports.all.count == opened)
+    }
+
+    @Test("Retiré par le Mac pendant la session (unpaired reçu) : clé supprimée, « non appairé », plus de reconnexion")
+    func unpairedDuringSession() throws {
+        try connect()
+        #expect(client.isPaired)
+        try emit(.error(code: .unpaired, message: "Appareil retiré depuis le Mac."), on: tailscale)
+        #expect(keys.key == nil)
+        #expect(keys.storedLANKey == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+        #expect(client.link == .idle)
+        #expect(client.state == nil)
+        let opened = transports.all.count
+        scheduler.advance(by: 30)
+        #expect(transports.all.count == opened)
+    }
+
+    @Test("unpaired reçu pendant un oubli en attente : l'oubli s'achève, minuterie annulée")
+    func unpairedDuringPendingForget() throws {
+        try connect()
+        client.forgetPairing()
+        try emit(.error(code: .unpaired, message: "Appareil retiré depuis le Mac."), on: tailscale)
+        #expect(keys.key == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+        scheduler.advance(by: PTZClient.forgetTimeout * 2)
+        #expect(client.authIssue == .unpaired)
+        #expect(client.link == .idle)
+    }
+
+    @Test("Suivi IA : l'ordre part sur la connexion active")
+    func aiTrackingOrder() throws {
+        try connect()
+        client.setAITracking(true)
+        client.setAITracking(false)
+        #expect(commands(tailscale).suffix(2) == [.aiTracking(on: true), .aiTracking(on: false)])
+    }
+
     @Test("Aucun Mac ne répond avec le QR (secret refusé en TLS, Mac injoignable) : « QR code refusé », sans reconnexion")
     func pairingUnanswered() throws {
         keys.key = nil
@@ -250,12 +333,68 @@ struct PTZClientTests {
         #expect(transports.all.count == opened)
     }
 
-    @Test("Oublier l'appairage : clé et secret supprimés, puis « non appairé »")
+    @Test("Oublier l'appairage sans connexion : clé et secret supprimés tout de suite, rien envoyé")
     func forget() throws {
-        try connect()
+        client.start(settings: settings)
+        tailscale.emit(.opened)
         client.forgetPairing()
         #expect(keys.key == nil)
         #expect(keys.storedLANKey == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+        #expect(!decoded(tailscale).contains(.forgetMe))
+    }
+
+    @Test("Oublier l'appairage connecté : forgetMe d'abord, puis l'oubli local à la fermeture de la connexion")
+    func forgetWhenConnected() throws {
+        try connect()
+        client.forgetPairing()
+        #expect(commands(tailscale).suffix(1) == [.forgetMe])
+        // Rien n'est encore oublié : on attend que le Mac coupe.
+        #expect(keys.key != nil)
+        #expect(client.isPaired)
+        tailscale.emit(.closed)
+        #expect(keys.key == nil)
+        #expect(keys.storedLANKey == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+        // La minuterie du délai ne refait rien.
+        scheduler.advance(by: PTZClient.forgetTimeout * 2)
+        #expect(client.authIssue == .unpaired)
+        #expect(commands(tailscale).filter { $0 == .forgetMe }.count == 1)
+    }
+
+    @Test("Oublier l'appairage connecté, ptzd ancien (badMessage) : oubli local tout de suite")
+    func forgetWithOlderPTZD() throws {
+        try connect()
+        client.forgetPairing()
+        #expect(keys.key != nil)
+        try emit(.error(code: .badMessage, message: "Message illisible."), on: tailscale)
+        #expect(keys.key == nil)
+        #expect(!client.isPaired)
+        #expect(client.authIssue == .unpaired)
+    }
+
+    @Test("Oubli en attente puis retour en arrière-plan : la minuterie est annulée, rien n'est oublié")
+    func forgetCancelledByStop() throws {
+        try connect()
+        client.forgetPairing()
+        client.stop()
+        scheduler.advance(by: PTZClient.forgetTimeout * 2)
+        #expect(keys.key != nil)
+        #expect(client.isPaired)
+    }
+
+    @Test("Oublier l'appairage connecté, le Mac ne coupe pas : oubli local au bout de 2 s")
+    func forgetWhenConnectedTimesOut() throws {
+        try connect()
+        client.forgetPairing()
+        client.forgetPairing()
+        #expect(commands(tailscale).filter { $0 == .forgetMe }.count == 1)
+        scheduler.advance(by: PTZClient.forgetTimeout - 0.1)
+        #expect(keys.key != nil)
+        scheduler.advance(by: 0.2)
+        #expect(keys.key == nil)
         #expect(!client.isPaired)
         #expect(client.authIssue == .unpaired)
     }

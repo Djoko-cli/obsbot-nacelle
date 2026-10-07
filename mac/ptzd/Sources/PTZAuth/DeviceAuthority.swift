@@ -67,10 +67,9 @@ public struct DeviceAuthority: Sendable {
             return .badCode
         case .accepted:
             let deviceID = NacelleAuth.deviceID(publicKeyX963: publicKey)
-            let cleanName = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
             let lanKey = NacelleTLS.makeKey()
             let device = PairedDevice(
-                deviceID: deviceID, name: cleanName.isEmpty ? "appareil" : cleanName,
+                deviceID: deviceID, name: PairedDevice.cleanName(name),
                 publicKey: publicKey, pairedAt: now(), lanKey: lanKey
             )
             do {

@@ -1,24 +1,37 @@
 import Foundation
 
-/// Issue d'une exécution d'obsbot-ai-off (spec § 6.9).
-public enum AIOffResult: Equatable, Sendable {
+/// Issue d'une exécution d'obsbot-ai (spec § 6.9, spec app Mac § 7.5).
+public enum AIResult: Equatable, Sendable {
     case success
     case cameraNotFound
     case sdkError
     case timeout
     case launchFailed(String)
     case unexpectedExit(Int32)
+
+    /// Le motif, en français, pour les messages montrés à l'utilisateur (le journal garde la forme brute).
+    public var userDescription: String {
+        switch self {
+        case .success: "réussi"
+        case .cameraNotFound: "caméra introuvable"
+        case .sdkError: "erreur du SDK OBSBOT"
+        case .timeout: "délai dépassé"
+        case .launchFailed: "l'utilitaire n'a pas pu être lancé"
+        case let .unexpectedExit(status): "l'utilitaire s'est arrêté avec le code \(status)"
+        }
+    }
 }
 
+/// Allume (`on`) ou coupe le suivi IA de la caméra.
 @MainActor
-public protocol AIOffRunner: AnyObject {
-    func run(completion: @escaping @MainActor @Sendable (AIOffResult) -> Void)
+public protocol AIRunner: AnyObject {
+    func run(on: Bool, completion: @escaping @MainActor @Sendable (AIResult) -> Void)
 }
 
-/// Lance obsbot-ai-off dans un processus séparé, avec un délai maximal.
+/// Lance `obsbot-ai on|off` dans un processus séparé, avec un délai maximal.
 /// Le SDK est très bavard : sa sortie va dans un fichier à part, pas dans le journal de ptzd.
 @MainActor
-public final class ProcessAIOffRunner: AIOffRunner {
+public final class ProcessAIRunner: AIRunner {
     private let executableURL: URL
     private let arguments: [String]
     private let timeout: TimeInterval
@@ -44,15 +57,16 @@ public final class ProcessAIOffRunner: AIOffRunner {
         self.scheduler = scheduler
     }
 
-    public func run(completion: @escaping @MainActor @Sendable (AIOffResult) -> Void) {
+    /// Lance l'utilitaire avec `arguments`, puis `on` ou `off`.
+    public func run(on: Bool, completion: @escaping @MainActor @Sendable (AIResult) -> Void) {
         // Un utilitaire expiré peut vivre encore jusqu'au SIGKILL : pas de second en parallèle.
         if let previous = current, previous.isRunning {
-            completion(.launchFailed("obsbot-ai-off précédent encore en cours"))
+            completion(.launchFailed("obsbot-ai précédent encore en cours"))
             return
         }
         let process = Process()
         process.executableURL = executableURL
-        process.arguments = arguments
+        process.arguments = arguments + [on ? "on" : "off"]
         let output = appendingHandle()
         if let output {
             process.standardOutput = output
@@ -114,8 +128,8 @@ public final class ProcessAIOffRunner: AIOffRunner {
         return handle
     }
 
-    /// Codes de sortie de obsbot-ai-off : 0 succès, 1 caméra introuvable, 2 erreur du SDK.
-    public static func result(status: Int32, exited: Bool) -> AIOffResult {
+    /// Codes de sortie de obsbot-ai : 0 succès, 1 caméra introuvable, 2 erreur du SDK.
+    public static func result(status: Int32, exited: Bool) -> AIResult {
         guard exited else { return .unexpectedExit(status) }
         switch status {
         case 0: return .success

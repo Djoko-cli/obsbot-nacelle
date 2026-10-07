@@ -1,0 +1,47 @@
+# Projet Xcode de PTZBot pour Mac, généré par xcodegen (le .xcodeproj n'est pas versionné).
+# Générer : cd mac/app && xcodegen
+name: PTZBot
+options:
+  bundleIdPrefix: io.github.djoko-cli
+  deploymentTarget:
+    macOS: "15.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # Mac Apple Silicon seulement, comme ptzd.
+    ARCHS: arm64
+packages:
+  PTZBotKit:
+    path: PTZBotKit
+targets:
+  PTZBot:
+    type: application
+    platform: macOS
+    sources:
+      - PTZBot
+    dependencies:
+      - package: PTZBotKit
+    info:
+      path: PTZBot/Info.plist
+      properties:
+        CFBundleDisplayName: PTZBot
+        # Dans la barre des menus seulement, sans icône dans le Dock.
+        LSUIElement: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.djoko-cli.ptzbot
+        PRODUCT_NAME: PTZBot
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        # Pas de bac à sable : l'app lit la configuration de ptzd (et, au sous-projet B, gère son service).
+        ENABLE_APP_SANDBOX: NO
+        # Signature locale (ad hoc) jusqu'au sous-projet B.
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+schemes:
+  PTZBot:
+    build:
+      targets:
+        PTZBot: all

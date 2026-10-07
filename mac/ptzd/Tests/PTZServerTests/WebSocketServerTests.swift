@@ -4,6 +4,7 @@ import NacelleProtocol
 import Network
 import PTZAuth
 import PTZCore
+import Synchronization
 import Testing
 @testable import PTZServer
 
@@ -23,7 +24,7 @@ struct WebSocketServerTests {
         controller = PTZController(
             camera: camera,
             scheduler: DispatchScheduler(),
-            aiOff: StubAIOff(),
+            ai: StubAI(),
             store: StubStore(),
             settings: MotionSettings(),
             isObsbotCenterRunning: { false },
@@ -39,11 +40,12 @@ struct WebSocketServerTests {
         log: @escaping LogSink = { _ in },
         trustLoopback: Bool = true,
         relay: any WebRTCRelay = FakeRelay { "v=0 réponse à \($0)" },
-        localHosts: Set<String> = []
+        localHosts: Set<String> = [],
+        now: @escaping @Sendable () -> Date = { Date() }
     ) async -> (WebSocketServer, [String: UInt16]) {
         let server = WebSocketServer(
             hosts: hosts, port: 0, controller: controller, authority: authority, relay: relay,
-            scheduler: scheduler, log: log, trustLoopback: trustLoopback, localHosts: localHosts
+            scheduler: scheduler, log: log, trustLoopback: trustLoopback, localHosts: localHosts, now: now
         )
         let ports = await withCheckedContinuation { continuation in
             var ready: [String: UInt16] = [:]
@@ -302,7 +304,7 @@ struct WebSocketServerTests {
 
         let nonce = try await challenge(task)
         try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: task)
-        #expect(try await next(task) { _ in true } == .error(code: .unpaired, message: "Appareil inconnu : l'appairer avec ptzd pair."))
+        #expect(try await next(task) { _ in true } == .error(code: .unpaired, message: "Appareil inconnu : appairez-le depuis PTZBot sur le Mac."))
         try await waitUntil { server.clientCount == 0 }
         #expect(lines.values.contains { $0.hasPrefix("Client 1 refusé : appareil inconnu \(deviceID.prefix(8))") })
     }
@@ -574,7 +576,7 @@ struct WebSocketServerTests {
         try await client.open()
         _ = try await client.receive()
         try client.send(.pair(pairingID: "1a2b3c4d", publicKey: key.publicKey.x963Representation, name: "iPhone", proof: Data(count: 32)))
-        #expect(try await client.receive() == .error(code: .pairingClosed, message: "QR code expiré ou déjà utilisé : relancer ptzd pair."))
+        #expect(try await client.receive() == .error(code: .pairingClosed, message: "QR code expiré ou déjà utilisé : relancez l'appairage sur le Mac."))
         withExtendedLifetime(server) {}
     }
 
@@ -613,7 +615,7 @@ struct WebSocketServerTests {
         #expect(result.status == 0)
         #expect(result.output.contains("\u{1B}[30;107m"))
         #expect(result.output.contains(link.url.absoluteString))
-        #expect(result.output.contains("Dans PTZBot, touche « Scanner le QR code » et vise ce code."))
+        #expect(result.output.contains("Dans PTZBot sur l'iPhone, touchez « Scanner le QR code » et visez ce code."))
         withExtendedLifetime(server) {}
     }
 
@@ -628,17 +630,330 @@ struct WebSocketServerTests {
         let (lonely, ports) = await startServer()
         let noAddress = await PairCommand.run(port: Int(ports["127.0.0.1"]!))
         #expect(noAddress.status == 1)
-        #expect(noAddress.output == "Aucune adresse sur le réseau local : relier le Mac au Wi-Fi ou à l'Ethernet, puis relancer ptzd pair.")
+        #expect(noAddress.output == "Aucune adresse sur le réseau local : reliez le Mac au Wi-Fi ou à l'Ethernet, puis relancez ptzd pair.")
         withExtendedLifetime(lonely) {}
 
         let absent = await PairCommand.run(port: 1, timeout: 2)
         #expect(absent == (1, "ptzd ne répond pas : le service est-il lancé ?"))
     }
 
-    @Test("Journal : nom d'appareil sans caractère de contrôle, 40 caractères au plus")
-    func logName() {
-        #expect(WebSocketServer.logName("iPhone\n\u{1B}[2Jde test") == "iPhone[2Jde test")
-        #expect(WebSocketServer.logName(String(repeating: "a", count: 60)) == String(repeating: "a", count: 40))
+
+    // MARK: - Administration (spec app Mac)
+
+    /// Connexion de confiance qui demande l'état d'administration ; renvoie la connexion et le premier état.
+    private func watchAdmin(_ port: UInt16) async throws -> (URLSessionWebSocketTask, AdminState) {
+        let task = connect("127.0.0.1", port)
+        try await send(.adminWatch, on: task)
+        return (task, try await nextAdmin(task))
+    }
+
+    private func nextAdmin(_ task: URLSessionWebSocketTask) async throws -> AdminState {
+        guard case let .adminState(state) = try await next(task, where: { if case .adminState = $0 { true } else { false } }) else {
+            return AdminState(devices: [], clients: [], pairing: nil)
+        }
+        return state
+    }
+
+    @Test("Administration hors de 127.0.0.1 de confiance : notLocal, journalisé, rien d'autre", arguments: [
+        ClientMessage.adminWatch, .revoke(deviceID: "00"), .kick(deviceID: "00"), .unblock(deviceID: "00"), .closePairing,
+    ])
+    func administrationRefused(_ message: ClientMessage) async throws {
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) }, trustLoopback: false)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await challenge(task)
+        try await send(message, on: task)
+        #expect(try await next(task) { _ in true } == .error(code: .notLocal, message: "Administration depuis le Mac seulement."))
+        #expect(lines.values.contains("Client 1 : administration refusée hors du Mac (127.0.0.1)."))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("adminWatch : l'état tout de suite, puis à l'arrivée et au départ d'un iPhone")
+    func adminStateFollowsClients() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], localHosts: ["::1"])
+        let (admin, first) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        #expect(first.devices.map(\.deviceID) == [deviceID])
+        #expect(first.devices.first?.name == "iPhone de test")
+        #expect(first.clients.map(\.route) == [.mac])
+        #expect(first.clients.first?.deviceID == nil)
+        #expect(first.pairing == nil)
+
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        #expect(reply == .authenticated)
+        let joined = try await nextAdmin(admin)
+        let client = try #require(joined.clients.first { $0.deviceID == deviceID })
+        #expect(client.route == .localNetwork)
+        #expect(client.name == "iPhone de test")
+        #expect(client.address == "::1")
+
+        iPhone.close()
+        let left = try await nextAdmin(admin)
+        #expect(!left.clients.contains { $0.deviceID == deviceID })
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Expulser : blocked envoyé et connexion fermée ; refusé après signature pendant 10 min ; réaccepté à l'échéance")
+    func kickBlocksForTenMinutes() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let scheduler = FakeScheduler()
+        let lines = LineBox()
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], scheduler: scheduler, log: { lines.values.append($0) }, localHosts: ["::1"])
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        #expect(reply == .authenticated)
+        _ = try await nextAdmin(admin)
+
+        try await send(.kick(deviceID: deviceID), on: admin)
+        let kicked = try await iPhone.receive(where: { if case .error = $0 { true } else { false } })
+        guard case let .error(code, message) = kicked else {
+            Issue.record("blocked attendu")
+            return
+        }
+        #expect(code == .blocked)
+        #expect(message.hasPrefix("Expulsé par le Mac jusqu'à "))
+        let blocked = try await nextAdmin(admin)
+        #expect(blocked.devices.first?.blockedUntil != nil)
+        #expect(lines.values.contains { $0.hasPrefix("Appareil \(deviceID.prefix(8)) (iPhone de test) expulsé jusqu'à ") })
+
+        let (again, refused) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        defer { again.close() }
+        guard case .error(.blocked, _) = refused else {
+            Issue.record("blocked attendu à la reconnexion")
+            return
+        }
+
+        scheduler.advance(by: WebSocketServer.blockDuration)
+        let (back, accepted) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        defer { back.close() }
+        #expect(accepted == .authenticated)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Blocage échu pendant la veille : le minuteur est en pause, l'heure non ; accepté et plus de blockedUntil")
+    func expiredBlockLiftedWithoutTimer() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let clock = TestClock()
+        let (server, ports) = await startServer(
+            on: ["127.0.0.1", "::1"], scheduler: FakeScheduler(), localHosts: ["::1"], now: { clock.date }
+        )
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        try await send(.kick(deviceID: deviceID), on: admin)
+        #expect(try await nextAdmin(admin).devices.first?.blockedUntil != nil)
+
+        // L'heure avance de plus de 600 s sans que le planificateur ne tire (veille du Mac).
+        clock.advance(by: WebSocketServer.blockDuration + 1)
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        defer { iPhone.close() }
+        #expect(reply == .authenticated)
+        #expect(try await nextAdmin(admin).devices.first?.blockedUntil == nil)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("État d'administration : blockedUntil seulement pour un blocage encore en cours")
+    func adminStateHidesExpiredBlock() async throws {
+        try pairTestDevice()
+        let clock = TestClock()
+        let (server, ports) = await startServer(scheduler: FakeScheduler(), now: { clock.date })
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        try await send(.kick(deviceID: deviceID), on: admin)
+        #expect(try await nextAdmin(admin).devices.first?.blockedUntil != nil)
+        clock.advance(by: WebSocketServer.blockDuration + 1)
+        #expect(server.adminState().devices.first?.blockedUntil == nil)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Expulsé puis reconnecté avec une mauvaise signature : authFailed, pas blocked")
+    func kickedBadSignatureIsAuthFailed() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], scheduler: FakeScheduler(), localHosts: ["::1"])
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        try await send(.kick(deviceID: deviceID), on: admin)
+        #expect(try await nextAdmin(admin).devices.first?.blockedUntil != nil)
+
+        let client = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: lanKey)
+        try await client.open()
+        defer { client.close() }
+        guard case let .challenge(nonce) = try await client.receive() else {
+            Issue.record("défi attendu")
+            return
+        }
+        let other = P256.Signing.PrivateKey()
+        let forged = try other.signature(for: NacelleAuth.signedPayload(nonce: nonce, deviceID: deviceID)).derRepresentation
+        try client.send(.auth(deviceID: deviceID, signature: forged))
+        guard case .error(.authFailed, _) = try await client.receive() else {
+            Issue.record("authFailed attendu, pas blocked")
+            return
+        }
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Client authentifié mais pas de confiance (réseau local) : l'administration est refusée, notLocal")
+    func authenticatedUntrustedClientCannotAdminister() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], trustLoopback: false, localHosts: ["::1"])
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        defer { iPhone.close() }
+        #expect(reply == .authenticated)
+        try iPhone.send(.kick(deviceID: deviceID))
+        let refused = try await iPhone.receive(where: { if case .error = $0 { true } else { false } })
+        #expect(refused == .error(code: .notLocal, message: "Administration depuis le Mac seulement."))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Débloquer : réaccepté tout de suite, journalisé")
+    func unblock() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let lines = LineBox()
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], scheduler: FakeScheduler(), log: { lines.values.append($0) }, localHosts: ["::1"])
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        try await send(.kick(deviceID: deviceID), on: admin)
+        #expect(try await nextAdmin(admin).devices.first?.blockedUntil != nil)
+        try await send(.unblock(deviceID: deviceID), on: admin)
+        #expect(try await nextAdmin(admin).devices.first?.blockedUntil == nil)
+        #expect(lines.values.contains("Appareil \(deviceID.prefix(8)) (iPhone de test) débloqué."))
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        defer { iPhone.close() }
+        #expect(reply == .authenticated)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Retirer depuis le Mac : appareil retiré, unpaired envoyé à l'iPhone connecté puis connexion coupée, journalisé")
+    func revokeCutsConnections() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let lines = LineBox()
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], log: { lines.values.append($0) }, localHosts: ["::1"])
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        #expect(reply == .authenticated)
+        _ = try await nextAdmin(admin)
+
+        try await send(.revoke(deviceID: deviceID), on: admin)
+        let removed = try await iPhone.receive(where: { if case .error = $0 { true } else { false } })
+        #expect(removed == .error(code: .unpaired, message: "Appareil retiré depuis le Mac."))
+        await #expect(throws: TLSClientError.noChannel) {
+            while true {
+                _ = try await iPhone.receive()
+            }
+        }
+        let after = try await nextAdmin(admin)
+        #expect(after.devices.isEmpty)
+        #expect(try authority.devices.device(id: deviceID) == nil)
+        #expect(lines.values.contains("Appareil \(deviceID.prefix(8)) (iPhone de test) retiré depuis le Mac."))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Oubli depuis l'iPhone : appareil retiré, connexion coupée, journalisé ; la poignée de main suivante est refusée")
+    func forgetMeRemovesDevice() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let lines = LineBox()
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], log: { lines.values.append($0) }, localHosts: ["::1"])
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        #expect(reply == .authenticated)
+        _ = try await nextAdmin(admin)
+
+        try iPhone.send(.forgetMe)
+        await #expect(throws: TLSClientError.noChannel) {
+            while true {
+                _ = try await iPhone.receive()
+            }
+        }
+        #expect(try await nextAdmin(admin).devices.isEmpty)
+        #expect(try authority.devices.device(id: deviceID) == nil)
+        #expect(lines.values.contains("Appareil \(deviceID.prefix(8)) (iPhone de test) retiré depuis l'iPhone."))
+        let again = TLSClient(host: "::1", port: ports["::1"]!, identity: deviceID, key: lanKey)
+        defer { again.close() }
+        await #expect(throws: TLSClientError.noChannel) { try await again.open() }
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Oubli demandé par le Mac (confiance) : badMessage, rien n'est retiré")
+    func forgetMeFromTrustedClient() async throws {
+        try pairTestDevice()
+        let (server, ports) = await startServer()
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        try await send(.forgetMe, on: admin)
+        #expect(try await next(admin) { if case .error = $0 { true } else { false } } == .error(code: .badMessage, message: "Message réservé à un iPhone appairé."))
+        #expect(try authority.devices.device(id: deviceID) != nil)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Oubli demandé avant l'authentification : badMessage, rien n'est retiré")
+    func forgetMeWithoutDevice() async throws {
+        try pairTestDevice()
+        let (server, ports) = await startServer(trustLoopback: false)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await challenge(task)
+        try await send(.forgetMe, on: task)
+        #expect(try await next(task) { _ in true } == .error(code: .badMessage, message: "Message réservé à un iPhone appairé."))
+        #expect(try authority.devices.device(id: deviceID) != nil)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("forgetMe n'est pas un message d'administration")
+    func forgetMeIsNotAdministration() {
+        #expect(!WebSocketServer.isAdministration(.forgetMe))
+    }
+
+    @Test("Expulser, débloquer ou retirer un appareil inconnu : « Appareil inconnu. »", arguments: [
+        ClientMessage.kick(deviceID: "00112233445566778899aabbccddeeff"),
+        .unblock(deviceID: "00112233445566778899aabbccddeeff"),
+        .revoke(deviceID: "00112233445566778899aabbccddeeff"),
+    ])
+    func unknownDevice(_ message: ClientMessage) async throws {
+        let (server, ports) = await startServer()
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        try await send(message, on: admin)
+        #expect(try await next(admin) { if case .error = $0 { true } else { false } } == .error(code: .badMessage, message: "Appareil inconnu."))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Appairage ouvert puis annulé depuis le Mac : publié, journalisé, plus d'appairage en cours")
+    func closePairing() async throws {
+        let lines = LineBox()
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], log: { lines.values.append($0) }, localHosts: ["::1"])
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        try await send(.openPairing, on: admin)
+        let opened = try await nextAdmin(admin)
+        let pairing = try #require(opened.pairing)
+        #expect(pairing.pairingID == authority.pairing.current?.pairingID)
+        try await send(.closePairing, on: admin)
+        #expect(try await nextAdmin(admin).pairing == nil)
+        #expect(authority.pairing.current == nil)
+        #expect(lines.values.contains("Appairage \(pairing.pairingID) annulé."))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Invitation : 4 adresses au plus, dans l'ordre")
+    func invitationHosts() {
+        let hosts = ["192.168.0.2", "192.168.0.3", "10.0.0.5", "169.254.0.7", "192.168.0.9"]
+        #expect(WebSocketServer.invitationHosts(hosts) == ["192.168.0.2", "192.168.0.3", "10.0.0.5", "169.254.0.7"])
+        #expect(WebSocketServer.invitationHosts(["192.168.0.2"]) == ["192.168.0.2"])
+        // Une adresse que l'app iPhone rejetterait (publique, IPv6) est écartée avant le plafond de 4.
+        #expect(WebSocketServer.invitationHosts(["192.0.2.1", "192.168.0.2", "fe80::1", "10.0.0.5"]) == ["192.168.0.2", "10.0.0.5"])
+        #expect(WebSocketServer.invitationHosts(["192.0.2.1"]).isEmpty)
     }
 
     @Test("Appareil retiré : refusé dès la poignée de main TLS suivante")
@@ -676,15 +991,15 @@ struct WebSocketServerTests {
     @Test("Réserves : la confiance n'est jamais refusée à cause des anonymes, un anonyme l'est au-delà de 2 par adresse ou de 8 en tout")
     func admission() {
         let eight = (1...8).map { "192.0.2.\($0)" }
-        #expect(WebSocketServer.admits(trusted: true, address: "127.0.0.1", authenticated: 0, pendingAddresses: eight))
-        #expect(WebSocketServer.admits(trusted: true, address: "127.0.0.1", authenticated: 3, pendingAddresses: []))
-        #expect(!WebSocketServer.admits(trusted: true, address: "127.0.0.1", authenticated: 4, pendingAddresses: []))
+        #expect(WebSocketServer.admits(trusted: true, address: "127.0.0.1", trustedCount: 0, pendingAddresses: eight))
+        #expect(WebSocketServer.admits(trusted: true, address: "127.0.0.1", trustedCount: 3, pendingAddresses: []))
+        #expect(!WebSocketServer.admits(trusted: true, address: "127.0.0.1", trustedCount: 4, pendingAddresses: []))
 
-        #expect(WebSocketServer.admits(trusted: false, address: "192.0.2.1", authenticated: 4, pendingAddresses: ["192.0.2.1"]))
-        #expect(!WebSocketServer.admits(trusted: false, address: "192.0.2.1", authenticated: 0, pendingAddresses: ["192.0.2.1", "192.0.2.1"]))
-        #expect(WebSocketServer.admits(trusted: false, address: "192.0.2.9", authenticated: 0, pendingAddresses: ["192.0.2.1", "192.0.2.1"]))
-        #expect(!WebSocketServer.admits(trusted: false, address: "192.0.2.9", authenticated: 0, pendingAddresses: eight))
-        #expect(WebSocketServer.admits(trusted: false, address: "192.0.2.9", authenticated: 0, pendingAddresses: Array(eight.dropLast())))
+        #expect(WebSocketServer.admits(trusted: false, address: "192.0.2.1", trustedCount: 4, pendingAddresses: ["192.0.2.1"]))
+        #expect(!WebSocketServer.admits(trusted: false, address: "192.0.2.1", trustedCount: 0, pendingAddresses: ["192.0.2.1", "192.0.2.1"]))
+        #expect(WebSocketServer.admits(trusted: false, address: "192.0.2.9", trustedCount: 0, pendingAddresses: ["192.0.2.1", "192.0.2.1"]))
+        #expect(!WebSocketServer.admits(trusted: false, address: "192.0.2.9", trustedCount: 0, pendingAddresses: eight))
+        #expect(WebSocketServer.admits(trusted: false, address: "192.0.2.9", trustedCount: 0, pendingAddresses: Array(eight.dropLast())))
     }
 
     @Test("Écoute Tailscale : seules les adresses 100.64.0.0/10 et fd7a:115c:a1e0::/48 sont admises")
@@ -848,6 +1163,19 @@ final class LineBox {
     var values: [String] = []
 }
 
+/// Horloge murale de test, avancée à la main.
+final class TestClock: Sendable {
+    private let current = Mutex(Date(timeIntervalSince1970: 1_800_000_000))
+
+    var date: Date {
+        current.withLock { $0 }
+    }
+
+    func advance(by seconds: TimeInterval) {
+        current.withLock { $0 = $0.addingTimeInterval(seconds) }
+    }
+}
+
 /// Port d'une écoute relancée (tests).
 @MainActor
 final class PortBox {
@@ -903,8 +1231,8 @@ final class StubCamera: CameraDevice {
 }
 
 @MainActor
-final class StubAIOff: AIOffRunner {
-    func run(completion: @escaping @MainActor @Sendable (AIOffResult) -> Void) {
+final class StubAI: AIRunner {
+    func run(on: Bool, completion: @escaping @MainActor @Sendable (AIResult) -> Void) {
         completion(.success)
     }
 }

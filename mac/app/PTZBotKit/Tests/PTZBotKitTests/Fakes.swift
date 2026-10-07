@@ -1,0 +1,98 @@
+import Foundation
+import ServiceManagement
+@testable import PTZBotKit
+
+/// Horloge manuelle : `advance(by:)` exécute les actions arrivées à échéance, dans l'ordre.
+@MainActor
+final class FakeScheduler: Scheduler {
+    private(set) var now: TimeInterval = 0
+    private var tasks: [FakeTask] = []
+    private var counter = 0
+
+    @discardableResult
+    func schedule(after delay: TimeInterval, _ action: @escaping @MainActor @Sendable () -> Void) -> any Cancellable {
+        counter += 1
+        let task = FakeTask(at: now + delay, order: counter, action: action)
+        tasks.append(task)
+        return task
+    }
+
+    func advance(by delta: TimeInterval) {
+        let target = now + delta
+        while let next = tasks
+            .filter({ !$0.cancelled && $0.at <= target + 1e-9 })
+            .min(by: { ($0.at, $0.order) < ($1.at, $1.order) }) {
+            tasks.removeAll { $0 === next }
+            now = max(now, next.at)
+            next.action()
+        }
+        now = target
+        tasks.removeAll { $0.cancelled }
+    }
+}
+
+final class FakeTask: Cancellable {
+    let at: TimeInterval
+    let order: Int
+    let action: @MainActor @Sendable () -> Void
+    private(set) var cancelled = false
+
+    init(at: TimeInterval, order: Int, action: @escaping @MainActor @Sendable () -> Void) {
+        self.at = at
+        self.order = order
+        self.action = action
+    }
+
+    func cancel() {
+        cancelled = true
+    }
+}
+
+/// Connexion simulée : enregistre les ouvertures et les envois ; le test déclenche les événements.
+@MainActor
+final class FakeAdminTransport: AdminTransport {
+    var onEvent: ((AdminTransportEvent) -> Void)?
+    private(set) var opened: [URL] = []
+    private(set) var sent: [String] = []
+
+    func open(_ url: URL) {
+        opened.append(url)
+    }
+
+    func send(_ text: String) {
+        sent.append(text)
+    }
+
+    func close() {}
+
+    func emit(_ event: AdminTransportEvent) {
+        onEvent?(event)
+    }
+}
+
+/// `SMAppService` simulé.
+@MainActor
+final class FakeLoginItem: LoginItemService {
+    var status: SMAppService.Status = .notRegistered
+    var failure: (any Error)?
+    private(set) var settingsOpened = 0
+    var statusAfterRegister: SMAppService.Status = .enabled
+
+    func register() throws {
+        if let failure {
+            throw failure
+        }
+        status = statusAfterRegister
+    }
+
+    func unregister() throws {
+        if let failure {
+            throw failure
+        }
+        status = .notRegistered
+    }
+
+    func openSystemSettings() {
+        settingsOpened += 1
+    }
+}

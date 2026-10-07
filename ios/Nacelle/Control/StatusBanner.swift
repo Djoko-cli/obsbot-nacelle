@@ -11,10 +11,10 @@ struct BannerInputs: Equatable {
 }
 
 /// Texte du bandeau d'état (spec § 7.3, spec accès local § 8.5, spec découverte et QR § 8.4). Ordre de
-/// priorité : Mac injoignable, appairage, caméra débranchée, vie privée, suivi IA non coupé, prise en main,
-/// connexion.
+/// priorité : Mac injoignable, appairage, caméra débranchée, vie privée, suivi IA non coupé, connexion.
+/// Un ordre de suivi IA en cours (`control == .taking`) n'a pas de bandeau : le bouton du suivi IA l'indique.
 enum StatusBanner {
-    static let qrRefused = "QR code refusé : relance ptzd pair"
+    static let qrRefused = "QR code refusé : relancez l'appairage sur le Mac"
 
     static func text(for inputs: BannerInputs) -> String? {
         if inputs.macUnreachable {
@@ -22,11 +22,13 @@ enum StatusBanner {
         }
         switch inputs.authIssue {
         case .unpaired:
-            return "iPhone non appairé : scanne le QR code de ptzd pair"
+            return "iPhone non appairé : scannez le QR code affiché sur le Mac"
         case .badCode:
             return qrRefused
         case .rejected:
             return "Accès refusé par le Mac"
+        case .blocked:
+            return "Expulsé par le Mac : réessayez plus tard"
         case nil:
             break
         }
@@ -39,9 +41,6 @@ enum StatusBanner {
             }
             if state.control == .failed {
                 return "Suivi IA non coupé : les mouvements peuvent être contrés"
-            }
-            if state.control == .taking {
-                return "Prise en main…"
             }
         }
         return inputs.connecting ? "Connexion…" : nil

@@ -24,7 +24,7 @@ struct PairingScreen: View {
                 } header: {
                     Text("Sur le Wi-Fi")
                 } footer: {
-                    Text("Sur le Mac, lance ptzd pair dans le Terminal, puis scanne le QR code affiché.")
+                    Text("Sur le Mac, ouvrez PTZBot › Appairer un iPhone… (ou lancez ptzd pair dans le Terminal), puis scannez le QR code affiché.")
                 }
                 Section {
                     Button {
