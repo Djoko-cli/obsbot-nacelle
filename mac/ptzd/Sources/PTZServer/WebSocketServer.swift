@@ -536,15 +536,20 @@ public final class WebSocketServer {
     /// Retire l'appareil de la liste, lève son blocage, coupe tout de suite ses connexions et relance les
     /// écoutes du réseau local. `origin` dit qui l'a demandé, pour le journal. `informDevice` : l'appareil
     /// reçoit `unpaired` avant la coupure (retrait demandé par le Mac) ; sinon, coupure sans message (l'iPhone
-    /// a demandé le retrait et attend la fermeture). Renvoie false si la liste n'a pas pu être modifiée.
+    /// a demandé le retrait et attend la fermeture). Renvoie false si la liste n'a pas pu être modifiée ; l'appareil déjà absent n'est pas une erreur.
     private func removeDevice(_ deviceID: String, name: String, origin: String, informDevice: Bool) -> Bool {
+        let removed: PairedDevice?
         do {
-            try authority.devices.remove(id: deviceID)
+            removed = try authority.devices.remove(id: deviceID)
         } catch {
             return false
         }
         blocks.removeValue(forKey: deviceID)?.timer.cancel()
-        log("Appareil \(Self.logID(deviceID)) (\(name)) retiré depuis \(origin).")
+        // Déjà retiré (oubli concurrent d'un retrait, révocation en ligne de commande) : rien à journaliser,
+        // mais les connexions encore ouvertes sont coupées et l'écran du Mac rafraîchi.
+        if removed != nil {
+            log("Appareil \(Self.logID(deviceID)) (\(name)) retiré depuis \(origin).")
+        }
         for (other, client) in clients where client.device?.id == deviceID {
             if informDevice {
                 // Comme l'expulsion : la place est libérée une fois l'envoi parti.

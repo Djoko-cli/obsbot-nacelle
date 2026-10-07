@@ -885,6 +885,31 @@ struct WebSocketServerTests {
         withExtendedLifetime(server) {}
     }
 
+    @Test("Oubli d'un appareil déjà retiré de la liste (retrait concurrent) : connexion coupée, rien de journalisé")
+    func forgetMeAfterRemoval() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let lines = LineBox()
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], log: { lines.values.append($0) }, localHosts: ["::1"])
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        #expect(reply == .authenticated)
+        _ = try await nextAdmin(admin)
+
+        // Retrait par ailleurs (ligne de commande) pendant que l'iPhone est connecté, puis son propre oubli.
+        try authority.devices.remove(id: deviceID)
+        try iPhone.send(.forgetMe)
+        await #expect(throws: TLSClientError.noChannel) {
+            while true {
+                _ = try await iPhone.receive()
+            }
+        }
+        #expect(try await nextAdmin(admin).devices.isEmpty)
+        #expect(!lines.values.contains { $0.contains("retiré depuis") })
+        withExtendedLifetime(server) {}
+    }
+
     @Test("Oubli demandé par le Mac (confiance) : badMessage, rien n'est retiré")
     func forgetMeFromTrustedClient() async throws {
         try pairTestDevice()
