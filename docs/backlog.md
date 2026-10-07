@@ -10,3 +10,7 @@ Un réglage dans l'app (par exemple lente, normale, rapide, ou un curseur) qui m
 ## Une seule adresse pour le Mac
 
 Ne plus saisir le nom Tailscale : l'app pourrait retenir l'adresse Tailscale du Mac reçue à l'appairage, ou joindre l'IP locale du Mac en 4G par le routage de sous-réseau de Tailscale (à vérifier : comment ce trafic arrive à `ptzd`, et TLS côté app pour cette adresse).
+
+## Enregistrer la vidéo et le son
+
+Un bouton d'enregistrement (rec) dans l'app iOS, à côté du son et de la vie privée : il enregistre la vidéo et le son reçus jusqu'à ce qu'on l'arrête. À trancher : où ranger le fichier (Photos ou Fichiers), le format (MP4 en H.264 et AAC, sans réencoder si possible), l'indication visible pendant l'enregistrement, et l'arrêt automatique à l'entrée en vie privée, à la coupure de la connexion et au passage en arrière-plan.
