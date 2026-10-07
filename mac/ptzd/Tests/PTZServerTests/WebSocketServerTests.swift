@@ -91,6 +91,30 @@ struct WebSocketServerTests {
         return connection
     }
 
+    /// Client WebSocket brut (qui ne répond pas aux pings) authentifié comme l'appareil de test :
+    /// reçoit le défi, le signe, et ne lit plus rien ensuite.
+    private func authenticatedSilentClient(_ port: UInt16) async throws -> NWConnection {
+        let connection = rawClient(port, webSocket: true)
+        let text: String = try await withCheckedThrowingContinuation { continuation in
+            connection.receiveMessage { data, _, _, error in
+                if let data, let text = String(data: data, encoding: .utf8) {
+                    continuation.resume(returning: text)
+                } else {
+                    continuation.resume(throwing: error ?? CancellationError())
+                }
+            }
+        }
+        guard case let .challenge(nonce) = try NacelleCodec.decodeServer(text) else {
+            Issue.record("défi attendu")
+            return connection
+        }
+        let auth = try NacelleCodec.encode(ClientMessage.auth(deviceID: deviceID, signature: try signature(for: nonce)))
+        let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
+        let context = NWConnection.ContentContext(identifier: "test", metadata: [metadata])
+        connection.send(content: Data(auth.utf8), contentContext: context, isComplete: true, completion: .contentProcessed { _ in })
+        return connection
+    }
+
     /// Attend (5 s au plus) que la condition devienne vraie.
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<250 where !condition() {
@@ -202,6 +226,37 @@ struct WebSocketServerTests {
         server.start()
         try await Task.sleep(for: .milliseconds(500))
         #expect(readyCount == 1)
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Port de 127.0.0.1 déjà pris (EADDRINUSE) : signalé par onAddressInUse")
+    func addressInUse() async throws {
+        // Un socket ordinaire, sans SO_REUSEPORT, tient un port choisi par le système (port 0).
+        let holder = socket(AF_INET, SOCK_STREAM, 0)
+        try #require(holder >= 0)
+        defer { close(holder) }
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        address.sin_port = 0
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let bound = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
+                bind(holder, pointer, length) == 0 && listen(holder, 1) == 0 && getsockname(holder, pointer, &length) == 0
+            }
+        }
+        try #require(bound)
+        let port = UInt16(bigEndian: address.sin_port)
+        let server = WebSocketServer(
+            hosts: ["127.0.0.1"], port: port, controller: controller, authority: authority,
+            relay: FakeRelay { $0 }, scheduler: DispatchScheduler(), log: { _ in }
+        )
+        var inUse: [String] = []
+        server.onAddressInUse = { inUse.append($0) }
+        server.start()
+        try await waitUntil { !inUse.isEmpty }
+        #expect(inUse.first == "127.0.0.1")
         withExtendedLifetime(server) {}
     }
 
@@ -1150,6 +1205,91 @@ struct WebSocketServerTests {
         }
         #expect(server.clientCount == 1)
         #expect(!lines.values.contains { $0.contains("libéré") })
+    }
+
+    @Test("Même appareil authentifié deux fois, l'ancienne connexion muette : sondée, libérée après staleProbeTimeout")
+    func staleDuplicateIsReleased() async throws {
+        try pairTestDevice()
+        let scheduler = FakeScheduler()
+        let lines = LineBox()
+        let (server, ports) = await startServer(scheduler: scheduler, log: { lines.values.append($0) }, trustLoopback: false)
+        let port = ports["127.0.0.1"]!
+        let stale = try await authenticatedSilentClient(port)
+        defer { stale.cancel() }
+        try await waitUntil { lines.values.contains { $0.hasPrefix("Client 1 authentifié") } }
+
+        let fresh = connect("127.0.0.1", port)
+        defer { fresh.cancel(with: .goingAway, reason: nil) }
+        let nonce = try await challenge(fresh)
+        try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: fresh)
+        _ = try await next(fresh) { if case .state = $0 { true } else { false } }
+        #expect(server.clientCount == 2)
+
+        // Le temps du sondage, le muet n'a pas encore perdu sa place.
+        scheduler.advance(by: WebSocketServer.staleProbeTimeout - 1)
+        #expect(server.clientCount == 2)
+        scheduler.advance(by: 1)
+        #expect(server.clientCount == 1)
+        #expect(lines.values.contains("Client 1 libéré : remplacé par une autre connexion du même appareil, sans réponse."))
+    }
+
+    @Test("Même appareil authentifié deux fois, l'ancienne connexion répond au ping : les deux restent")
+    func answeringDuplicateStays() async throws {
+        try pairTestDevice()
+        let scheduler = FakeScheduler()
+        let lines = LineBox()
+        let (server, ports) = await startServer(scheduler: scheduler, log: { lines.values.append($0) }, trustLoopback: false)
+        let port = ports["127.0.0.1"]!
+        var tasks: [URLSessionWebSocketTask] = []
+        var readers: [Task<Void, Error>] = []
+        defer {
+            readers.forEach { $0.cancel() }
+            tasks.forEach { $0.cancel(with: .goingAway, reason: nil) }
+        }
+        for _ in 0..<2 {
+            let task = connect("127.0.0.1", port)
+            tasks.append(task)
+            let nonce = try await challenge(task)
+            try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: task)
+            _ = try await next(task) { if case .state = $0 { true } else { false } }
+            // Comme l'app iOS : lecture continue, donc pong automatique.
+            readers.append(Task { while true { _ = try await task.receive() } })
+        }
+        #expect(server.clientCount == 2)
+
+        // Laisse au pong le temps de revenir avant que le délai de sondage ne passe.
+        try await Task.sleep(for: .milliseconds(500))
+        scheduler.advance(by: WebSocketServer.staleProbeTimeout)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(server.clientCount == 2)
+        #expect(!lines.values.contains { $0.contains("libéré") })
+        // Le pong a rendu l'échéance normale : toujours là bien après le délai de sondage.
+        scheduler.advance(by: WebSocketServer.pongTimeout - WebSocketServer.staleProbeTimeout - 1)
+        #expect(server.clientCount == 2)
+    }
+
+    @Test("Connexion de confiance : jamais sondée quand un appareil s'authentifie")
+    func trustedIsNeverProbed() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let scheduler = FakeScheduler()
+        let lines = LineBox()
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], scheduler: scheduler, log: { lines.values.append($0) }, localHosts: ["::1"])
+        let trusted = rawClient(ports["127.0.0.1"]!, webSocket: true)
+        defer { trusted.cancel() }
+        try await waitUntil { server.clientCount == 1 && scheduler.pendingCount == 2 }
+        let (first, firstReply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        defer { first.close() }
+        let (second, secondReply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        defer { second.close() }
+        #expect(firstReply == .authenticated)
+        #expect(secondReply == .authenticated)
+
+        scheduler.advance(by: WebSocketServer.staleProbeTimeout)
+        try await Task.sleep(for: .milliseconds(300))
+        // Le Mac (client 1, muet) garde sa place : ni sondé, ni libéré.
+        #expect(!lines.values.contains { $0.hasPrefix("Client 1 libéré") })
+        #expect(server.clientCount >= 2)
     }
 
     @Test("Connexion en attente (chemin réseau perdu) : place libérée, avec une ligne de journal")
