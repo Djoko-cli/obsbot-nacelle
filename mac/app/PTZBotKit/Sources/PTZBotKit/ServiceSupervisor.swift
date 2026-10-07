@@ -42,6 +42,8 @@ public final class ServiceSupervisor {
     public static let killDelay: TimeInterval = 5
     public static let enabledKey = "serviceEnabled"
     public static let crashLoopReason = "ptzd s'arrête sans cesse : ouvrez le journal"
+    /// ptzd ne sort pas même après SIGKILL : l'arrêt est abandonné, ptzd n'est plus relancé par ce chemin.
+    public static let unkillableReason = "ptzd ne s'arrête pas : ouvrez le journal"
 
     /// Codes de sortie de ptzd qui ne se corrigent pas en relançant : `failed`, sans relance.
     public static let busyStatus: Int32 = 75
@@ -74,6 +76,8 @@ public final class ServiceSupervisor {
     @ObservationIgnored private var unexpectedExits: [TimeInterval] = []
     @ObservationIgnored private var pendingRestart: (any Cancellable)?
     @ObservationIgnored private var pendingKill: (any Cancellable)?
+    /// Délai après SIGKILL : si ptzd vit encore, l'arrêt est abandonné (`unkillableReason`).
+    @ObservationIgnored private var pendingWatchdog: (any Cancellable)?
     @ObservationIgnored private var stopping = false
     /// L'interrupteur a été rallumé pendant un arrêt : ptzd repart à la fin de l'arrêt.
     @ObservationIgnored private var restartAfterStop = false
@@ -147,8 +151,31 @@ public final class ServiceSupervisor {
         pendingKill = scheduler.schedule(after: Self.killDelay) { [weak self] in
             guard let self, let process = self.process else { return }
             pendingKill = nil
+            armWatchdog()
             process.kill()
         }
+    }
+
+    /// Après SIGKILL, ptzd doit sortir dans `killDelay` ; sinon l'arrêt est abandonné.
+    /// Armé avant le SIGKILL : une fin synchrone l'annule dans `exited`.
+    private func armWatchdog() {
+        let killedGeneration = generation
+        pendingWatchdog = scheduler.schedule(after: Self.killDelay) { [weak self] in
+            guard let self, self.generation == killedGeneration, process != nil else { return }
+            abandonStop()
+        }
+    }
+
+    /// ptzd vit encore après SIGKILL : `failed`, arrêt signalé, aucune relance par ce chemin.
+    private func abandonStop() {
+        pendingWatchdog = nil
+        process = nil
+        stopping = false
+        restartAfterStop = false
+        state = .failed(reason: Self.unkillableReason)
+        let completions = stopCompletions
+        stopCompletions = []
+        completions.forEach { $0() }
     }
 
     /// L'interrupteur « Service ptzd » : retenu, puis ptzd lancé ou arrêté.
@@ -192,6 +219,8 @@ public final class ServiceSupervisor {
         process = nil
         pendingKill?.cancel()
         pendingKill = nil
+        pendingWatchdog?.cancel()
+        pendingWatchdog = nil
         if stopping {
             stopping = false
             state = .stopped
@@ -238,7 +267,12 @@ public final class ServiceSupervisor {
         pendingRestart = scheduler.schedule(after: delay) { [weak self] in
             guard let self else { return }
             pendingRestart = nil
-            guard isEnabled, !legacyAgentActive, case .restarting = state else { return }
+            guard case .restarting = state else { return }
+            // Un ancien agent revenu pendant le délai : pas de lancement, et l'état le dit.
+            guard isEnabled, !legacyAgentActive else {
+                state = .stopped
+                return
+            }
             launch()
         }
     }

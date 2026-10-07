@@ -254,16 +254,88 @@ struct ServiceSupervisorTests {
         #expect(launcher.launched.count == 1)
     }
 
-    @Test("Fin d'un ancien processus après relance : ignorée")
+    @Test("Fin tardive d'un ancien processus après relance : ignorée, même pendant un arrêt")
     func staleExit() throws {
         let supervisor = makeSupervisor()
         supervisor.start()
         let first = try #require(launcher.last)
         first.exit()
         scheduler.advance(by: 1)
+        #expect(launcher.launched.count == 2)
+        let second = try #require(launcher.last)
         #expect(supervisor.state == .running)
-        first.exit()
+        // Arrêt de la seconde instance, bloquée sur SIGTERM : la fin tardive de la première ne doit rien terminer.
+        second.ignoresTerminate = true
+        var done = false
+        supervisor.stop { done = true }
+        first.fireLateExit(ProcessExit(status: 78, signaled: false))
         #expect(supervisor.state == .running)
+        #expect(launcher.launched.count == 2)
+        #expect(second.isRunning)
+        #expect(second.kills == 0)
+        #expect(!done)
+        scheduler.advance(by: ServiceSupervisor.killDelay)
+        #expect(second.kills == 1)
+        #expect(done)
+        #expect(supervisor.state == .stopped)
+    }
+
+    @Test("SIGKILL qui réussit : stopped, pas failed, aucun garde-fou ensuite")
+    func killSucceeds() throws {
+        let supervisor = makeSupervisor()
+        supervisor.start()
+        let process = try #require(launcher.last)
+        process.ignoresTerminate = true
+        var done = 0
+        supervisor.stop { done += 1 }
+        scheduler.advance(by: ServiceSupervisor.killDelay)
+        #expect(process.kills == 1)
+        #expect(supervisor.state == .stopped)
+        #expect(done == 1)
+        scheduler.advance(by: ServiceSupervisor.killDelay * 2)
+        #expect(supervisor.state == .stopped)
+        #expect(done == 1)
+        #expect(launcher.launched.count == 1)
+    }
+
+    @Test("SIGKILL sans effet : failed 5 s après, arrêts signalés, démarrage encore possible")
+    func unkillable() throws {
+        let supervisor = makeSupervisor()
+        supervisor.start()
+        let process = try #require(launcher.last)
+        process.ignoresTerminate = true
+        process.ignoresKill = true
+        var done = 0
+        supervisor.stop { done += 1 }
+        supervisor.stop { done += 1 }
+        scheduler.advance(by: ServiceSupervisor.killDelay)
+        #expect(process.kills == 1)
+        #expect(supervisor.state == .running)
+        #expect(done == 0)
+        scheduler.advance(by: ServiceSupervisor.killDelay)
+        #expect(supervisor.state == .failed(reason: ServiceSupervisor.unkillableReason))
+        #expect(done == 2)
+        // Le processus bloqué finit par sortir : sa fin tardive ne change rien.
+        process.exit()
+        #expect(supervisor.state == .failed(reason: ServiceSupervisor.unkillableReason))
+        scheduler.advance(by: 60)
+        #expect(launcher.launched.count == 1)
+        // L'arrêt est abandonné, pas l'appareil : démarrer relance ptzd.
+        supervisor.start()
+        #expect(launcher.launched.count == 2)
+        #expect(supervisor.state == .running)
+    }
+
+    @Test("Ancien agent levé pendant le délai de relance : stopped, aucun lancement")
+    func legacyDuringRestart() throws {
+        let supervisor = makeSupervisor()
+        supervisor.start()
+        try #require(launcher.last).exit()
+        #expect(supervisor.state == .restarting(count: 1))
+        supervisor.legacyAgentActive = true
+        scheduler.advance(by: 1)
+        #expect(launcher.launched.count == 1)
+        #expect(supervisor.state == .stopped)
     }
 }
 
