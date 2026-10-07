@@ -77,6 +77,8 @@ extension ClientMessage: Codable {
             self = .unblock(deviceID: try container.decode(String.self, forKey: .deviceID))
         case "closePairing":
             self = .closePairing
+        case "forgetMe":
+            self = .forgetMe
         default:
             throw NacelleProtocolError.unknownType(type)
         }
@@ -129,6 +131,8 @@ extension ClientMessage: Codable {
             try container.encode(deviceID, forKey: .deviceID)
         case .closePairing:
             try container.encode("closePairing", forKey: .type)
+        case .forgetMe:
+            try container.encode("forgetMe", forKey: .type)
         }
     }
 
