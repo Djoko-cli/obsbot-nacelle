@@ -44,6 +44,45 @@ struct PTZDaemon {
             exit(result.status)
         }
 
+        // Mode service (la commande par défaut) : options données par PTZBot (spec ptzd dans l'app § 5.4).
+        let options: DaemonOptions
+        if arguments.first == "pair" {
+            options = DaemonOptions()
+        } else {
+            do {
+                options = try DaemonOptions.parse(arguments)
+            } catch {
+                FileHandle.standardError.write(Data("ptzd : \(error)\n\(DaemonOptions.usage)\n".utf8))
+                exit(DaemonOptions.usageStatus)
+            }
+        }
+        // PTZBot disparu, même tué par SIGKILL : ptzd s'arrête avec lui ; déjà disparu : tout de suite.
+        // Un parent qui n'est pas le nôtre (PID déjà réattribué) compte comme disparu.
+        if let parent = options.parent, getppid() != parent {
+            log("PTZBot s'est arrêté : ptzd s'arrête.")
+            exit(0)
+        }
+        let parentWatcher = options.parent.map { pid in
+            ParentWatcher(pid: pid) {
+                log("PTZBot s'est arrêté : ptzd s'arrête.")
+                exit(0)
+            }
+        }
+        parentWatcher?.start()
+
+        // Un seul service par dossier de travail : un autre ptzd tient le verrou, celui-ci s'arrête.
+        var serviceLock: ServiceLock?
+        if arguments.first != "pair" {
+            do {
+                serviceLock = try ServiceLock.acquire(at: supportDirectory.appending(path: "ptzd.lock"))
+            } catch .held {
+                log("Un autre ptzd tourne déjà (verrou ptzd.lock) : ptzd s'arrête.")
+                exit(DaemonOptions.busyStatus)
+            } catch {
+                log("Verrou ptzd.lock indisponible (\(error)) : ptzd continue sans.")
+            }
+        }
+
         let config: PTZConfig
         do {
             config = try PTZConfig.load(from: supportDirectory.appending(path: "config.json"))
@@ -70,8 +109,9 @@ struct PTZDaemon {
             camera: camera,
             scheduler: scheduler,
             ai: ProcessAIRunner(
-                executableURL: config.aiURL(relativeTo: supportDirectory),
+                executableURL: options.aiURL(config: config, relativeTo: supportDirectory),
                 outputURL: logsDirectory.appending(path: "obsbot-ai.log"),
+                environment: options.aiEnvironment,
                 scheduler: scheduler
             ),
             store: JSONFileStateStore(url: supportDirectory.appending(path: "state.json"), log: { write($0) }),
@@ -97,10 +137,19 @@ struct PTZDaemon {
             localNetwork: config.localNetwork
         )
 
+        if options.parent != nil {
+            // Lancé par PTZBot : un port de 127.0.0.1 déjà pris veut dire qu'un autre ptzd tourne encore.
+            server.onAddressInUse = { host in
+                guard host == "127.0.0.1" else { return }
+                log("Le port \(config.port) est déjà pris : un autre ptzd tourne peut-être encore. ptzd s'arrête.")
+                exit(DaemonOptions.busyStatus)
+            }
+        }
+
         log("ptzd démarre.")
         camera.startWatching()
         server.start()
-        withExtendedLifetime((camera, controller, server)) {
+        withExtendedLifetime((camera, controller, server, parentWatcher, serviceLock)) {
             dispatchMain()
         }
     }

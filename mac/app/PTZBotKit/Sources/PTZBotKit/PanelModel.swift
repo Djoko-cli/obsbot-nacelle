@@ -26,7 +26,8 @@ public final class PanelModel {
     public private(set) var lastError: String?
     /// La fenêtre « Appairer un iPhone » ouverte, s'il y en a une.
     public private(set) var pairing: PairingSession?
-    public let config: PTZDConfig
+    /// Relu quand l'app crée `config.json` au premier lancement (`reloadConfig`).
+    public private(set) var config: PTZDConfig
 
     @ObservationIgnored private let transport: any AdminTransport
     @ObservationIgnored private let scheduler: any Scheduler
@@ -46,6 +47,17 @@ public final class PanelModel {
         guard !started else { return }
         started = true
         transport.open(config.url)
+    }
+
+    /// Les iPhone connectés : les clients non fiables. La connexion de confiance de l'app elle-même
+    /// (127.0.0.1, `route == .mac`) est le côté serveur, pas un client à montrer.
+    public var iPhoneClients: [AdminClient] {
+        (admin?.clients ?? []).filter { $0.route != .mac }
+    }
+
+    /// `config.json` relu (créé au premier lancement) : la prochaine connexion prend son port.
+    public func reloadConfig(_ config: PTZDConfig) {
+        self.config = config
     }
 
     // MARK: - Actions

@@ -34,6 +34,9 @@ public final class WebSocketServer {
     public static let pingInterval: TimeInterval = 10
     /// Un client sans pong depuis ce délai libère sa place.
     public static let pongTimeout: TimeInterval = 25
+    /// Une connexion déjà authentifiée du même appareil, sondée quand celui-ci s'authentifie
+    /// de nouveau, libère sa place si elle ne répond pas à ce délai.
+    public static let staleProbeTimeout: TimeInterval = 3
     /// Marque une poignée de main refusée. Network n'envoie alors aucune réponse, garde la
     /// connexion ouverte et la signale même prête (constaté avec le SDK de macOS 27) : on
     /// retrouve la marque dans ses métadonnées pour la fermer nous-mêmes.
@@ -42,6 +45,10 @@ public final class WebSocketServer {
     /// Appelé quand l'écoute sur une adresse est prête, avec le port réellement
     /// ouvert (utile quand on demande le port 0).
     public var onReady: ((_ host: String, _ port: UInt16) -> Void)?
+
+    /// Appelé quand l'écoute sur une adresse échoue parce que le port y est déjà pris (EADDRINUSE).
+    /// L'écoute est réessayée quand même ; ptzd lancé par PTZBot s'arrête (code 75).
+    public var onAddressInUse: ((_ host: String) -> Void)?
 
     private let hosts: [String]
     private let port: UInt16
@@ -226,6 +233,7 @@ public final class WebSocketServer {
         do {
             listener = try NWListener(using: parameters)
         } catch {
+            reportAddressInUse(host, error)
             retryLater(host, after: error)
             return
         }
@@ -253,9 +261,16 @@ public final class WebSocketServer {
             onReady?(host, actual)
         case let .failed(error), let .waiting(error):
             listeners.removeValue(forKey: host)?.cancel()
+            reportAddressInUse(host, error)
             retryLater(host, after: error)
         default:
             break
+        }
+    }
+
+    private func reportAddressInUse(_ host: String, _ error: any Error) {
+        if case .posix(.EADDRINUSE) = error as? NWError {
+            onAddressInUse?(host)
         }
     }
 
@@ -729,6 +744,7 @@ public final class WebSocketServer {
             log("Client \(id) authentifié : \(device.name) (\(Self.logID(deviceID))).")
             clients[id]?.device = (device.deviceID, device.name)
             authenticate(id)
+            probeStale(sameDeviceAs: id)
         case .unknownDevice:
             refuse(id, .unpaired, "Appareil inconnu : appairez-le depuis PTZBot sur le Mac.", reason: "appareil inconnu \(Self.logID(deviceID))")
         case .badSignature:
@@ -765,6 +781,23 @@ public final class WebSocketServer {
         send(.authenticated, to: id)
         send(.state(controller.snapshot), to: id)
         publishAdmin()
+    }
+
+    /// Le même iPhone s'authentifie de nouveau (Wi-Fi vers 4G) : l'ancienne connexion est peut-être
+    /// morte, mais l'iPhone lance aussi plusieurs candidates en course et garde la première, donc
+    /// aucune n'est fermée d'office. Chaque autre connexion du même appareil reçoit un ping tout
+    /// de suite et `staleProbeTimeout` pour répondre ; le pong rend l'échéance normale.
+    private func probeStale(sameDeviceAs id: ClientID) {
+        guard let deviceID = clients[id]?.device?.id else { return }
+        let others = clients.filter { $0.key != id && $0.value.authenticated && !$0.value.trusted && $0.value.device?.id == deviceID }
+        for other in others.keys {
+            clients[other]?.ping?.cancel()
+            clients[other]?.pongDeadline?.cancel()
+            clients[other]?.pongDeadline = scheduler.schedule(after: Self.staleProbeTimeout) { [weak self] in
+                self?.release(other, reason: "remplacé par une autre connexion du même appareil, sans réponse")
+            }
+            ping(other)
+        }
     }
 
     /// Envoie l'erreur, puis libère la place une fois l'envoi parti.
