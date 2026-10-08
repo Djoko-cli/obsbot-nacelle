@@ -28,6 +28,8 @@ public final class ResidentAIRunner: AIRunner {
         /// La sortie est fermée (fin de fichier lue).
         var outputEnded = false
         var exitStatus: Int32?
+        /// Vraie sortie (`exit`), par opposition à un signal : alors `exitStatus` est le numéro du signal.
+        var exitedNormally = false
         var retired = false
         /// A répondu « ok » à au moins un ordre.
         var served = false
@@ -172,10 +174,11 @@ public final class ResidentAIRunner: AIRunner {
         process.standardError = helper.log ?? FileHandle.nullDevice
         process.terminationHandler = { [weak self, weak helper] finished in
             let status = finished.terminationStatus
+            let exited = finished.terminationReason == .exit
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard let self, let helper else { return }
-                    self.terminated(helper, status: status)
+                    self.terminated(helper, status: status, exited: exited)
                 }
             }
         }
@@ -335,8 +338,9 @@ public final class ResidentAIRunner: AIRunner {
         }
     }
 
-    private func terminated(_ ended: Helper, status: Int32) {
+    private func terminated(_ ended: Helper, status: Int32, exited: Bool) {
         ended.exitStatus = status
+        ended.exitedNormally = exited
         if ended.outputEnded {
             retire(ended)
         } else {
@@ -361,7 +365,8 @@ public final class ResidentAIRunner: AIRunner {
                 // Mort sans avoir rien fait : pas de relance à chaque message pendant une minute.
                 noPrewarmUntil = scheduler.now + Self.backoff
             }
-            finish(status == 1 ? .cameraNotFound : .unexpectedExit(status))
+            // Le 1 n'est « caméra introuvable » que pour une vraie sortie : un SIGHUP vaut aussi 1.
+            finish(ended.exitedNormally && status == 1 ? .cameraNotFound : .unexpectedExit(status))
         } else if ended === stopping {
             stopping = nil
             if wanted {

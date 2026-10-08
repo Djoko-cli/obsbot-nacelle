@@ -81,10 +81,12 @@ struct ResidentAIRunnerTests {
         )
     }
 
-    private func order(_ runner: ResidentAIRunner, on: Bool = true) async -> AIResult {
-        await withCheckedContinuation { continuation in
-            runner.run(on: on) { continuation.resume(returning: $0) }
-        }
+    /// Donne un ordre et attend son résultat 10 s au plus (nil si le runner ne répond jamais).
+    private func order(_ runner: ResidentAIRunner, on: Bool = true) async -> AIResult? {
+        let outcome = Outcome()
+        runner.run(on: on) { outcome.value = $0 }
+        _ = await eventually { outcome.value != nil }
+        return outcome.value
     }
 
     private func eventually(_ condition: () -> Bool) async -> Bool {
@@ -163,6 +165,18 @@ struct ResidentAIRunnerTests {
             """)
         let runner = runner(serve, scheduler: DispatchScheduler())
         #expect(await order(runner) == .cameraNotFound)
+        await cleanUp(runner, serve)
+    }
+
+    @Test("Tué par un signal (SIGHUP, numéro 1) : sortie inattendue, pas « caméra introuvable »")
+    func killedBySignal() async throws {
+        let serve = try FakeServe("""
+            echo "obsbot-ai: ready"
+            read order
+            kill -HUP $$
+            """)
+        let runner = runner(serve, scheduler: DispatchScheduler())
+        #expect(await order(runner) == .unexpectedExit(1))
         await cleanUp(runner, serve)
     }
 
@@ -524,7 +538,8 @@ struct ResidentAIRunnerTests {
 
     @Test("Les échecs donnent les motifs de l'app : caméra introuvable, erreur du SDK, délai, sortie inattendue, lancement")
     func failureMotives() async throws {
-        func motive(_ result: AIResult) -> String {
+        func motive(_ result: AIResult?) -> String {
+            guard let result else { return "?" }
             let message = AIFailureText.message(motive: result.userDescription)
             return AIFailureText.motive(in: message) ?? "?"
         }
@@ -562,7 +577,7 @@ struct ResidentAIRunnerTests {
             executableURL: URL(fileURLWithPath: "/nonexistent/obsbot-ai"),
             scheduler: DispatchScheduler()
         )
-        guard case .launchFailed = await order(runner) else {
+        guard case .launchFailed? = await order(runner) else {
             Issue.record("launchFailed attendu")
             return
         }
