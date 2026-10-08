@@ -226,10 +226,8 @@ struct PanelView: View {
 
     // MARK: - Pied
 
-    /// « Rechercher les mises à jour… », « Réglages… » et « Quitter » (spec distribution § 8) ; « Ouvrir à la
-    /// connexion » est dans les Réglages.
     /// « Rechercher les mises à jour… » seul sur sa ligne, pour ne pas être tronqué (banc du 08/10), puis
-    /// « Réglages… » et « Quitter ».
+    /// « Réglages… » et « Quitter » (spec distribution § 8) ; « Ouvrir à la connexion » est dans les Réglages.
     private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
             Button(Labels.checkForUpdates) {

@@ -130,13 +130,16 @@ public struct SDKInstaller: Sendable {
     /// La source d'obsbot-ai livrée dans l'app (`Contents/Resources/obsbot-ai.cpp`).
     public let sourceURL: URL
     public let toolchain: any Toolchain
-    /// La sortie de clang++ y est ajoutée quand une compilation échoue.
+    /// La sortie de clang++ y est écrite quand une compilation échoue ; seul le dernier échec est gardé.
     public let buildLog: URL
     private let verifier: SDKVerifier
     /// Partagé par les copies de l'installateur (panneau et fenêtre « SDK OBSBOT ») : une installation en cours.
     private let progress = InstallProgress()
     /// Le renommage qui remet un ancien élément en place, remplaçable par les tests pour simuler un échec.
     var restoreRename: @Sendable (_ from: String, _ to: String) -> Int32 = { Darwin.rename($0, $1) }
+    /// La synchronisation d'un fichier sur le disque (`flushToDisk`), remplaçable par les tests pour observer l'ordre
+    /// ou simuler un échec.
+    var flush: @Sendable (_ file: URL) throws -> Void = { try SDKInstaller.flushToDisk($0) }
 
     public init(sdkDirectory: URL, sourceURL: URL, toolchain: any Toolchain, verifier: @escaping SDKVerifier, buildLog: URL) {
         self.sdkDirectory = sdkDirectory
@@ -346,7 +349,7 @@ public struct SDKInstaller: Sendable {
             case .unavailable:
                 throw .toolsMissing
             case let .compileFailed(output):
-                appendToBuildLog(output)
+                writeBuildLog(output)
                 throw .compileFailed
             }
         }
@@ -381,7 +384,9 @@ public struct SDKInstaller: Sendable {
     }
 
     /// Les éléments préparés prennent leur place (spec distribution § 6.2, étape 5) :
-    /// 1. le journal est écrit dans `sdk/new/` (fichier temporaire, puis renommage) ;
+    /// 0. les fichiers préparés sont synchronisés sur le disque (`F_FULLFSYNC`) : une coupure de courant ne peut pas
+    ///    laisser un `rename` persisté devant des données perdues ;
+    /// 1. le journal est écrit dans `sdk/new/` (fichier temporaire synchronisé, renommage, puis journal synchronisé) ;
     /// 2. un fichier en place reste joignable par un lien dur `.old`, puis le nouveau le remplace d'un seul
     ///    renommage (ptzd peut lancer obsbot-ai à tout moment) ; le dossier des en-têtes est renommé en `.old` ;
     /// 3. le journal est retiré : c'est la validation ; puis `sdk/new/`, vide, et les `.old`.
@@ -390,6 +395,10 @@ public struct SDKInstaller: Sendable {
     func commit(_ elements: [Element]) throws {
         let nouveaux = elements.filter { !SDKInspector.existsWithoutFollowing(url($0)) }
         do {
+            // Les éléments de l'échange qui sont des fichiers (pas le dossier des en-têtes).
+            for element in elements where !element.isDirectory {
+                try flush(stagedURL(element))
+            }
             try writeJournal(Journal(elements: elements.map(\.rawValue), nouveaux: nouveaux.map(\.rawValue)))
             for element in elements {
                 try swap(element)
@@ -416,7 +425,21 @@ public struct SDKInstaller: Sendable {
     private func writeJournal(_ journal: Journal) throws {
         let temporary = stagingURL.appending(path: ".transaction.tmp")
         try JSONEncoder().encode(journal).write(to: temporary)
+        try flush(temporary)
         try posix(rename(temporary.path, journalURL.path))
+        // Sur APFS, cela valide la transaction de métadonnées du renommage avant le premier échange.
+        try flush(journalURL)
+    }
+
+    /// Écrit le fichier sur le disque lui-même, pas seulement dans le cache du noyau : `F_FULLFSYNC`, ou `fsync`
+    /// quand le volume ne le permet pas.
+    static func flushToDisk(_ file: URL) throws {
+        let descriptor = open(file.path, O_RDONLY | O_CLOEXEC)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(descriptor) }
+        if fcntl(descriptor, F_FULLFSYNC) != 0, fsync(descriptor) != 0 {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
     }
 
     private func swap(_ element: Element) throws {
@@ -544,11 +567,12 @@ public struct SDKInstaller: Sendable {
         }
     }
 
-    /// Ajoute la sortie de clang++ au journal de compilation, avec la date.
-    private func appendToBuildLog(_ output: String) {
+    /// Écrit la sortie de clang++ dans le journal de compilation, avec la date, à la place de la précédente : seul le
+    /// dernier échec est gardé, le journal ne grossit pas à chaque recompilation ratée.
+    private func writeBuildLog(_ output: String) {
         let manager = FileManager.default
         try? manager.createDirectory(at: buildLog.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let descriptor = open(buildLog.path, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0o644)
+        let descriptor = open(buildLog.path, O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0o644)
         guard descriptor >= 0 else { return }
         let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         let header = "\(Date().formatted(.iso8601)) — compilation d'obsbot-ai en échec\n"

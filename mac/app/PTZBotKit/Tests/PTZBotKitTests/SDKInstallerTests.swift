@@ -70,6 +70,33 @@ final class FakeToolchain: Toolchain {
     }
 }
 
+/// Synchronisation simulée : retient, pour chaque fichier synchronisé, ce que `observe` relève à cet instant.
+final class FlushSpy: Sendable {
+    struct Call: Equatable {
+        var name: String
+        var stagedStillThere: Bool
+        var journalExists: Bool
+    }
+
+    private let recorded = Mutex<[Call]>([])
+    private let observe: @Sendable (URL) -> Call
+
+    init(observe: @escaping @Sendable (URL) -> Call) {
+        self.observe = observe
+    }
+
+    var flush: @Sendable (URL) throws -> Void {
+        { [self] url in
+            let call = observe(url)
+            recorded.withLock { $0.append(call) }
+        }
+    }
+
+    var calls: [Call] {
+        recorded.withLock { $0 }
+    }
+}
+
 /// Un dossier d'essai : `support/sdk/`, la source d'obsbot-ai de l'« app » et le journal.
 struct SDKWorld {
     let directory: URL
@@ -415,6 +442,66 @@ struct SDKInstallerTests {
         #expect(try world.leftovers().isEmpty)
     }
 
+    @Test("Durabilité : les fichiers préparés, puis le journal temporaire, puis le journal sont synchronisés avant le premier échange")
+    func flushOrder() throws {
+        defer { world.remove() }
+        var installer = world.installer()
+        try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64, filler: 5), to: installer.libraryURL)
+        try FakeSDK.write(Data("binaire".utf8), to: installer.stagedURL(.binary))
+        try FakeSDK.write(Data("empreinte".utf8), to: installer.stagedURL(.hash))
+        let staged = installer.stagedURL(.binary)
+        let journal = installer.journalURL
+        let spy = FlushSpy { url in
+            // À chaque synchronisation : le fichier préparé n'a pas encore été échangé, et le journal n'existe
+            // qu'une fois le renommage fait.
+            FlushSpy.Call(name: url.lastPathComponent,
+                          stagedStillThere: FileManager.default.fileExists(atPath: staged.path),
+                          journalExists: FileManager.default.fileExists(atPath: journal.path))
+        }
+        installer.flush = spy.flush
+        try installer.commit([.binary, .hash])
+        #expect(spy.calls.map(\.name) == ["obsbot-ai", "obsbot-ai.sha256", ".transaction.tmp", ".transaction"])
+        #expect(spy.calls.map(\.stagedStillThere) == [true, true, true, true])
+        #expect(spy.calls.map(\.journalExists) == [false, false, false, true])
+        #expect(world.contents(installer.obsbotAIURL) == Data("binaire".utf8))
+        #expect(try world.leftovers().isEmpty)
+    }
+
+    @Test("Durabilité : seuls les fichiers de l'échange sont synchronisés (pas le dossier des en-têtes)")
+    func flushFilesOnly() throws {
+        defer { world.remove() }
+        var installer = world.installer()
+        try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64, filler: 5), to: installer.stagedURL(.library))
+        try FakeSDK.write(Data("// en-tête\n".utf8), to: installer.stagedURL(.headers).appending(path: "dev/devs.hpp"))
+        try FakeSDK.write(Data("binaire".utf8), to: installer.stagedURL(.binary))
+        try FakeSDK.write(Data("empreinte".utf8), to: installer.stagedURL(.hash))
+        let spy = FlushSpy { FlushSpy.Call(name: $0.lastPathComponent, stagedStillThere: true, journalExists: false) }
+        installer.flush = spy.flush
+        try installer.commit([.library, .headers, .binary, .hash])
+        #expect(spy.calls.map(\.name) == ["libdev.dylib", "obsbot-ai", "obsbot-ai.sha256", ".transaction.tmp", ".transaction"])
+    }
+
+    @Test("Synchronisation en échec (fichier préparé, journal temporaire ou journal) : chemin d'échec normal, l'ancien SDK reste",
+          arguments: ["libdev.dylib", "obsbot-ai.sha256", ".transaction.tmp", ".transaction"])
+    func flushFailure(failing: String) throws {
+        defer { world.remove() }
+        var installer = world.installer()
+        try world.installed(hash: "ancienne", installer: installer)
+        installer.flush = { url in
+            if url.lastPathComponent == failing { throw POSIXError(.EIO) }
+        }
+        #expect(throws: SDKInstallError.self) { try installer.install(try world.candidate()) }
+        try expectOldKept(installer)
+    }
+
+    @Test("Synchronisation réelle : un fichier est synchronisé, un fichier absent est refusé")
+    func realFlush() throws {
+        defer { world.remove() }
+        let file = try FakeSDK.write(Data("contenu".utf8), to: world.directory.appending(path: "a-synchroniser"))
+        try SDKInstaller.flushToDisk(file)
+        #expect(throws: POSIXError.self) { try SDKInstaller.flushToDisk(world.directory.appending(path: "absent")) }
+    }
+
     @Test("Arrêt après la validation (sdk/new/ retiré) : les nouveaux éléments restent, les .old sont effacés")
     func recoveryAfterCommit() throws {
         defer { world.remove() }
@@ -559,6 +646,21 @@ struct SDKInstallerTests {
         try expectOldKept(installer)
         #expect(try String(contentsOf: world.log, encoding: .utf8).contains("erreur inventée"))
         #expect(installer.status() == .compileFailed(fallback: true))
+    }
+
+    @Test("Journal de compilation : seul le dernier échec est gardé")
+    func buildLogKeepsLastFailure() throws {
+        defer { world.remove() }
+        let toolchain = FakeToolchain(failure: "premier échec inventé")
+        let installer = world.installer(toolchain: toolchain)
+        try world.installed(hash: "ancienne", installer: installer)
+        #expect(throws: SDKInstallError.compileFailed) { try installer.recompileIfNeeded() }
+        toolchain.failure.withLock { $0 = "second échec inventé" }
+        #expect(throws: SDKInstallError.compileFailed) { try installer.recompileIfNeeded() }
+        let log = try String(contentsOf: world.log, encoding: .utf8)
+        #expect(log.contains("second échec inventé"))
+        #expect(!log.contains("premier échec inventé"))
+        #expect(log.components(separatedBy: "compilation d'obsbot-ai en échec").count == 2)
     }
 
     @Test("Nouvel obsbot-ai qui ne charge pas le SDK : l'ancien reste")

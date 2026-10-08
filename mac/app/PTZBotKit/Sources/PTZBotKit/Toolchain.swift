@@ -13,7 +13,7 @@ public enum ToolchainError: Error, Equatable, Sendable {
 public protocol Toolchain: Sendable {
     /// `xcode-select -p` réussit.
     func isAvailable() -> Bool
-    /// `clang++ -std=c++17 -O2 -I <include> -L <bibliothèque> -ldev -o <sortie> <source>`. Le binaire n'a pas de
+    /// `clang++ -std=c++17 -O2 -arch arm64 -I <include> -L <bibliothèque> -ldev -o <sortie> <source>`. Le binaire n'a pas de
     /// chemin de recherche intégré : ptzd lui donne `DYLD_LIBRARY_PATH`. L'éditeur de liens le signe en local.
     func compile(source: URL, includeDirectory: URL, libraryDirectory: URL, output: URL) throws(ToolchainError)
     /// Lance `xcode-select --install` sans l'attendre : l'utilisateur accepte lui-même dans la fenêtre d'Apple.
