@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>PTZBot</title>
+    <item>
+      <title>1.0.0</title>
+      <pubDate>Thu, 08 Oct 2026 20:48:40 +0000</pubDate>
+      <sparkle:version>162</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+<meta charset="utf-8">
+<p><strong>English</strong></p>
+<ul><li>PTZBot for Mac now comes as a disk image: drag it into Applications. The first time, macOS asks you to confirm with "Open Anyway" in System Settings › Privacy &amp; Security.</li><li>Automatic updates with Sparkle, signed with an Ed25519 key: PTZBot checks at launch and every 24 hours, and installs when you quit or with "Install and Relaunch". "Check for Updates…" and "Settings…" are in the panel.</li><li>The app speaks English and French, including the errors reported by ptzd. By default it follows macOS; the "Language" setting in Settings (Automatic, Français, English) lets you choose.</li><li>obsbot-ai is no longer shipped: PTZBot compiles it on your Mac from the OBSBOT SDK you provide, with Apple's developer tools. If you installed the SDK with an earlier build, reinstall it from its archive or folder.</li></ul>
+<p><strong>Français</strong></p>
+<ul><li>PTZBot pour Mac s'installe désormais depuis une image disque : glissez-le dans Applications. La première fois, macOS demande de confirmer par « Ouvrir quand même » dans Réglages Système › Confidentialité et sécurité.</li><li>Mises à jour automatiques par Sparkle, signées par une clé Ed25519 : PTZBot cherche au lancement puis toutes les 24 heures, et installe à la fermeture ou par « Installer et relancer ». « Rechercher les mises à jour… » et « Réglages… » sont dans le panneau.</li><li>L'app parle français et anglais, erreurs de ptzd comprises. Par défaut, elle suit macOS ; le réglage « Langue » des Réglages (Automatique, Français, English) permet de choisir.</li><li>obsbot-ai n'est plus livré : PTZBot le compile sur votre Mac à partir du SDK OBSBOT que vous fournissez, avec les outils de développement d'Apple. Si vous aviez installé le SDK avec une version précédente, réinstallez-le depuis son archive ou son dossier.</li></ul>
+]]></description>
+      <enclosure url="https://github.com/Djoko-cli/obsbot-nacelle/releases/download/ptzbot-v1.0.0/PTZBot-1.0.0.dmg" length="1790153" type="application/octet-stream" sparkle:edSignature="EUSj/mG6T0g/ehnUmvLZGinIooZ7W8bkF/0YCkALtbBjUgf3i36bHoYPyyAQBf7TuSajHagP/wstk5xQxzUjDg=="/>
+    </item>
+  </channel>
+</rss>
