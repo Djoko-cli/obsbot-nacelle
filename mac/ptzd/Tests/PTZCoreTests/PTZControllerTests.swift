@@ -43,6 +43,46 @@ struct PTZControllerTests {
         #expect(camera.relativeCommands.isEmpty)
     }
 
+    @Test("prewarmAI prépare l'utilitaire du suivi IA ; chaque message d'un client aussi")
+    func prewarm() {
+        let controller = makeController()
+        #expect(runner.prewarms == 0)
+        controller.prewarmAI()
+        #expect(runner.prewarms == 1)
+        _ = controller.handle(.zoom(value: 10), from: 1)
+        #expect(runner.prewarms == 2)
+        #expect(runner.runCount == 0)
+    }
+
+    @Test("Caméra absente ou vie privée : aucune préparation du suivi IA, ni par un message ni par prewarmAI")
+    func noPrewarmWithoutCameraOrInPrivacy() {
+        camera.isPresent = false
+        let controller = makeController()
+        controller.prewarmAI()
+        _ = controller.handle(.zoom(value: 10), from: 1)
+        #expect(runner.prewarms == 0)
+
+        camera.isPresent = true
+        #expect(controller.handle(.privacy(on: true), from: 1) == nil)
+        let before = runner.prewarms
+        controller.prewarmAI()
+        _ = controller.handle(.zoom(value: 10), from: 1)
+        #expect(runner.prewarms == before)
+
+        _ = controller.handle(.privacy(on: false), from: 1)
+        controller.prewarmAI()
+        #expect(runner.prewarms == before + 1)
+    }
+
+    @Test("Branchement ou débranchement de la caméra : l'utilitaire du suivi IA est réinitialisé")
+    func presenceResetsRunner() {
+        let controller = makeController()
+        controller.cameraPresenceChanged(false)
+        #expect(runner.resets == 1)
+        controller.cameraPresenceChanged(true)
+        #expect(runner.resets == 2)
+    }
+
     @Test("Caméra absente : move, zoom et privacy sont refusés")
     func cameraAbsent() {
         camera.isPresent = false

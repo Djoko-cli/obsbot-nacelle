@@ -108,11 +108,12 @@ struct PTZDaemon {
         let controller = PTZController(
             camera: camera,
             scheduler: scheduler,
-            ai: ProcessAIRunner(
+            ai: ResidentAIRunner(
                 executableURL: options.aiURL(config: config, relativeTo: supportDirectory),
                 outputURL: logsDirectory.appending(path: "obsbot-ai.log"),
                 environment: options.aiEnvironment,
-                scheduler: scheduler
+                scheduler: scheduler,
+                log: log
             ),
             store: JSONFileStateStore(url: supportDirectory.appending(path: "state.json"), log: { write($0) }),
             settings: config.motion,
