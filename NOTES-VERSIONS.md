@@ -6,6 +6,26 @@ release and to the update window.
 PTZBot pour Mac. Chaque section a un bloc **English**, puis un bloc **Français** ; les mêmes notes servent à la
 version GitHub et à la fenêtre de mise à jour.
 
+## 1.0.1
+
+**English**
+
+- Instant AI tracking: once the OBSBOT SDK is loaded, turning tracking on or off takes effect within a few
+  milliseconds instead of about four seconds. PTZBot keeps `obsbot-ai` running while an iPhone or the Mac is
+  controlling the camera, and stops it after ten minutes without activity. The first order after opening the app
+  can still take a few seconds, the time for the SDK to load; after that, it is immediate. PTZBot recompiles
+  `obsbot-ai` by itself after this update, if the SDK is installed.
+- The app now has an icon: the photo of the camera.
+
+**Français**
+
+- Suivi IA instantané : une fois le SDK OBSBOT chargé, allumer ou couper le suivi prend effet en quelques
+  millisecondes, au lieu d'environ quatre secondes. PTZBot garde `obsbot-ai` en marche tant qu'un iPhone ou le Mac
+  pilote la caméra, et l'arrête après dix minutes sans activité. Le premier ordre après l'ouverture de l'app peut
+  encore prendre quelques secondes, le temps que le SDK se charge ; ensuite, c'est immédiat. PTZBot recompile
+  `obsbot-ai` seul après cette mise à jour, si le SDK est installé.
+- L'app a désormais une icône : la photo de la caméra.
+
 ## 1.0.0
 
 **English**
