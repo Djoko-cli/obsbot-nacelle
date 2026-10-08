@@ -5,6 +5,9 @@ options:
   bundleIdPrefix: io.github.djoko-cli
   deploymentTarget:
     macOS: "15.0"
+  # Région de développement anglaise : un Mac dans une autre langue que le français affiche l'anglais
+  # (spec distribution § 7.1). Les textes source restent en français, dans les catalogues.
+  developmentLanguage: en
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -12,9 +15,16 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     # Mac Apple Silicon seulement, comme ptzd.
     ARCHS: arm64
+    # Textes : catalogues .xcstrings (français, langue source, et anglais), tenus à la main.
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    STRING_CATALOG_GENERATE_SYMBOLS: NO
 packages:
   PTZBotKit:
     path: PTZBotKit
+  # Sparkle 2 : les mises à jour de l'app, à une version figée (spec distribution § 5.1).
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.0
 targets:
   PTZBot:
     type: application
@@ -23,33 +33,58 @@ targets:
       - PTZBot
     dependencies:
       - package: PTZBotKit
+      - package: Sparkle
     info:
       path: PTZBot/Info.plist
       properties:
         CFBundleDisplayName: PTZBot
+        CFBundleDevelopmentRegion: en
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # Dans la barre des menus seulement, sans icône dans le Dock.
         LSUIElement: true
         # ptzd, enfant de l'app, écoute et s'annonce sur le réseau local (spec ptzd dans l'app § 4.2).
+        # Traduit dans InfoPlist.xcstrings.
         NSLocalNetworkUsageDescription: PTZBot accepte les connexions des iPhone appairés sur votre réseau local.
         NSBonjourServices:
           - _nacelle._tcp
+        # Mises à jour (Sparkle 2) : le flux des versions publiées et la clé publique Ed25519 (réglages
+        # ci-dessous) ; recherche au lancement puis toutes les 24 h, téléchargement et installation automatiques.
+        # Pas de bac à sable, donc pas de service d'installation de Sparkle (SUEnableInstallerLauncherService).
+        SUFeedURL: $(FLUX_MISES_A_JOUR)
+        SUPublicEDKey: $(CLE_MISES_A_JOUR)
+        SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: true
+        SUScheduledCheckInterval: 86400
+        # La signature Ed25519 est exigée avant l'extraction, sans repli sur la signature de code : sans cette clé,
+        # Sparkle 2 accepterait aussi une mise à jour dont la signature de code satisfait l'exigence de l'app en
+        # place, ce que permet la clé du certificat auto-signé.
+        SUVerifyUpdateBeforeExtraction: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.djoko-cli.ptzbot
         PRODUCT_NAME: PTZBot
-        MARKETING_VERSION: "1.0"
+        # La version publiée (outils/publier.sh) ; le numéro de compilation, que compare Sparkle, est donné à la
+        # publication : le nombre de commits de main. Une compilation de travail garde 1 : Sparkle n'y démarre pas.
+        MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
-        # Pas de bac à sable : l'app lit la configuration de ptzd (et, au sous-projet B, gère son service).
+        # Le flux des mises à jour (appcast.xml du dépôt, que publier.sh tient à jour, à son adresse brute) et la clé
+        # publique ; la répétition les remplace en ligne de commande.
+        FLUX_MISES_A_JOUR: https://raw.githubusercontent.com/Djoko-cli/obsbot-nacelle/main/mac/app/appcast.xml
+        CLE_MISES_A_JOUR: nRIVHOXbEktqGduJ4ukxhjZzlUaiE/yqR3sgbW9Ie6E=
+        # Pas de bac à sable : l'app lit la configuration de ptzd et le lance.
         ENABLE_APP_SANDBOX: NO
-        # Signature locale (ad hoc) jusqu'au sous-projet B.
+        # Signature locale (ad hoc) ; seule la publication signe avec le certificat, runtime renforcé compris
+        # (outils/publier.sh).
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
-        # La phase des utilitaires compile mac/ptzd et lit les en-têtes du SDK dans vendor/.
+        # La phase des utilitaires compile mac/ptzd et copie la source d'obsbot-ai.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
     postBuildScripts:
-      # ptzd et obsbot-ai dans Contents/Helpers ; jamais de libdev.dylib dans le paquet (spec ptzd dans l'app § 5.1).
-      # Toujours exécutée : swift build sait ce qui a changé dans mac/ptzd.
-      - name: Utilitaires ptzd et obsbot-ai
+      # ptzd dans Contents/Helpers, la source d'obsbot-ai dans Contents/Resources ; jamais le SDK ni un binaire
+      # obsbot-ai dans le paquet (spec distribution § 5.1). Toujours exécutée : swift build sait ce qui a changé
+      # dans mac/ptzd.
+      - name: Utilitaire ptzd et source d'obsbot-ai
         script: '"$SRCROOT/build-helpers.sh"'
         basedOnDependencyAnalysis: false
         inputFiles:
@@ -57,7 +92,7 @@ targets:
           - $(SRCROOT)/../ai/main.cpp
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/ptzd
-          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/obsbot-ai
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/obsbot-ai.cpp
 schemes:
   PTZBot:
     build:

@@ -232,3 +232,37 @@ extension Labels {
         return checks
     }
 }
+
+/// Le pied du panneau et la fenêtre « Réglages » (spec distribution § 8).
+extension Labels {
+    public static var checkForUpdates: String { Localization.text("Rechercher les mises à jour…") }
+    public static var settings: String { Localization.text("Réglages…") }
+    public static var quit: String { Localization.text("Quitter") }
+    public static var automaticallyChecks: String { Localization.text("Rechercher automatiquement") }
+    public static var automaticallyInstalls: String { Localization.text("Installer automatiquement") }
+    public static var openAtLogin: String { Localization.text("Ouvrir à la connexion") }
+    public static var loginApproval: String { Localization.text("Autorisez PTZBot dans Réglages › Général › Ouverture") }
+    public static var languageTitle: String { Localization.text("Langue") }
+    public static var languageUpdateNote: String { Localization.text("Les fenêtres de mise à jour suivront au prochain lancement.") }
+
+    /// Un choix de la langue : « Automatique (langue du système) », traduit ; « Français » et « English » toujours
+    /// dans leur propre langue.
+    public static func languageChoice(_ language: AppLanguage) -> String {
+        switch language {
+        case .automatic: Localization.text("Automatique (langue du système)")
+        case .french: "Français"
+        case .english: "English"
+        }
+    }
+
+    public static var updatesDisabled: String { Localization.text("Mises à jour désactivées dans une compilation de travail.") }
+
+    /// « PTZBot 1.0.0 (412) » : la version et le numéro de compilation, tels qu'ils sont dans l'app.
+    public static func version(short: String?, build: String?) -> String {
+        switch (short, build) {
+        case let (short?, build?): "PTZBot \(short) (\(build))"
+        case let (short?, nil): "PTZBot \(short)"
+        default: "PTZBot"
+        }
+    }
+}

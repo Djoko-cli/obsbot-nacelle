@@ -13,10 +13,10 @@ struct DevicesView: View {
             if let devices = model.admin?.devices, !devices.isEmpty {
                 Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
                     GridRow {
-                        Text("Appareil")
-                        Text("Appairé le")
-                        Text("État")
-                        Text("")
+                        Text(AppText.text("Appareil"))
+                        Text(AppText.text("Appairé le"))
+                        Text(AppText.text("État"))
+                        Text(verbatim: "")
                     }
                     .font(.caption).foregroundStyle(.secondary)
                     ForEach(devices, id: \.deviceID) { device in
@@ -31,11 +31,11 @@ struct DevicesView: View {
                             }
                             HStack {
                                 if let until = device.blockedUntil, until > .now {
-                                    Button("Débloquer") {
+                                    Button(AppText.text("Débloquer")) {
                                         model.unblock(device.deviceID)
                                     }
                                 }
-                                Button("Retirer…", role: .destructive) {
+                                Button(AppText.text("Retirer…"), role: .destructive) {
                                     toRevoke = device
                                 }
                             }
@@ -43,7 +43,7 @@ struct DevicesView: View {
                     }
                 }
             } else {
-                Text(model.service == .active ? "Aucun appareil appairé." : "ptzd ne répond pas.")
+                Text(model.service == .active ? AppText.text("Aucun appareil appairé.") : AppText.text("ptzd ne répond pas."))
                     .foregroundStyle(.secondary)
             }
             if let error = model.lastError {
@@ -51,7 +51,7 @@ struct DevicesView: View {
             }
             HStack {
                 Spacer()
-                Button("Appairer un iPhone…") {
+                Button(AppText.text("Appairer un iPhone…")) {
                     model.openPairing()
                     openWindow.front(WindowID.pairing)
                 }
@@ -61,18 +61,18 @@ struct DevicesView: View {
         .padding(20)
         .frame(minWidth: 520)
         .confirmationDialog(
-            "Retirer \(toRevoke?.name ?? "l'appareil") ?",
+            AppText.text("Retirer \(toRevoke?.name ?? AppText.text("l'appareil")) ?"),
             isPresented: Binding(get: { toRevoke != nil }, set: { if !$0 { toRevoke = nil } }),
             titleVisibility: .visible
         ) {
-            Button("Retirer", role: .destructive) {
+            Button(AppText.text("Retirer"), role: .destructive) {
                 if let device = toRevoke {
                     model.revoke(device.deviceID)
                 }
                 toRevoke = nil
             }
         } message: {
-            Text("L'appareil devra être réappairé par QR code. Ses connexions sont coupées tout de suite.")
+            Text(AppText.text("L'appareil devra être réappairé par QR code. Ses connexions sont coupées tout de suite."))
         }
     }
 }
