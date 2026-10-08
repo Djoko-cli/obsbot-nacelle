@@ -29,7 +29,7 @@ Hors périmètre, pour plus tard :
 | Sortie | **Haut-parleurs intégrés du Mac**, quelle que soit la sortie par défaut de Réglages (« pour l'instant ») |
 | Volume | **Volume actuel, avec un minimum garanti** : sous le seuil (30 % par défaut) ou en sourdine, il est remonté le temps de la voix, puis rétabli |
 | Sources autorisées | **Le NAS (Homebridge) et 127.0.0.1**, rien d'autre |
-| Forme | **Daemon sans interface**, et un **interrupteur** dans le panneau de PTZBot |
+| Forme | **Daemon sans interface**, et un **interrupteur « Talkback »** dans le panneau de PTZBot |
 | Où vit l'interrupteur | **Dans PTZBot**, pas dans une app à part |
 | Partage du travail | La session go2rtc conçoit ; **la session PTZBot réalise** |
 | Atténuation des autres apps | **Pas dans la v1** |
@@ -109,7 +109,7 @@ go2rtc 1.9.14 accepte un canal de retour sur une source `exec` (`#backchannel=1`
 
 ## 6. Interface (panneau de PTZBot pour Mac)
 
-- Un interrupteur **« Haut-parleur »**, avec une ligne d'état sous l'interrupteur :
+- Un interrupteur **« Talkback »** (nom choisi par Majid), avec une ligne d'état sous l'interrupteur :
   - « Prêt » : l'agent est inscrit et tourne ;
   - « Désactivé » ;
   - « Autorisation requise », avec un bouton qui ouvre Réglages › Général › Ouverture, comme pour `SMAppService.mainApp` en A ;
