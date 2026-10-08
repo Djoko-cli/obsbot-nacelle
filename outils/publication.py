@@ -198,12 +198,22 @@ def numero_compilation(depot, git='git'):
 # --- les notes et le flux ------------------------------------------------------------------------------------
 
 def notes(chemin, version):
-    """La section « ## X.Y.Z » de NOTES-VERSIONS.md, sans son titre."""
+    """La section « ## X.Y.Z » de NOTES-VERSIONS.md, sans son titre : un bloc **English** non vide, puis un bloc
+    **Français** non vide (regle de Majid : l'anglais d'abord), sinon refus."""
     texte = lire(chemin)
     m = re.search(r'^## %s[ \t]*\n(.*?)(?=^## |\Z)' % re.escape(version), texte, re.M | re.S)
     if not m or not m.group(1).strip():
         raise Refus('pas de section %s dans %s' % (version, chemin))
-    return m.group(1).strip() + '\n'
+    section = m.group(1).strip() + '\n'
+    reperes = list(re.finditer(r'^\*\*(English|Français)\*\*[ \t]*$', section, re.M))
+    if [r.group(1) for r in reperes] != ['English', 'Français']:
+        raise Refus('la section %s de %s doit avoir un bloc **English**, puis un bloc **Français** (dans cet ordre, '
+                    'chacun une fois)' % (version, chemin))
+    fins = [r.start() for r in reperes[1:]] + [len(section)]
+    for repere, fin in zip(reperes, fins):
+        if not section[repere.end():fin].strip():
+            raise Refus('le bloc **%s** de la section %s de %s est vide' % (repere.group(1), version, chemin))
+    return section
 
 
 def en_ligne(t):
