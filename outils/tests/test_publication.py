@@ -84,14 +84,14 @@ NOTES = textwrap.dedent('''\
 
     ## 1.2.3
 
+    **English**
+
+    - A new `command`.
+
     **Français**
 
     - Une `commande` <nouvelle>,
       sur deux lignes.
-
-    **English**
-
-    - A new `command`.
 
     ## 1.2.2
 
@@ -472,17 +472,39 @@ class NotesEtFluxTests(unittest.TestCase):
             p = os.path.join(d, 'NOTES-VERSIONS.md')
             ecrire(p, NOTES)
             n = P.notes(p, '1.2.3')
-            self.assertTrue(n.startswith('**Français**'))
+            self.assertTrue(n.startswith('**English**'))
+            self.assertLess(n.index('**English**'), n.index('**Français**'))
             self.assertNotIn('Ancienne', n)
-            self.assertEqual(P.notes(p, '1.2.2'), '- Ancienne.\n')
             with self.assertRaises(P.Refus):
                 P.notes(p, '9.9.9')
 
+    def test_notes_english_puis_francais_imposes(self):
+        """Un bloc English non vide, puis un bloc Français non vide : l'ordre inverse, un bloc manquant ou vide sont refuses."""
+        cas = {
+            'ordre inverse': '**Français**\n\n- Un.\n\n**English**\n\n- One.\n',
+            'sans bloc': '- Ancienne.\n',
+            'English seul': '**English**\n\n- One.\n',
+            'Français seul': '**Français**\n\n- Un.\n',
+            'English vide': '**English**\n\n**Français**\n\n- Un.\n',
+            'Français vide': '**English**\n\n- One.\n\n**Français**\n',
+            'bloc repete': '**English**\n\n- One.\n\n**Français**\n\n- Un.\n\n**English**\n\n- Two.\n',
+        }
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'NOTES-VERSIONS.md')
+            for nom, section in cas.items():
+                with self.subTest(nom):
+                    ecrire(p, '# Notes\n\n## 1.2.3\n\n%s\n## 1.2.2\n\n- Ancienne.\n' % section)
+                    with self.assertRaises(P.Refus) as r:
+                        P.notes(p, '1.2.3')
+                    self.assertIn('bloc', str(r.exception))
+            ecrire(p, '# Notes\n\n## 1.2.3\n\n**English**\n\n- One.\n\n**Français**\n\n- Un.\n')
+            self.assertEqual(P.notes(p, '1.2.3'), '**English**\n\n- One.\n\n**Français**\n\n- Un.\n')
+
     def test_notes_html(self):
-        h = P.notes_html('**Français**\n\n- Une `commande` <nouvelle>,\n  sur deux lignes.\n\n**English**\n\n- B\n')
-        self.assertEqual(h, '<meta charset="utf-8">\n<p><strong>Français</strong></p>\n'
-                            '<ul><li>Une <code>commande</code> &lt;nouvelle&gt;, sur deux lignes.</li></ul>\n'
-                            '<p><strong>English</strong></p>\n<ul><li>B</li></ul>')
+        h = P.notes_html('**English**\n\n- B\n\n**Français**\n\n- Une `commande` <nouvelle>,\n  sur deux lignes.\n')
+        self.assertEqual(h, '<meta charset="utf-8">\n<p><strong>English</strong></p>\n<ul><li>B</li></ul>\n'
+                            '<p><strong>Français</strong></p>\n'
+                            '<ul><li>Une <code>commande</code> &lt;nouvelle&gt;, sur deux lignes.</li></ul>')
 
     def item(self, version='1.2.3', numero=57):
         return P.item_flux(version, numero, 'https://exemple.invalid/essai-v%s/Essai-Inventee-%s.dmg' % (version, version),
