@@ -744,6 +744,8 @@ public final class WebSocketServer {
             log("Client \(id) authentifié : \(device.name) (\(Self.logID(deviceID))).")
             clients[id]?.device = (device.deviceID, device.name)
             authenticate(id)
+            // Un iPhone arrive : l'utilitaire du suivi IA se prépare (pas pour le Mac, de confiance).
+            controller.prewarmAI()
             probeStale(sameDeviceAs: id)
         case .unknownDevice:
             refuse(id, .unpaired, "Appareil inconnu : appairez-le depuis PTZBot sur le Mac.", reason: "appareil inconnu \(Self.logID(deviceID))")

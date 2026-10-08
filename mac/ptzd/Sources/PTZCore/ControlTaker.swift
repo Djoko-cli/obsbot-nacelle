@@ -84,6 +84,16 @@ public final class ControlTaker {
         }
     }
 
+    /// Un client pilote : prépare l'utilitaire du suivi IA.
+    public func prewarm() {
+        runner.prewarm()
+    }
+
+    /// La caméra a été branchée ou débranchée : l'utilitaire du suivi IA repart d'une session neuve.
+    public func reset() {
+        runner.reset()
+    }
+
     /// L'état réel redevient inconnu (rebranchement de la caméra).
     public func forget() {
         guard tracking != .unknown else { return }

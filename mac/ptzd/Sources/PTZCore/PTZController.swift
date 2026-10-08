@@ -62,8 +62,16 @@ public final class PTZController {
         control.onChange = { [weak self] in self?.controlChanged() }
     }
 
+    /// Un iPhone vient de s'authentifier : prépare l'utilitaire du suivi IA avant son premier ordre.
+    public func prewarmAI() {
+        // Caméra absente ou vie privée : aucun ordre de suivi n'est possible, inutile de charger le SDK.
+        guard camera.isPresent, !privacy.isActive else { return }
+        control.prewarm()
+    }
+
     /// Traite un message. Renvoie l'erreur à transmettre à ce client, ou nil.
     public func handle(_ message: ClientMessage, from client: ClientID) -> (code: ErrorCode, message: String)? {
+        prewarmAI()
         switch message {
         case .takeControl:
             // N'allume ni ne coupe le suivi IA : c'est le premier mouvement qui le coupe (spec app Mac § 7.5).
@@ -127,6 +135,8 @@ public final class PTZController {
     /// Branchement ou débranchement de la caméra. Au branchement, la vie privée
     /// est réappliquée et le suivi IA recoupé, au cas où la caméra aurait redémarré.
     public func cameraPresenceChanged(_ present: Bool) {
+        // Le SDK gardé par l'utilitaire du suivi IA ne connaît plus la caméra : session neuve au prochain ordre.
+        control.reset()
         if present {
             log("Caméra branchée.")
             motion.refreshPosition()

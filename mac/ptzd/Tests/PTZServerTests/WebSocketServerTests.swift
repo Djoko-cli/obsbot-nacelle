@@ -13,6 +13,7 @@ import Testing
 struct WebSocketServerTests {
     let camera = StubCamera()
     let controller: PTZController
+    let ai = StubAI()
     let authority: DeviceAuthority
     /// Clé de l'appareil de test, appairée par `pairTestDevice()`.
     let key = P256.Signing.PrivateKey()
@@ -24,7 +25,7 @@ struct WebSocketServerTests {
         controller = PTZController(
             camera: camera,
             scheduler: DispatchScheduler(),
-            ai: StubAI(),
+            ai: ai,
             store: StubStore(),
             settings: MotionSettings(),
             isObsbotCenterRunning: { false },
@@ -995,6 +996,22 @@ struct WebSocketServerTests {
         #expect(!WebSocketServer.isAdministration(.forgetMe))
     }
 
+    @Test("Un iPhone qui s'authentifie prépare le suivi IA ; le Mac de confiance, non")
+    func prewarmOnIPhoneOnly() async throws {
+        let lanKey = NacelleTLS.makeKey()
+        try pairTestDevice(lanKey: lanKey)
+        let (server, ports) = await startServer(on: ["127.0.0.1", "::1"], localHosts: ["::1"])
+        let (admin, _) = try await watchAdmin(ports["127.0.0.1"]!)
+        defer { admin.cancel(with: .goingAway, reason: nil) }
+        #expect(ai.prewarms == 0)
+
+        let (iPhone, reply) = try await authenticateOverTLS(port: ports["::1"]!, lanKey: lanKey)
+        defer { iPhone.close() }
+        #expect(reply == .authenticated)
+        #expect(ai.prewarms == 1)
+        withExtendedLifetime(server) {}
+    }
+
     @Test("Expulser, débloquer ou retirer un appareil inconnu : « Appareil inconnu. »", arguments: [
         ClientMessage.kick(deviceID: "00112233445566778899aabbccddeeff"),
         .unblock(deviceID: "00112233445566778899aabbccddeeff"),
@@ -1397,6 +1414,12 @@ final class StubCamera: CameraDevice {
 
 @MainActor
 final class StubAI: AIRunner {
+    private(set) var prewarms = 0
+
+    func prewarm() {
+        prewarms += 1
+    }
+
     func run(on: Bool, completion: @escaping @MainActor @Sendable (AIResult) -> Void) {
         completion(.success)
     }
