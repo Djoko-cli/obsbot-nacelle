@@ -30,3 +30,7 @@ Après B2, quand l'app sera présentable : demander à OBSBOT une licence pour *
 - un éventuel usage commercial.
 
 Garder l'installation manuelle par l'app comme repli. Claude peut rédiger la demande en brouillon ; Majid l'envoie.
+
+## Rotation de obsbot-ai.log
+
+Le journal `obsbot-ai.log` (sortie du SDK et de `obsbot-ai`, dans le dossier des journaux de `ptzd`) grossit sans limite. Depuis le mode résident, le SDK reste chargé jusqu'à 10 minutes après chaque activité : son bruit peut croître plus vite qu'avant. À mesurer au banc (croissance sur 10 minutes de mode résident) ; si elle est nette, faire tourner le fichier à une taille maximale (par exemple 1 Mo, en gardant une ou deux copies), au lancement de l'utilitaire plutôt qu'en cours d'exécution, pour ne pas couper une ligne que le SDK est en train d'écrire.
