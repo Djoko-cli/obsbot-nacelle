@@ -19,6 +19,13 @@ env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" TMPDIR="${TMPDIR:-/tmp}
 BIN="$(env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" DEVELOPER_DIR="$DEVELOPER_DIR" \
     /usr/bin/xcrun swift build -c release --package-path "$ROOT/mac/ptzd" --show-bin-path)"
 install -m 755 "$BIN/ptzd" "$HELPERS/ptzd"
+# Compilation de publication (DEPLOYMENT_POSTPROCESSING, outils/publier.sh) : ptzd perd ses symboles de débogage,
+# comme l'app (STRIP_INSTALLED_PRODUCT) ; ils nomment les fichiers objets de mac/ptzd/.build, sous le dossier
+# personnel. La publication le signe ensuite avec son certificat ; d'ici là, signature locale.
+if [ "${DEPLOYMENT_POSTPROCESSING:-NO}" = "YES" ]; then
+    /usr/bin/xcrun strip -S "$HELPERS/ptzd"
+    /usr/bin/codesign --force --sign - "$HELPERS/ptzd"
+fi
 
 echo "Source d'obsbot-ai…"
 install -m 644 "$ROOT/mac/ai/main.cpp" "$RESOURCES/obsbot-ai.cpp"
