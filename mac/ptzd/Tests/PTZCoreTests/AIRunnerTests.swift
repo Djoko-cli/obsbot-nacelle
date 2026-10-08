@@ -185,16 +185,19 @@ struct AIRunnerTests {
     }
 
     @Test("Exécution précédente encore en cours : launchFailed, rien n'est lancé")
-    func noOverlap() async {
+    func noOverlap() async throws {
         let runner = ProcessAIRunner(
             executableURL: URL(fileURLWithPath: "/bin/sh"),
-            arguments: ["-c", "sleep 0.5"],
+            arguments: ["-c", "sleep 2"],
             scheduler: DispatchScheduler()
         )
         let first = Task { await runOnce(runner) }
-        while runner.current == nil {
+        // Attente bornée : sous charge, un test qui rate le lancement échoue au lieu de tourner sans fin.
+        let deadline = ContinuousClock.now + .seconds(10)
+        while runner.current == nil, ContinuousClock.now < deadline {
             await Task.yield()
         }
+        try #require(runner.current != nil)
         let running = runner.current
         #expect(await runOnce(runner) == .launchFailed("obsbot-ai précédent encore en cours"))
         #expect(runner.current === running)

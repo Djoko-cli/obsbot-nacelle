@@ -454,18 +454,24 @@ struct SDKWindowModelTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let extraction = directory.appending(path: "extraction")
         let library = try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: extraction.appending(path: "macos/arm64-release/libdev.dylib"))
+        // L'examen reste en cours tant que le test ne l'a pas libéré : la fermeture tombe toujours pendant l'examen,
+        // quelle que soit la charge de la machine.
+        let release = DispatchSemaphore(value: 0)
         let model = SDKWindowModel(
             installer: Self.installer(directory, loads: true),
             inspect: { _ throws(SDKRejection) in
-                Thread.sleep(forTimeInterval: 0.2)
+                release.wait()
                 return SDKCandidate(path: library, architectures: ["arm64"], temporaryDirectory: extraction)
             }
         )
         let choice = Task { await model.choose(URL(fileURLWithPath: "/archive.zip")) }
-        while model.phase != .inspecting {
+        let deadline = ContinuousClock.now + .seconds(10)
+        while model.phase != .inspecting, ContinuousClock.now < deadline {
             await Task.yield()
         }
+        #expect(model.phase == .inspecting)
         model.reset()
+        release.signal()
         await choice.value
         #expect(model.phase == .choosing)
         #expect(!FileManager.default.fileExists(atPath: extraction.path))
