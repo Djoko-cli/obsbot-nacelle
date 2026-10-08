@@ -5,7 +5,7 @@ import SwiftUI
 /// Le panneau sous l'icône (spec app Mac § 8.1, maquette B).
 struct PanelView: View {
     let model: PanelModel
-    let loginItem: LoginItemModel
+    let settings: SettingsModel
     let app: AppController
     let network: LocalNetworkState
     @Environment(\.openWindow) private var openWindow
@@ -43,13 +43,13 @@ struct PanelView: View {
                     model.openPairing()
                     openWindow.front(WindowID.pairing)
                 } label: {
-                    Text("Appairer un iPhone…").frame(maxWidth: .infinity)
+                    Text(AppText.text("Appairer un iPhone…")).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 Button {
                     openWindow.front(WindowID.devices)
                 } label: {
-                    Text("Appareils…").frame(maxWidth: .infinity)
+                    Text(AppText.text("Appareils…")).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
             }
@@ -71,7 +71,7 @@ struct PanelView: View {
 
     private var header: some View {
         HStack {
-            Text("PTZBot").font(.headline)
+            Text(verbatim: "PTZBot").font(.headline)
             Spacer()
             Text(Labels.service(supervisor.state, connection: model.service, legacy: legacy))
                 .font(.caption)
@@ -86,8 +86,8 @@ struct PanelView: View {
 
     private var serviceSection: some View {
         PanelSection(Labels.serviceSection) {
-            PanelRow(icon: "server.rack", title: "Service ptzd") {
-                Toggle("Service ptzd", isOn: Binding(get: { supervisor.isEnabled }, set: { supervisor.setEnabled($0) }))
+            PanelRow(icon: "server.rack", title: AppText.text("Service ptzd")) {
+                Toggle(AppText.text("Service ptzd"), isOn: Binding(get: { supervisor.isEnabled }, set: { supervisor.setEnabled($0) }))
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)
@@ -97,7 +97,7 @@ struct PanelView: View {
                     PanelNote(reason, color: .red)
                 }
                 if Labels.showsLog(supervisor.state, connection: model.service) {
-                    Button("Ouvrir le journal de ptzd") {
+                    Button(AppText.text("Ouvrir le journal de ptzd")) {
                         LogOpener.openPTZDLog()
                     }
                     .buttonStyle(.link)
@@ -117,13 +117,13 @@ struct PanelView: View {
                     PanelNote(problem)
                 }
                 if model.config.isFallback {
-                    PanelNote("config.json illisible : port 1985 essayé.")
+                    PanelNote(AppText.text("config.json illisible : port 1985 essayé."))
                 }
             }
             Divider()
             // À droite, l'état court seulement ; l'explication et le bouton vont dessous, sur toute la largeur
             // (banc du 08/10 : un état long débordait sur six lignes et tronquait le bouton).
-            PanelRow(icon: "shippingbox", title: "SDK OBSBOT") {
+            PanelRow(icon: "shippingbox", title: AppText.text("SDK OBSBOT")) {
                 Text(Labels.sdk(app.sdkStatus))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -152,20 +152,20 @@ struct PanelView: View {
 
     private var cameraSection: some View {
         PanelSection(Labels.cameraSection(model.state?.camera)) {
-            PanelRow(icon: "eye.slash", title: "Vie privée") {
-                Toggle("Vie privée", isOn: Binding(get: { model.state?.privacy ?? false }, set: { model.setPrivacy($0) }))
+            PanelRow(icon: "eye.slash", title: AppText.text("Vie privée")) {
+                Toggle(AppText.text("Vie privée"), isOn: Binding(get: { model.state?.privacy ?? false }, set: { model.setPrivacy($0) }))
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)
             }
             Divider()
-            PanelRow(icon: "person.crop.square", title: "Suivi IA") {
+            PanelRow(icon: "person.crop.square", title: AppText.text("Suivi IA")) {
                 HStack(spacing: 6) {
                     if aiBusy {
                         // obsbot-ai démarre ou travaille : l'interrupteur attend la fin de l'ordre.
                         ProgressView().controlSize(.small)
                     }
-                    Toggle("Suivi IA", isOn: Binding(get: { model.state?.aiTracking == .on }, set: { model.setAITracking($0) }))
+                    Toggle(AppText.text("Suivi IA"), isOn: Binding(get: { model.state?.aiTracking == .on }, set: { model.setAITracking($0) }))
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .controlSize(.small)
@@ -200,7 +200,7 @@ struct PanelView: View {
                 }
                 let label = Labels.client(client)
                 PanelRow(icon: "iphone", title: label.title, subtitle: label.detail) {
-                    Button("Expulser", role: .destructive) {
+                    Button(AppText.text("Expulser"), role: .destructive) {
                         if let deviceID = client.deviceID {
                             model.kick(deviceID)
                         }
@@ -215,7 +215,7 @@ struct PanelView: View {
             }
             if network.denied {
                 PanelNote(Labels.localNetworkDenied, color: .orange)
-                Button("Ouvrir les réglages de confidentialité") {
+                Button(AppText.text("Ouvrir les réglages de confidentialité")) {
                     network.openSettings()
                 }
                 .buttonStyle(.link)
@@ -226,13 +226,23 @@ struct PanelView: View {
 
     // MARK: - Pied
 
+    /// « Rechercher les mises à jour… », « Réglages… » et « Quitter » (spec distribution § 8) ; « Ouvrir à la
+    /// connexion » est dans les Réglages.
+    /// « Rechercher les mises à jour… » seul sur sa ligne, pour ne pas être tronqué (banc du 08/10), puis
+    /// « Réglages… » et « Quitter ».
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Toggle("Ouvrir à la connexion", isOn: Binding(get: { loginItem.isEnabled }, set: { loginItem.setEnabled($0) }))
-                    .toggleStyle(.checkbox)
+        VStack(alignment: .leading, spacing: 6) {
+            Button(Labels.checkForUpdates) {
+                settings.checkForUpdates()
+            }
+            .disabled(!settings.canCheckForUpdates)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 12) {
+                Button(Labels.settings) {
+                    openWindow.front(WindowID.settings)
+                }
                 Spacer()
-                Button("Quitter") {
+                Button(Labels.quit) {
                     // Un appairage ouvert est fermé avant de partir ; l'envoi est asynchrone, d'où le court délai.
                     // La fin de l'app attend ensuite l'arrêt de ptzd, 6 s au plus (AppDelegate).
                     // Par la boucle d'exécution, jamais depuis un bloc de la file principale : voir
@@ -240,20 +250,10 @@ struct PanelView: View {
                     model.closePairing()
                     NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0.3, inModes: [.common])
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-            }
-            if loginItem.needsApproval {
-                Button("Autorisez PTZBot dans Réglages › Général › Ouverture") {
-                    loginItem.openSystemSettings()
-                }
-                .buttonStyle(.link)
-                .font(.caption)
-            }
-            if let error = loginItem.lastError {
-                PanelNote(error, color: .red)
             }
         }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
     }
 }
 
@@ -283,7 +283,7 @@ private struct PanelSection<Content: View, Notes: View>: View {
 }
 
 /// Une ligne de boîte : icône, titre (et sous-titre), commande alignée à droite ; ses messages dessous,
-/// sans déranger l'alignement.
+/// sans déranger l'alignement. Le titre est déjà traduit (`String(localized:)` ou `Labels`).
 private struct PanelRow<Trailing: View, Notes: View>: View {
     let icon: String
     let title: String
@@ -333,7 +333,7 @@ private struct PanelRow<Trailing: View, Notes: View>: View {
     }
 }
 
-/// Un petit message sous une ligne ou une section.
+/// Un petit message sous une ligne ou une section, déjà traduit.
 private struct PanelNote: View {
     let text: String
     let color: Color?

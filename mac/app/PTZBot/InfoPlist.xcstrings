@@ -1,0 +1,23 @@
+{
+  "sourceLanguage": "fr",
+  "strings": {
+    "NSLocalNetworkUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PTZBot accepts connections from paired iPhones on your local network."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PTZBot accepte les connexions des iPhone appairés sur votre réseau local."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

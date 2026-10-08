@@ -1,15 +1,16 @@
 import PTZBotKit
 import SwiftUI
 
-/// PTZBot pour Mac (spec app Mac, spec ptzd dans l'app) : une icône dans la barre des menus, un panneau,
-/// trois fenêtres, et ptzd lancé comme processus enfant.
+/// PTZBot pour Mac (spec app Mac, spec ptzd dans l'app, spec distribution) : une icône dans la barre des menus,
+/// un panneau, quatre fenêtres, ptzd lancé comme processus enfant, et les mises à jour par Sparkle.
 @main
 struct PTZBotApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
         MenuBarExtra {
-            PanelView(model: delegate.panel, loginItem: delegate.loginItem, app: delegate.controller, network: delegate.network)
+            PanelView(model: delegate.panel, settings: delegate.settings, app: delegate.controller, network: delegate.network)
+                .followsLanguage(delegate.language)
         } label: {
             Image(nsImage: MenuBarIcon.image())
                 .opacity(delegate.panel.service == .active ? 1 : 0.4)
@@ -19,18 +20,28 @@ struct PTZBotApp: App {
 
         Window("Appairer un iPhone", id: WindowID.pairing) {
             PairingView(model: delegate.panel)
+                .followsLanguage(delegate.language, title: "Appairer un iPhone")
         }
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
 
         Window("Appareils appairés", id: WindowID.devices) {
             DevicesView(model: delegate.panel)
+                .followsLanguage(delegate.language, title: "Appareils appairés")
         }
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
 
         Window("SDK OBSBOT", id: WindowID.sdk) {
             SDKView(model: delegate.sdkWindow)
+                .followsLanguage(delegate.language, title: "SDK OBSBOT")
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+
+        Window("Réglages", id: WindowID.settings) {
+            SettingsView(model: delegate.settings, language: delegate.language)
+                .followsLanguage(delegate.language, title: "Réglages")
         }
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
@@ -40,9 +51,11 @@ struct PTZBotApp: App {
 /// Les modèles de l'app, créés une fois ; « Quitter » (et toute fin de l'app) attend l'arrêt de ptzd.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// La langue choisie dans les Réglages, appliquée avant tout autre texte.
+    let language = AppLanguageModel.system()
     let scheduler = MainScheduler()
     let panel: PanelModel
-    let loginItem = LoginItemModel(service: MainAppLoginItem())
+    let settings: SettingsModel
     let controller: AppController
     let sdkWindow: SDKWindowModel
     let network: LocalNetworkState
@@ -63,6 +76,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         sdkWindow = SDKWindowModel(installer: installer)
         network = LocalNetworkState(scheduler: scheduler)
+        // Sparkle ne démarre que dans une app publiée : jamais sous les tests ni dans une compilation de travail
+        // (numéro de compilation 1).
+        let info = Bundle.main.infoDictionary
+        let bundleVersion = info?["CFBundleVersion"] as? String
+        let usesSparkle = UpdaterPolicy.usesSparkle(bundleVersion: bundleVersion, environment: ProcessInfo.processInfo.environment)
+        settings = SettingsModel(
+            updater: usesSparkle ? SparkleUpdater() : NoUpdater(),
+            updatesEnabled: usesSparkle,
+            loginItem: LoginItemModel(service: MainAppLoginItem()),
+            shortVersion: info?["CFBundleShortVersionString"] as? String,
+            bundleVersion: bundleVersion
+        )
         super.init()
         controller.onConfigReady = { [panel] in
             panel.reloadConfig(.load(from: paths.config))
@@ -81,7 +106,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await controller.launch() }
     }
 
-    /// Attend l'arrêt de ptzd (6 s au plus), puis répond.
+    /// Attend l'arrêt de ptzd (6 s au plus), puis répond. C'est aussi le chemin d'une mise à jour : Sparkle demande
+    /// à l'app de quitter (événement Apple « quitter ») avant de la remplacer (voir `SparkleUpdater`).
     ///
     /// Ne jamais appeler `NSApp.terminate` depuis un bloc de la file principale (`DispatchQueue.main.async`,
     /// `asyncAfter`, `Task` sur le MainActor) : `.terminateLater` fait tourner la boucle d'exécution à l'intérieur
@@ -143,6 +169,7 @@ enum WindowID {
     static let pairing = "pairing"
     static let devices = "devices"
     static let sdk = "sdk"
+    static let settings = "settings"
 }
 
 extension OpenWindowAction {

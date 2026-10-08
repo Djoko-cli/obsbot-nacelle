@@ -33,7 +33,7 @@ struct SDKView: View {
             case .choosing:
                 EmptyView()
             case .inspecting:
-                ProgressView("Vérification du fichier…")
+                ProgressView(AppText.text("Vérification du fichier…"))
             case let .candidate(candidate):
                 Text(candidate.path.lastPathComponent).font(.headline)
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
@@ -44,7 +44,7 @@ struct SDKView: View {
                         }
                     }
                 }
-                Button("Autoriser ce SDK") {
+                Button(AppText.text("Autoriser ce SDK")) {
                     confirming = true
                 }
                 .buttonStyle(.borderedProminent)
@@ -52,18 +52,18 @@ struct SDKView: View {
             case let .rejected(message), let .failed(message):
                 Text(message).foregroundStyle(.red)
             case .installing:
-                ProgressView("Installation du SDK et compilation d'obsbot-ai…")
+                ProgressView(AppText.text("Installation du SDK et compilation d'obsbot-ai…"))
             case .installed:
-                Text("SDK installé : le suivi IA est disponible.").foregroundStyle(.green)
+                Text(AppText.text("SDK installé : le suivi IA est disponible.")).foregroundStyle(.green)
             }
         }
         .padding(20)
         .frame(width: 460)
-        .alert("Autoriser ce SDK ?", isPresented: $confirming) {
-            Button("Autoriser") {
+        .alert(AppText.text("Autoriser ce SDK ?"), isPresented: $confirming) {
+            Button(AppText.text("Autoriser")) {
                 Task { await model.authorize() }
             }
-            Button("Annuler", role: .cancel) {}
+            Button(AppText.text("Annuler"), role: .cancel) {}
         } message: {
             Text(Labels.sdkConfirmation)
         }
@@ -77,12 +77,12 @@ struct SDKView: View {
 
     private var choiceButtons: some View {
         HStack {
-            Button("Ouvrir obsbot.com/sdk") {
+            Button(AppText.text("Ouvrir obsbot.com/sdk")) {
                 if let url = URL(string: "https://www.obsbot.com/sdk") {
                     NSWorkspace.shared.open(url)
                 }
             }
-            Button("Choisir l'archive ou le dossier…", action: choose)
+            Button(AppText.text("Choisir l'archive ou le dossier…"), action: choose)
                 .buttonStyle(.borderedProminent)
         }
         .disabled(model.phase == .inspecting || model.phase == .installing)
@@ -94,7 +94,7 @@ struct SDKView: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.zip, .folder]
-        panel.message = "Choisissez l'archive du SDK OBSBOT (.zip) ou son dossier décompressé : ses en-têtes sont nécessaires."
+        panel.message = AppText.text("Choisissez l'archive du SDK OBSBOT (.zip) ou son dossier décompressé : ses en-têtes sont nécessaires.")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { await model.choose(url) }
     }
