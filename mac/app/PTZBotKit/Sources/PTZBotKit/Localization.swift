@@ -27,9 +27,15 @@ public enum Localization {
         appLanguage.withLock { $0 = languages.contains(language) ? language : "en" }
     }
 
-    /// Le français si l'utilisateur le préfère à l'anglais, l'anglais sinon (et pour toute autre langue).
+    /// La première des langues préférées que PTZBot connaît (français ou anglais), l'anglais si aucune. Le repli est
+    /// explicite : il ne dépend pas de la région de développement du bundle principal.
     public static func preferredLanguage(_ preferences: [String]) -> String {
-        Bundle.preferredLocalizations(from: languages, forPreferences: preferences).first ?? "en"
+        for preference in preferences {
+            if let code = Locale(identifier: preference).language.languageCode?.identifier, languages.contains(code) {
+                return code
+            }
+        }
+        return "en"
     }
 
     /// Les formats de date et d'heure suivent la langue des textes.

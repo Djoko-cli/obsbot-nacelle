@@ -57,6 +57,11 @@ struct LocalizationTests {
         #expect(Localization.preferredLanguage(["de-DE"]) == "en")
         #expect(Localization.preferredLanguage(["en-GB", "fr-FR"]) == "en")
         #expect(Localization.preferredLanguage([]) == "en")
+        // Le repli sur l'anglais est explicite : aucune langue connue, ou l'anglais en premier.
+        #expect(Localization.preferredLanguage(["es-ES"]) == "en")
+        #expect(Localization.preferredLanguage(["en-US", "fr-FR"]) == "en")
+        #expect(Localization.preferredLanguage(["es-ES", "de-DE"]) == "en")
+        #expect(Localization.preferredLanguage(["zh-Hans-CN", "fr"]) == "fr")
     }
 
     @Test("Erreurs de ptzd : chaque code a un texte en français et en anglais, différents")
