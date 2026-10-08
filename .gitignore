@@ -28,3 +28,6 @@ mac/app/PTZBot.xcodeproj/
 mac/app/PTZBot/Info.plist
 ios/Config/Local.xcconfig
 ios/Local/
+
+# Outils de publication (Python)
+__pycache__/
