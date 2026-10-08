@@ -90,21 +90,21 @@ public enum SDKRejection: Error, Equatable, Sendable {
     public var message: String {
         switch self {
         case .notFound:
-            "macos/arm64-release/libdev.dylib est introuvable dans ce choix."
+            Localization.text("macos/arm64-release/libdev.dylib est introuvable dans ce choix.")
         case .notRegularFile:
-            "libdev.dylib n'est pas un fichier ordinaire (lien symbolique, tube ou périphérique) : il est refusé."
+            Localization.text("libdev.dylib n'est pas un fichier ordinaire (lien symbolique, tube ou périphérique) : il est refusé.")
         case .notMachO:
-            "Ce fichier n'est pas une bibliothèque Mach-O."
+            Localization.text("Ce fichier n'est pas une bibliothèque Mach-O.")
         case let .noArm64(architectures):
-            "Ce SDK n'a pas de version pour Apple Silicon (\(architectures.joined(separator: ", ")))."
+            Localization.text("Ce SDK n'a pas de version pour Apple Silicon (\(architectures.joined(separator: ", "))).")
         case let .extractionFailed(reason):
-            "L'archive n'a pas pu être décompressée : \(reason)"
+            Localization.text("L'archive n'a pas pu être décompressée : \(reason)")
         case .outsideArchive:
-            "Ce choix contient un lien symbolique qui mène hors du dossier du SDK : il est refusé. Choisissez le SDK décompressé ou l'archive reçue."
+            Localization.text("Ce choix contient un lien symbolique qui mène hors du dossier du SDK : il est refusé. Choisissez le SDK décompressé ou l'archive reçue.")
         case .headersMissing:
-            "Choisissez l'archive ou le dossier du SDK : ses en-têtes sont nécessaires."
+            Localization.text("Choisissez l'archive ou le dossier du SDK : ses en-têtes sont nécessaires.")
         case .headersNotPlain:
-            "Les en-têtes du SDK contiennent un lien symbolique ou un fichier spécial : ils sont refusés."
+            Localization.text("Les en-têtes du SDK contiennent un lien symbolique ou un fichier spécial : ils sont refusés.")
         }
     }
 }
@@ -280,11 +280,11 @@ public enum SDKInspector {
                 finished.wait()
             }
             try? FileManager.default.removeItem(at: directory)
-            throw .extractionFailed("ditto n'a pas fini dans le délai imparti.")
+            throw .extractionFailed(Localization.text("ditto n'a pas fini dans le délai imparti."))
         }
         guard process.terminationStatus == 0 else {
             try? FileManager.default.removeItem(at: directory)
-            throw .extractionFailed("ditto a échoué (code \(process.terminationStatus)).")
+            throw .extractionFailed(Localization.text("ditto a échoué (code \(String(process.terminationStatus)))."))
         }
         return directory
     }

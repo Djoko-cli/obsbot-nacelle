@@ -4,7 +4,7 @@ import Testing
 @testable import PTZBotKit
 
 @MainActor
-@Suite("Panneau")
+@Suite("Panneau", .french)
 struct PanelModelTests {
     let transport = FakeAdminTransport()
     let scheduler = FakeScheduler()
@@ -100,13 +100,15 @@ struct PanelModelTests {
         ])
     }
 
-    @Test("Refus de ptzd : message affiché, effacé à l'action suivante")
+    @Test("Refus de ptzd : texte de l'app choisi d'après le code (pas celui de ptzd), effacé à l'action suivante")
     func errors() throws {
         try connect()
         try receive(.error(code: .badMessage, message: "Appareil inconnu."))
-        #expect(model.lastError == "Appareil inconnu.")
+        #expect(model.lastError == "ptzd a refusé ce message.")
         model.setPrivacy(false)
         #expect(model.lastError == nil)
+        try receive(.error(code: .uvcFailed, message: "Suivi IA non modifié (délai dépassé)."))
+        #expect(model.lastError == "Suivi IA non modifié : délai dépassé.")
     }
 
     @Test("Appairage : invitation affichée en QR, puis appareil nouveau : « appairé », fenêtre fermée 3 s après")

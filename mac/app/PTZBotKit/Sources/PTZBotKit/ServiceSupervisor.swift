@@ -41,24 +41,24 @@ public final class ServiceSupervisor {
     /// Délai entre SIGTERM et SIGKILL.
     public static let killDelay: TimeInterval = 5
     public static let enabledKey = "serviceEnabled"
-    public static let crashLoopReason = "ptzd s'arrête sans cesse : ouvrez le journal"
+    public nonisolated static var crashLoopReason: String { Localization.text("ptzd s'arrête sans cesse : ouvrez le journal") }
     /// ptzd ne sort pas même après SIGKILL : l'arrêt est abandonné, ptzd n'est plus relancé par ce chemin.
-    public static let unkillableReason = "ptzd ne s'arrête pas : ouvrez le journal"
+    public nonisolated static var unkillableReason: String { Localization.text("ptzd ne s'arrête pas : ouvrez le journal") }
 
     /// Codes de sortie de ptzd qui ne se corrigent pas en relançant : `failed`, sans relance.
     public static let busyStatus: Int32 = 75
     public static let configStatus: Int32 = 78
     public static let usageStatus: Int32 = 64
-    public static let configReason = "config.json est invalide : ouvrez le journal"
-    public static let usageReason = "Arguments de ptzd refusés"
+    public nonisolated static var configReason: String { Localization.text("config.json est invalide : ouvrez le journal") }
+    public nonisolated static var usageReason: String { Localization.text("Arguments de ptzd refusés") }
 
     /// Un 75 dans les `earlyBusyWindow` secondes du lancement : un ptzd mourant tient peut-être encore le verrou ;
     /// une seule relance, `earlyBusyDelay` secondes plus tard.
     public static let earlyBusyWindow: TimeInterval = 2
     public static let earlyBusyDelay: TimeInterval = 1
 
-    public static func busyReason(port: Int) -> String {
-        "Le port \(port) est déjà pris : un autre ptzd tourne peut-être encore"
+    public nonisolated static func busyReason(port: Int) -> String {
+        Localization.text("Le port \(String(port)) est déjà pris : un autre ptzd tourne peut-être encore")
     }
 
     public private(set) var state: State = .stopped
@@ -215,7 +215,7 @@ public final class ServiceSupervisor {
                 exited(exit)
             }
         } catch {
-            state = .failed(reason: "ptzd n'a pas pu être lancé : \(error.localizedDescription)")
+            state = .failed(reason: Localization.text("ptzd n'a pas pu être lancé : \(error.localizedDescription)"))
             return
         }
         process = launched

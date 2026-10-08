@@ -59,7 +59,7 @@ public enum ControlState: String, Codable, Sendable {
 }
 
 /// Codes d'erreur renvoyés à l'app.
-public enum ErrorCode: String, Codable, Sendable {
+public enum ErrorCode: String, Codable, Sendable, CaseIterable {
     case privacyActive
     case cameraAbsent
     case uvcFailed
@@ -78,6 +78,31 @@ public enum ErrorCode: String, Codable, Sendable {
     case notLocal
     /// Appareil expulsé par le Mac, pour quelques minutes (spec app Mac § 7.3).
     case blocked
+}
+
+/// Le message `uvcFailed` de ptzd quand obsbot-ai n'a pas pu changer le suivi IA : « Suivi IA non modifié (<motif>). ».
+/// ptzd le compose, l'app Mac en lit le motif pour afficher son propre texte traduit (spec distribution § 7.2) :
+/// les deux côtés partagent ces textes, en français comme le journal de ptzd.
+public enum AIFailureText {
+    public static let prefix = "Suivi IA non modifié ("
+    public static let suffix = ")."
+    public static let cameraNotFound = "caméra introuvable"
+    public static let sdkError = "erreur du SDK OBSBOT"
+    public static let timeout = "délai dépassé"
+    public static let launchFailed = "l'utilitaire n'a pas pu être lancé"
+    /// Suivi du code de sortie.
+    public static let unexpectedExitPrefix = "l'utilitaire s'est arrêté avec le code "
+
+    public static func message(motive: String) -> String {
+        prefix + motive + suffix
+    }
+
+    /// Le motif d'un message de ce format, nil sinon.
+    public static func motive(in message: String) -> String? {
+        guard message.hasPrefix(prefix), message.hasSuffix(suffix),
+              message.count >= prefix.count + suffix.count else { return nil }
+        return String(message.dropFirst(prefix.count).dropLast(suffix.count))
+    }
 }
 
 /// État complet publié par ptzd.

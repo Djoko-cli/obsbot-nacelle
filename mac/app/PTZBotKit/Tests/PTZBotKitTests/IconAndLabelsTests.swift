@@ -4,7 +4,7 @@ import NacelleProtocol
 import Testing
 @testable import PTZBotKit
 
-@Suite("Icône et libellés")
+@Suite("Icône et libellés", .french)
 struct IconAndLabelsTests {
     @Test("Icône : image modèle de 18 points de haut, presque carrée, décrite")
     func icon() throws {

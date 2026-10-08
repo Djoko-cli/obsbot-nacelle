@@ -97,7 +97,7 @@ enum FakeSDK {
     }
 }
 
-@Suite("SDK : examen du fichier choisi")
+@Suite("SDK : examen du fichier choisi", .french)
 struct SDKInspectorTests {
     @Test("En-têtes Mach-O : arm64 fin, x86_64 fin, universel, pas une bibliothèque, n'importe quoi")
     func machO() throws {

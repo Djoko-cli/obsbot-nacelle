@@ -4,7 +4,7 @@ import Testing
 @testable import PTZBotKit
 
 @MainActor
-@Suite("Lancement et arrêt de l'app")
+@Suite("Lancement et arrêt de l'app", .french)
 struct AppControllerTests {
     let root: URL
     let paths: AppPaths
@@ -401,7 +401,7 @@ final class Counter {
 }
 
 @MainActor
-@Suite("Fenêtre « SDK OBSBOT »")
+@Suite("Fenêtre « SDK OBSBOT »", .french)
 struct SDKWindowModelTests {
     static func installer(_ directory: URL, loads: Bool) -> SDKInstaller {
         let source = directory.appending(path: "obsbot-ai.cpp")
@@ -519,7 +519,7 @@ struct SDKWindowModelTests {
     }
 }
 
-@Suite("Textes du service et du SDK")
+@Suite("Textes du service et du SDK", .french)
 struct ServiceLabelsTests {
     @Test("État du service : supervision, puis connexion de confiance ; ancienne installation")
     func service() {

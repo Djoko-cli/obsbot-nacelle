@@ -123,7 +123,7 @@ struct SDKWorld {
     }
 }
 
-@Suite("SDK : installation et compilation d'obsbot-ai")
+@Suite("SDK : installation et compilation d'obsbot-ai", .french)
 struct SDKInstallerTests {
     let world: SDKWorld
 

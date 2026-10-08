@@ -176,3 +176,17 @@ struct ServerMessageTests {
         }
     }
 }
+
+@Suite("Message d'échec du suivi IA")
+struct AIFailureTextTests {
+    @Test("Composé par ptzd, relu par l'app : le motif revient tel quel ; un autre message n'en a pas")
+    func roundTrip() {
+        for motive in [AIFailureText.cameraNotFound, AIFailureText.sdkError, AIFailureText.timeout,
+                       AIFailureText.launchFailed, AIFailureText.unexpectedExitPrefix + "134", "motif nouveau"] {
+            #expect(AIFailureText.motive(in: AIFailureText.message(motive: motive)) == motive)
+        }
+        #expect(AIFailureText.message(motive: "délai dépassé") == "Suivi IA non modifié (délai dépassé).")
+        #expect(AIFailureText.motive(in: "La caméra a refusé la commande (x).") == nil)
+        #expect(AIFailureText.motive(in: "Suivi IA non modifié (") == nil)
+    }
+}

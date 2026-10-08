@@ -1,4 +1,5 @@
 import Foundation
+import NacelleProtocol
 
 /// Issue d'une exécution d'obsbot-ai (spec § 6.9, spec app Mac § 7.5).
 public enum AIResult: Equatable, Sendable {
@@ -13,11 +14,11 @@ public enum AIResult: Equatable, Sendable {
     public var userDescription: String {
         switch self {
         case .success: "réussi"
-        case .cameraNotFound: "caméra introuvable"
-        case .sdkError: "erreur du SDK OBSBOT"
-        case .timeout: "délai dépassé"
-        case .launchFailed: "l'utilitaire n'a pas pu être lancé"
-        case let .unexpectedExit(status): "l'utilitaire s'est arrêté avec le code \(status)"
+        case .cameraNotFound: AIFailureText.cameraNotFound
+        case .sdkError: AIFailureText.sdkError
+        case .timeout: AIFailureText.timeout
+        case .launchFailed: AIFailureText.launchFailed
+        case let .unexpectedExit(status): AIFailureText.unexpectedExitPrefix + String(status)
         }
     }
 }

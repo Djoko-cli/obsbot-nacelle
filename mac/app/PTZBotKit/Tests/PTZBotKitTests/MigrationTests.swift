@@ -76,7 +76,7 @@ final class FakeSleeper: Sendable {
     let slept = Mutex<TimeInterval>(0)
 }
 
-@Suite("Migration depuis l'ancienne installation")
+@Suite("Migration depuis l'ancienne installation", .french)
 struct LegacyAgentTests {
     let root: URL
     let agents: URL
@@ -295,7 +295,7 @@ struct FakeInterfaces: InterfaceAddressProvider {
     }
 }
 
-@Suite("config.json au premier lancement")
+@Suite("config.json au premier lancement", .french)
 struct ConfigBootstrapTests {
     @Test("Interface Tailscale : config.json écoute sur son adresse")
     func tailscale() throws {

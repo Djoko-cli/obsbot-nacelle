@@ -182,7 +182,7 @@ public final class AppController {
             configError = nil
             tailscaleMissing = outcome == .tailscaleMissing || ConfigBootstrap.listensOnLoopbackOnly(configURL: url)
         case let .failure(failure):
-            configError = "config.json n'a pas pu être créé : \(failure.reason)"
+            configError = Localization.text("config.json n'a pas pu être créé : \(failure.reason)")
         }
         onConfigReady?()
         // Pour le message d'un port déjà pris (sortie 75 de ptzd).

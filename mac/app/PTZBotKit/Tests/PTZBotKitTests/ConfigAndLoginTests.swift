@@ -3,7 +3,7 @@ import ServiceManagement
 import Testing
 @testable import PTZBotKit
 
-@Suite("Port de ptzd")
+@Suite("Port de ptzd", .french)
 struct PTZDConfigTests {
     private func load(_ json: String?) throws -> PTZDConfig {
         let url = FileManager.default.temporaryDirectory.appending(path: "ptzbot-\(UUID().uuidString).json")
@@ -29,7 +29,7 @@ struct PTZDConfigTests {
 }
 
 @MainActor
-@Suite("Ouverture à la connexion")
+@Suite("Ouverture à la connexion", .french)
 struct LoginItemModelTests {
     struct Failure: LocalizedError {
         var errorDescription: String? { "refusé" }

@@ -3,7 +3,7 @@ import Testing
 import Vision
 @testable import PTZBotKit
 
-@Suite("Image du QR code")
+@Suite("Image du QR code", .french)
 struct QRImageTests {
     let text = "nacelle://pair?v=1&id=1a2b3c4d&k=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&h=192.168.0.10,10.0.0.5&p=1985"
 
