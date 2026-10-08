@@ -41,6 +41,7 @@ extension Labels {
         return state == .running && connection == .unreachable
     }
 
+    /// L'état court, à droite de la ligne « SDK OBSBOT » ; l'explication va dessous (`sdkDetail`).
     public static func sdk(_ status: SDKStatus?) -> String {
         switch status {
         case .ready: "Prêt"
@@ -48,21 +49,94 @@ extension Labels {
         case .quarantined: "En quarantaine"
         case .incompatible: "Incompatible"
         case .unloadable: "Ne se charge pas"
-        case .verifierMissing: "obsbot-ai introuvable"
+        case .sourceMissing: "obsbot-ai introuvable"
+        case .toolsRequired: "Outils requis"
+        case .incomplete: "À compléter"
+        case .recompiling: "Recompilation…"
+        case .compileFailed: "Compilation impossible"
         case nil: "Vérification…"
         }
     }
 
-    /// Le bouton de la ligne SDK : « Changer… » quand il est prêt (la fenêtre reste joignable),
-    /// « Installer le SDK… » sinon ; aucun pendant la vérification.
-    public static func sdkAction(_ status: SDKStatus?) -> String? {
+    /// La petite ligne sous « SDK OBSBOT », sur toute la largeur : ce que l'état veut dire et quoi faire ; nil si
+    /// l'état se suffit. Quand les outils manquent et que le bouton les installe, elle le dit aussi.
+    public static func sdkDetail(_ status: SDKStatus?, toolsAvailable: Bool = true) -> String? {
+        var parts: [String] = []
         switch status {
-        case nil: nil
-        case .ready: "Changer…"
-        case .absent, .quarantined, .incompatible, .unloadable: "Installer le SDK…"
-        case .verifierMissing: nil
+        case .incomplete:
+            parts.append(sdkIncompleteDetail)
+        case let .toolsRequired(fallback):
+            parts.append(sdkToolsDetail)
+            if fallback {
+                parts.append(sdkFallback)
+            }
+        case let .compileFailed(fallback):
+            if fallback {
+                parts.append(sdkFallback)
+            }
+            parts.append(compileLogHint)
+        case .quarantined:
+            parts.append(sdkQuarantinedDetail)
+        case .incompatible:
+            parts.append(sdkIncompatibleDetail)
+        case .unloadable:
+            parts.append(sdkUnloadableDetail)
+        case .sourceMissing:
+            parts.append(sdkSourceMissingDetail)
+        case .ready, .absent, .recompiling, nil:
+            break
+        }
+        if case .toolsRequired = status {
+            // Déjà dit par sdkToolsDetail.
+        } else if sdkActionInstallsTools(status, toolsAvailable: toolsAvailable) {
+            parts.append(sdkToolsFirst)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
+    public static let sdkFallback = "L'ancien obsbot-ai reste en service."
+    public static let compileLogHint = "Le détail est dans le journal obsbot-ai-compilation.log."
+    public static let sdkIncompleteDetail = "Réinstallez le SDK depuis son archive ou son dossier : ses en-têtes manquent."
+    public static let sdkToolsDetail = "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai."
+    public static let sdkQuarantinedDetail = "Le SDK ne se charge pas : réinstallez-le pour retirer la quarantaine de sa copie."
+    public static let sdkIncompatibleDetail = "Ce SDK n'a pas de version pour Apple Silicon."
+    public static let sdkUnloadableDetail = "obsbot-ai ne charge pas ce SDK : réinstallez-le."
+    public static let sdkSourceMissingDetail = "La source d'obsbot-ai manque dans l'app : réinstallez PTZBot."
+    public static let sdkToolsFirst = "Installez d'abord les outils de développement d'Apple."
+
+    /// Le bouton de la ligne SDK : « Changer… » quand il est prêt (la fenêtre reste joignable), « Installer les
+    /// outils de développement… » quand ils manquent (obsbot-ai ne pourrait pas être compilé), « Installer le SDK… »
+    /// sinon ; aucun pendant la vérification ou la recompilation.
+    public static func sdkAction(_ status: SDKStatus?, toolsAvailable: Bool = true) -> String? {
+        if sdkActionInstallsTools(status, toolsAvailable: toolsAvailable) {
+            return installTools
+        }
+        switch status {
+        case nil, .recompiling, .sourceMissing: return nil
+        case .ready: return "Changer…"
+        case .toolsRequired: return installTools
+        case .absent, .quarantined, .incompatible, .unloadable, .incomplete, .compileFailed: return "Installer le SDK…"
         }
     }
+
+    /// Le bouton de la ligne SDK lance `xcode-select --install` plutôt que d'ouvrir la fenêtre « SDK OBSBOT » :
+    /// les outils manquent et le SDK est à installer (ou obsbot-ai à compiler). Sur le clic de l'utilisateur seulement.
+    public static func sdkActionInstallsTools(_ status: SDKStatus?, toolsAvailable: Bool = true) -> Bool {
+        switch status {
+        case .toolsRequired:
+            return true
+        case .absent, .quarantined, .incompatible, .unloadable, .incomplete, .compileFailed:
+            return !toolsAvailable
+        case nil, .ready, .recompiling, .sourceMissing:
+            return false
+        }
+    }
+
+    /// La fenêtre « SDK OBSBOT » quand les outils manquent : elle propose de les installer avant de choisir le SDK.
+    public static let sdkToolsExplanation = "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai avec le SDK. Installez-les, puis vérifiez à nouveau."
+    public static let checkToolsAgain = "Vérifier à nouveau"
+
+    public static let installTools = "Installer les outils de développement…"
 
     public static let replaceLegacy = "Remplacer l'ancienne installation…"
 
@@ -89,9 +163,10 @@ extension Labels {
         return tracking == .unknown ? "État inconnu" : nil
     }
 
-    /// Le suivi IA a besoin du SDK de l'app ; l'ancienne installation a le sien dans `lib/`.
+    /// Le suivi IA a besoin du SDK de l'app et d'un obsbot-ai qui le charge ; l'ancienne installation a le sien
+    /// dans `lib/`.
     public static func aiNeedsSDK(_ status: SDKStatus?, legacy: Bool) -> Bool {
-        !legacy && status != .ready
+        !legacy && status?.aiUsable != true
     }
 
     public static let sdkRequired = "SDK OBSBOT requis"

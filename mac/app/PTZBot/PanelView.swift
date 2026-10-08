@@ -60,8 +60,10 @@ struct PanelView: View {
         .padding(14)
         .frame(width: 320)
         .onAppear {
-            // Panneau ouvert : l'autorisation « Réseau local » a pu changer dans les Réglages.
+            // Panneau ouvert : l'autorisation « Réseau local » a pu changer dans les Réglages, et les outils de
+            // développement ont pu être installés.
             network.check()
+            Task { await app.panelOpened() }
         }
     }
 
@@ -119,15 +121,28 @@ struct PanelView: View {
                 }
             }
             Divider()
+            // À droite, l'état court seulement ; l'explication et le bouton vont dessous, sur toute la largeur
+            // (banc du 08/10 : un état long débordait sur six lignes et tronquait le bouton).
             PanelRow(icon: "shippingbox", title: "SDK OBSBOT") {
-                HStack(spacing: 6) {
-                    Text(Labels.sdk(app.sdkStatus)).foregroundStyle(.secondary)
-                    if let action = Labels.sdkAction(app.sdkStatus) {
-                        Button(action) {
+                Text(Labels.sdk(app.sdkStatus))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+            } notes: {
+                let tools = app.toolsAvailable ?? true
+                if let detail = Labels.sdkDetail(app.sdkStatus, toolsAvailable: tools) {
+                    PanelNote(detail)
+                }
+                if let action = Labels.sdkAction(app.sdkStatus, toolsAvailable: tools) {
+                    Button(action) {
+                        if Labels.sdkActionInstallsTools(app.sdkStatus, toolsAvailable: tools) {
+                            app.installDeveloperTools()
+                        } else {
                             openWindow.front(WindowID.sdk)
                         }
-                        .buttonStyle(.link)
                     }
+                    .buttonStyle(.link)
+                    .font(.caption)
                 }
             }
         }

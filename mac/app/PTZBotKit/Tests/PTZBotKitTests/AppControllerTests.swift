@@ -11,12 +11,24 @@ struct AppControllerTests {
     let launcher = FakeLauncher()
     let scheduler = FakeScheduler()
     let launchctl = FakeLaunchctl()
+    let toolchain = FakeToolchain()
     let supervisor: ServiceSupervisor
 
     init() throws {
         root = try FakeSDK.directory()
         paths = AppPaths(bundle: root.appending(path: "PTZBot.app"), home: root)
         supervisor = ServiceSupervisor(paths: paths.service, launcher: launcher, settings: FakeSettings(), scheduler: scheduler, parentPID: 4242)
+        try FakeSDK.write(Data("int main() { return 3; }\n".utf8), to: paths.obsbotAISource)
+    }
+
+    private func installer(sdkLoads: Bool = true) -> SDKInstaller {
+        SDKInstaller(
+            sdkDirectory: paths.sdkDirectory,
+            sourceURL: paths.obsbotAISource,
+            toolchain: toolchain,
+            verifier: FakeVerifier(sdkLoads).verifier,
+            buildLog: paths.obsbotAIBuildLog
+        )
     }
 
     private func controller(
@@ -38,7 +50,7 @@ struct AppControllerTests {
             ),
             configURL: paths.config,
             interfaces: interfaces.map { FakeInterfaces(interfaces: $0) } ?? FakeInterfaces(addresses: addresses),
-            sdkInstaller: SDKInstaller(sdkDirectory: paths.sdkDirectory, verifier: FakeVerifier(sdkLoads).verifier),
+            sdkInstaller: installer(sdkLoads: sdkLoads),
             scheduler: scheduler,
             confirmMigration: {
                 asked.value += 1
@@ -99,7 +111,7 @@ struct AppControllerTests {
         #expect(!ConfigBootstrap.listensOnLoopbackOnly(configURL: root.appending(path: "absent.json")))
     }
 
-    @Test("Ancienne installation, « Remplacer » : migration, puis ptzd de l'app ; SDK repris et prêt")
+    @Test("Ancienne installation, « Remplacer » : migration, puis ptzd de l'app ; SDK repris, à compléter (ni en-têtes ni obsbot-ai)")
     func replace() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         try installLegacy()
@@ -111,7 +123,7 @@ struct AppControllerTests {
         #expect(app.migrationError == nil)
         #expect(!supervisor.legacyAgentActive)
         #expect(supervisor.state == .running)
-        #expect(app.sdkStatus == .ready)
+        #expect(app.sdkStatus == .incomplete)
         #expect(FileManager.default.fileExists(atPath: paths.sdkDirectory.appending(path: "libdev.dylib").path))
         #expect(!app.tailscaleMissing)
     }
@@ -130,7 +142,7 @@ struct AppControllerTests {
         #expect(!FileManager.default.fileExists(atPath: paths.support.appending(path: "bin/ptzd").path))
         #expect(!FileManager.default.fileExists(atPath: paths.support.appending(path: "bin/obsbot-ai").path))
         #expect(FileManager.default.fileExists(atPath: paths.sdkDirectory.appending(path: "libdev.dylib").path))
-        #expect(app.sdkStatus == .ready)
+        #expect(app.sdkStatus == .incomplete)
         #expect(supervisor.state == .running)
     }
 
@@ -166,7 +178,7 @@ struct AppControllerTests {
         #expect(app.legacy == .none)
         #expect(!app.canReplaceLegacy)
         #expect(supervisor.state == .running)
-        #expect(app.sdkStatus == .ready)
+        #expect(app.sdkStatus == .incomplete)
         await app.offerMigration()
         #expect(asked.value == 3)
     }
@@ -197,6 +209,89 @@ struct AppControllerTests {
         #expect(app.legacy == .kept)
         #expect(app.migrationError == "L'ancienne installation n'a pas pu être arrêtée : code 5")
         #expect(launcher.launched.isEmpty)
+    }
+
+    @Test("Lancement après une mise à jour de l'app : obsbot-ai recompilé sans rien demander, puis prêt")
+    func recompileAtLaunch() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sdk = installer()
+        try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: sdk.libraryURL)
+        try FakeSDK.write(Data("// en-tête".utf8), to: sdk.headersURL.appending(path: "dev/devs.hpp"))
+        try FakeSDK.write(Data("ancien binaire".utf8), to: sdk.obsbotAIURL)
+        try FakeSDK.write(Data("empreinte de la version précédente\n".utf8), to: sdk.hashURL)
+        let app = controller()
+        await app.launch()
+        #expect(toolchain.compiled.count == 1)
+        #expect(app.sdkStatus == .ready)
+        #expect(!sdk.needsRecompile())
+    }
+
+    @Test("Outils absents : « Outils de développement requis » ; le bouton lance xcode-select --install ; panneau rouvert : état relu")
+    func developerTools() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sdk = installer()
+        try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: sdk.libraryURL)
+        try FakeSDK.write(Data("// en-tête".utf8), to: sdk.headersURL.appending(path: "dev/devs.hpp"))
+        toolchain.available.withLock { $0 = false }
+        let app = controller()
+        await app.launch()
+        #expect(app.sdkStatus == .toolsRequired(fallback: false))
+        app.installDeveloperTools()
+        for _ in 0..<200 where toolchain.installRequests.withLock({ $0 }) == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(toolchain.installRequests.withLock { $0 } == 1)
+        toolchain.available.withLock { $0 = true }
+        await app.panelOpened()
+        #expect(toolchain.compiled.count == 1)
+        #expect(app.sdkStatus == .ready)
+        // Prêt : rouvrir le panneau ne relit rien.
+        await app.panelOpened()
+        #expect(toolchain.compiled.count == 1)
+    }
+
+    @Test("Mac neuf sans outils d'Apple : le bouton de la ligne SDK installe les outils, avant tout choix du SDK")
+    func toolsMissingOnFreshMac() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        toolchain.available.withLock { $0 = false }
+        let app = controller()
+        await app.launch()
+        #expect(app.sdkStatus == .absent)
+        #expect(app.toolsAvailable == false)
+        let tools = app.toolsAvailable ?? true
+        #expect(Labels.sdkAction(app.sdkStatus, toolsAvailable: tools) == "Installer les outils de développement…")
+        #expect(Labels.sdkActionInstallsTools(app.sdkStatus, toolsAvailable: tools))
+        // Outils installés depuis : le panneau rouvert relit l'état, et le bouton redevient « Installer le SDK… ».
+        toolchain.available.withLock { $0 = true }
+        await app.panelOpened()
+        #expect(app.toolsAvailable == true)
+        #expect(Labels.sdkAction(app.sdkStatus, toolsAvailable: app.toolsAvailable ?? true) == "Installer le SDK…")
+    }
+
+    @Test("Vérifications du SDK simultanées : mises à la file, jamais une fausse « compilation impossible »")
+    func serializedRefresh() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sdk = installer()
+        try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: sdk.libraryURL)
+        try FakeSDK.write(Data("// en-tête".utf8), to: sdk.headersURL.appending(path: "dev/devs.hpp"))
+        try FakeSDK.write(Data("ancien binaire".utf8), to: sdk.obsbotAIURL)
+        try FakeSDK.write(Data("autre empreinte\n".utf8), to: sdk.hashURL)
+        // La compilation dure : une seconde vérification arrive pendant ce temps.
+        toolchain.during.withLock { $0 = { Thread.sleep(forTimeInterval: 0.3) } }
+        let app = controller()
+        let seen = StatusLog()
+        async let first: Void = app.refreshSDK()
+        async let second: Void = app.refreshSDK()
+        async let third: Void = { @MainActor in
+            for _ in 0..<40 {
+                seen.add(app.sdkStatus)
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+        }()
+        _ = await (first, second, third)
+        #expect(app.sdkStatus == .ready)
+        #expect(toolchain.compiled.count == 1)
+        #expect(!seen.values.contains { if case .compileFailed = $0 { true } else { false } })
     }
 
     @Test("ptzd sort avec 75 : « Le port <port de config.json> est déjà pris… », sans relance")
@@ -289,6 +384,16 @@ final class Answers {
     }
 }
 
+/// Les états du SDK vus pendant un essai.
+@MainActor
+final class StatusLog {
+    private(set) var values: [SDKStatus?] = []
+
+    func add(_ status: SDKStatus?) {
+        values.append(status)
+    }
+}
+
 /// Compteur partagé avec une fermeture.
 @MainActor
 final class Counter {
@@ -298,22 +403,37 @@ final class Counter {
 @MainActor
 @Suite("Fenêtre « SDK OBSBOT »")
 struct SDKWindowModelTests {
+    static func installer(_ directory: URL, loads: Bool) -> SDKInstaller {
+        let source = directory.appending(path: "obsbot-ai.cpp")
+        try? Data("int main() { return 3; }\n".utf8).write(to: source)
+        return SDKInstaller(
+            sdkDirectory: directory.appending(path: "sdk"),
+            sourceURL: source,
+            toolchain: FakeToolchain(),
+            verifier: FakeVerifier(loads).verifier,
+            buildLog: directory.appending(path: "compilation.log")
+        )
+    }
+
     @Test("Choix refusé : motif ; choix accepté puis autorisé : installé, dossier d'extraction effacé")
     func flow() async throws {
         let directory = try FakeSDK.directory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let installer = SDKInstaller(sdkDirectory: directory.appending(path: "sdk"), verifier: FakeVerifier(true).verifier)
+        let installer = Self.installer(directory, loads: true)
         let model = SDKWindowModel(installer: installer)
         var installed = 0
         model.onInstalled = { installed += 1 }
 
-        let text = try FakeSDK.write(Data("texte".utf8), to: directory.appending(path: "texte.dylib"))
-        await model.choose(text)
+        try FakeSDK.folder(directory.appending(path: "texte"), library: Data("texte".utf8))
+        await model.choose(directory.appending(path: "texte"))
         #expect(model.phase == .rejected("Ce fichier n'est pas une bibliothèque Mach-O."))
+        let alone = try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: directory.appending(path: "seul/libdev.dylib"))
+        await model.choose(alone)
+        #expect(model.phase == .rejected("Choisissez l'archive ou le dossier du SDK : ses en-têtes sont nécessaires."))
 
-        let library = try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: directory.appending(path: "choix/libdev.dylib"))
+        let library = try FakeSDK.folder(directory.appending(path: "choix"))
         FakeSDK.setQuarantine(library)
-        await model.choose(library)
+        await model.choose(directory.appending(path: "choix"))
         guard case let .candidate(candidate) = model.phase else {
             Issue.record("candidat attendu")
             return
@@ -335,7 +455,7 @@ struct SDKWindowModelTests {
         let extraction = directory.appending(path: "extraction")
         let library = try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: extraction.appending(path: "macos/arm64-release/libdev.dylib"))
         let model = SDKWindowModel(
-            installer: SDKInstaller(sdkDirectory: directory.appending(path: "sdk"), verifier: FakeVerifier(true).verifier),
+            installer: Self.installer(directory, loads: true),
             inspect: { _ throws(SDKRejection) in
                 Thread.sleep(forTimeInterval: 0.2)
                 return SDKCandidate(path: library, architectures: ["arm64"], temporaryDirectory: extraction)
@@ -351,13 +471,48 @@ struct SDKWindowModelTests {
         #expect(!FileManager.default.fileExists(atPath: extraction.path))
     }
 
+    @Test("Outils absents : la fenêtre propose de les installer avant le choix ; xcode-select --install sur clic seulement")
+    func toolsFirst() async throws {
+        let directory = try FakeSDK.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let toolchain = FakeToolchain(available: false)
+        let source = try FakeSDK.write(Data("int main() { return 3; }\n".utf8), to: directory.appending(path: "obsbot-ai.cpp"))
+        let model = SDKWindowModel(installer: SDKInstaller(
+            sdkDirectory: directory.appending(path: "sdk"),
+            sourceURL: source,
+            toolchain: toolchain,
+            verifier: FakeVerifier(true).verifier,
+            buildLog: directory.appending(path: "compilation.log")
+        ))
+        #expect(model.toolsAvailable)
+        await model.checkTools()
+        #expect(!model.toolsAvailable)
+        #expect(toolchain.installRequests.withLock { $0 } == 0)
+        model.installTools()
+        for _ in 0..<200 where toolchain.installRequests.withLock({ $0 }) == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(toolchain.installRequests.withLock { $0 } == 1)
+        toolchain.available.withLock { $0 = true }
+        await model.checkTools()
+        #expect(model.toolsAvailable)
+        // Outils disparus entre la vérification et l'installation : la fenêtre repasse aux outils.
+        try FakeSDK.folder(directory.appending(path: "choix"))
+        await model.choose(directory.appending(path: "choix"))
+        toolchain.available.withLock { $0 = false }
+        await model.authorize()
+        #expect(model.phase == .failed(SDKInstallError.toolsMissing.message))
+        #expect(!model.toolsAvailable)
+    }
+
     @Test("Vérification en échec : message, rien n'est installé")
     func failure() async throws {
         let directory = try FakeSDK.directory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let installer = SDKInstaller(sdkDirectory: directory.appending(path: "sdk"), verifier: FakeVerifier(false).verifier)
+        let installer = Self.installer(directory, loads: false)
         let model = SDKWindowModel(installer: installer)
-        await model.choose(try FakeSDK.write(FakeSDK.thin(FakeSDK.arm64), to: directory.appending(path: "libdev.dylib")))
+        try FakeSDK.folder(directory.appending(path: "choix"))
+        await model.choose(directory.appending(path: "choix"))
         await model.authorize()
         #expect(model.phase == .failed(SDKInstallError.unloadable.message))
         #expect(!FileManager.default.fileExists(atPath: installer.libraryURL.path))
@@ -398,7 +553,7 @@ struct ServiceLabelsTests {
         #expect(Labels.sdk(.quarantined) == "En quarantaine")
         #expect(Labels.sdk(.incompatible) == "Incompatible")
         #expect(Labels.sdk(.unloadable) == "Ne se charge pas")
-        #expect(Labels.sdk(.verifierMissing) == "obsbot-ai introuvable")
+        #expect(Labels.sdk(.sourceMissing) == "obsbot-ai introuvable")
         #expect(Labels.sdk(nil) == "Vérification…")
         #expect(Labels.aiNeedsSDK(.absent, legacy: false))
         #expect(Labels.aiNeedsSDK(nil, legacy: false))
@@ -409,8 +564,53 @@ struct ServiceLabelsTests {
         #expect(Labels.sdkAction(.absent) == "Installer le SDK…")
         #expect(Labels.sdkAction(.quarantined) == "Installer le SDK…")
         #expect(Labels.sdkAction(nil) == nil)
-        #expect(Labels.sdkAction(.verifierMissing) == nil)
+        #expect(Labels.sdkAction(.sourceMissing) == nil)
         #expect(Labels.replaceLegacy == "Remplacer l'ancienne installation…")
+    }
+
+    @Test("SDK : nouveaux états de la compilation locale, boutons et notes (spec distribution § 6.4)")
+    func compileStates() {
+        // États courts, à droite de la ligne (banc du 08/10) ; l'explication va dessous.
+        #expect(Labels.sdk(.toolsRequired(fallback: false)) == "Outils requis")
+        #expect(Labels.sdk(.incomplete) == "À compléter")
+        #expect(Labels.sdk(.recompiling) == "Recompilation…")
+        #expect(Labels.sdk(.compileFailed(fallback: false)) == "Compilation impossible")
+        let everyStatus: [SDKStatus?] = [nil, .ready, .absent, .quarantined, .incompatible, .unloadable, .sourceMissing,
+                                         .toolsRequired(fallback: false), .incomplete, .recompiling, .compileFailed(fallback: true)]
+        #expect(everyStatus.allSatisfy { Labels.sdk($0).count <= 22 })
+        #expect(Labels.sdkDetail(.incomplete) == "Réinstallez le SDK depuis son archive ou son dossier : ses en-têtes manquent.")
+        #expect(Labels.sdkDetail(.incomplete, toolsAvailable: false) == "Réinstallez le SDK depuis son archive ou son dossier : ses en-têtes manquent. Installez d'abord les outils de développement d'Apple.")
+        #expect(Labels.sdkDetail(.absent, toolsAvailable: false) == "Installez d'abord les outils de développement d'Apple.")
+        #expect(Labels.sdkDetail(.absent) == nil)
+        #expect(Labels.sdkDetail(.ready) == nil)
+        #expect(Labels.sdkDetail(.recompiling) == nil)
+        #expect(Labels.sdkDetail(.quarantined) == "Le SDK ne se charge pas : réinstallez-le pour retirer la quarantaine de sa copie.")
+        #expect(Labels.sdkDetail(.incompatible) == "Ce SDK n'a pas de version pour Apple Silicon.")
+        #expect(Labels.sdkDetail(.unloadable) == "obsbot-ai ne charge pas ce SDK : réinstallez-le.")
+        #expect(Labels.sdkDetail(.sourceMissing) == "La source d'obsbot-ai manque dans l'app : réinstallez PTZBot.")
+        #expect(Labels.sdkAction(.toolsRequired(fallback: true)) == "Installer les outils de développement…")
+        #expect(Labels.sdkActionInstallsTools(.toolsRequired(fallback: false)))
+        #expect(!Labels.sdkActionInstallsTools(.absent))
+        #expect(Labels.sdkAction(.incomplete) == "Installer le SDK…")
+        #expect(Labels.sdkAction(.compileFailed(fallback: true)) == "Installer le SDK…")
+        #expect(Labels.sdkAction(.recompiling) == nil)
+        // Outils absents : le bouton installe d'abord les outils, pour un SDK absent, à compléter ou à réinstaller.
+        for status in [SDKStatus.absent, .incomplete, .unloadable, .quarantined] {
+            #expect(Labels.sdkAction(status, toolsAvailable: false) == "Installer les outils de développement…")
+            #expect(Labels.sdkActionInstallsTools(status, toolsAvailable: false))
+            #expect(!Labels.sdkActionInstallsTools(status, toolsAvailable: true))
+        }
+        #expect(Labels.sdkAction(.ready, toolsAvailable: false) == "Changer…")
+        #expect(Labels.sdkAction(.recompiling, toolsAvailable: false) == nil)
+        #expect(Labels.sdkDetail(.toolsRequired(fallback: true)) == "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai. L'ancien obsbot-ai reste en service.")
+        #expect(Labels.sdkDetail(.toolsRequired(fallback: false), toolsAvailable: false) == "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai.")
+        #expect(Labels.sdkDetail(.compileFailed(fallback: false)) == "Le détail est dans le journal obsbot-ai-compilation.log.")
+        #expect(Labels.sdkDetail(.compileFailed(fallback: true)) == "L'ancien obsbot-ai reste en service. Le détail est dans le journal obsbot-ai-compilation.log.")
+        // Ancien obsbot-ai en service : le suivi IA reste disponible.
+        #expect(!Labels.aiNeedsSDK(.toolsRequired(fallback: true), legacy: false))
+        #expect(Labels.aiNeedsSDK(.toolsRequired(fallback: false), legacy: false))
+        #expect(Labels.aiNeedsSDK(.incomplete, legacy: false))
+        #expect(Labels.aiNeedsSDK(.recompiling, legacy: false))
     }
 
     @Test("Sections du panneau : Service, Caméra avec son état, iPhone connectés, note du suivi IA")
@@ -501,7 +701,11 @@ struct ServiceLabelsTests {
     func paths() {
         let paths = AppPaths(bundle: URL(fileURLWithPath: "/Applications/PTZBot.app"), home: URL(fileURLWithPath: "/maison/exemple"))
         #expect(paths.ptzd.path == "/Applications/PTZBot.app/Contents/Helpers/ptzd")
-        #expect(paths.obsbotAI.path == "/Applications/PTZBot.app/Contents/Helpers/obsbot-ai")
+        // obsbot-ai est compilé chez l'utilisateur, à côté du SDK ; l'app ne livre que sa source.
+        #expect(paths.obsbotAI.path == "/maison/exemple/Library/Application Support/ObsbotNacelle/sdk/obsbot-ai")
+        #expect(paths.obsbotAISource.path == "/Applications/PTZBot.app/Contents/Resources/obsbot-ai.cpp")
+        #expect(paths.obsbotAIBuildLog.path == "/maison/exemple/Library/Logs/obsbot-nacelle/obsbot-ai-compilation.log")
+        #expect(paths.service.ai == paths.obsbotAI)
         #expect(paths.sdkDirectory.path == "/maison/exemple/Library/Application Support/ObsbotNacelle/sdk")
         #expect(paths.config.path == "/maison/exemple/Library/Application Support/ObsbotNacelle/config.json")
         #expect(paths.ptzdLog.path == "/maison/exemple/Library/Logs/obsbot-nacelle/ptzd.log")

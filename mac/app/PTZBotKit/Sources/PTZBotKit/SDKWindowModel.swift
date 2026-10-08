@@ -16,6 +16,9 @@ public final class SDKWindowModel {
     }
 
     public private(set) var phase: Phase = .choosing
+    /// Les outils de développement d'Apple sont installés ; sinon la fenêtre propose de les installer d'abord
+    /// (spec distribution § 6.1).
+    public private(set) var toolsAvailable = true
     @ObservationIgnored private let installer: SDKInstaller
     @ObservationIgnored private let inspect: @Sendable (URL) throws(SDKRejection) -> SDKCandidate
     /// Change à chaque choix et à chaque fermeture : un examen dépassé est jeté avec son dossier d'extraction.
@@ -29,6 +32,18 @@ public final class SDKWindowModel {
     ) {
         self.installer = installer
         self.inspect = inspect
+    }
+
+    /// Vérifie les outils de développement (à l'ouverture de la fenêtre, et sur « Vérifier à nouveau »).
+    public func checkTools() async {
+        let toolchain = installer.toolchain
+        toolsAvailable = await Task.detached { toolchain.isAvailable() }.value
+    }
+
+    /// « Installer les outils de développement… » : `xcode-select --install`, sur le clic de l'utilisateur seulement.
+    public func installTools() {
+        let toolchain = installer.toolchain
+        Task.detached { toolchain.requestInstall() }
     }
 
     /// Examine le fichier ou le dossier choisi, hors du fil principal.
@@ -66,6 +81,9 @@ public final class SDKWindowModel {
             phase = .installed
             onInstalled?()
         case let .failure(error):
+            if error == .toolsMissing {
+                toolsAvailable = false
+            }
             phase = .failed(error.message)
         }
     }
