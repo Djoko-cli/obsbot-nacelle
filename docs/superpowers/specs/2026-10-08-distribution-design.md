@@ -111,6 +111,8 @@ Ils sont repris de maillage-thread avec leurs tests, puis adaptés de trois faç
 
 ### 6.2 Installation (une seule transaction)
 
+> Le déroulé réel (préparation dans `sdk/new/` avec un journal `.transaction`, quatre éléments échangés : `libdev.dylib`, `include`, `obsbot-ai`, `obsbot-ai.sha256`, ancien fichier gardé par lien dur `.old`) est précisé et corrigé au § 12, qui prime sur les étapes ci-dessous.
+
 1. Le SDK est examiné comme dans B1 : architecture, signature ancrée chez Apple, provenance, quarantaine. L'utilisateur confirme.
 2. Les en-têtes sont copiés dans `sdk/include.new/`, et `libdev.dylib` dans `sdk/libdev.dylib.new`, sans quarantaine.
 3. `clang++ -std=c++17 -O2 -I <include.new> -L <dossier de .new> -ldev -o sdk/obsbot-ai.new <Resources/obsbot-ai.cpp>`. Le binaire n'a pas de chemin de recherche intégré, et l'éditeur de liens le signe en local.
@@ -170,7 +172,7 @@ Au lancement, si l'empreinte de `Resources/obsbot-ai.cpp` diffère de `sdk/obsbo
 
 - **PTZBotKit :**
   - la compilation, avec un compilateur injecté (succès, échec, outils absents) ;
-  - la transaction à trois éléments et son retour en arrière ;
+  - la transaction à quatre éléments (§ 12) et son retour en arrière ;
   - la recompilation sur une empreinte différente ;
   - les codes d'erreur traduits ;
   - le catalogue complet ;
