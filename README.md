@@ -178,8 +178,6 @@ Removing an iPhone: in PTZBot on the Mac, **Devices…** › **Remove…**; its 
 
 With a free Apple account, the app expires after 7 days: redo step 2.
 
-Icon (optional): put an `ios/Local/Assets.xcassets` catalog holding an `AppIcon` icon set (one 1024 × 1024 image), and add `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon` to `ios/Config/Local.xcconfig`. The `ios/Local/` folder is not versioned: without it, the app builds with the default icon.
-
 Tests: `(cd ios && xcodegen && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build)`.
 
 ### go2rtc
@@ -420,8 +418,6 @@ Prérequis : Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew ins
 Retirer un iPhone : dans PTZBot sur le Mac, **Appareils…** › **Retirer…** ; ses connexions sont coupées tout de suite, après un message qui l'informe : l'iPhone connecté oublie son appairage et revient à l'écran d'appairage. Un iPhone hors connexion à ce moment l'apprend à sa prochaine connexion par Tailscale ; sur le réseau local, il est simplement refusé et affiche « Mac injoignable » : sur lui, « Oublier cet appairage », puis scanner un nouveau QR code. En ligne de commande, `ptzd devices` donne le début de son identifiant, puis `ptzd revoke <début>` ; ses connexions déjà ouvertes durent alors jusqu'à leur fin. Depuis l'iPhone, « Oublier cet appairage » le retire aussi de la liste du Mac quand il est connecté.
 
 Avec un compte Apple gratuit, l'app expire au bout de 7 jours : refaire l'étape 2.
-
-Icône (facultative) : déposer un catalogue `ios/Local/Assets.xcassets` contenant un jeu d'icônes `AppIcon` (une image 1024 × 1024), et ajouter `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon` à `ios/Config/Local.xcconfig`. Le dossier `ios/Local/` n'est pas versionné : sans lui, l'app se compile avec l'icône par défaut.
 
 Tests : `(cd ios && xcodegen && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build)`.
 

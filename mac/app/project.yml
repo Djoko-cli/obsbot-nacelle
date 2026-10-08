@@ -64,6 +64,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.djoko-cli.ptzbot
         PRODUCT_NAME: PTZBot
+        # L'icône de l'app (Assets.xcassets), la même que sur l'iPhone.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # La version publiée (outils/publier.sh) ; le numéro de compilation, que compare Sparkle, est donné à la
         # publication : le nombre de commits de main. Une compilation de travail garde 1 : Sparkle n'y démarre pas.
         MARKETING_VERSION: "1.0.0"

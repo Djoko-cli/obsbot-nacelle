@@ -26,9 +26,6 @@ targets:
     platform: iOS
     sources:
       - Nacelle
-      # Ressources locales non versionnées (icône), facultatives : voir README.
-      - path: Local
-        optional: true
     dependencies:
       - package: NacelleProtocol
       - package: WebRTC
@@ -56,6 +53,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
+        # L'icône de l'app (Assets.xcassets), la même que sur le Mac.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   NacelleTests:
     type: bundle.unit-test
     platform: iOS
