@@ -1,13 +1,14 @@
 #!/bin/bash
-# Compile PTZBot pour Mac, avec ptzd et obsbot-ai dans Contents/Helpers, l'installe dans
-# ~/Applications/PTZBot.app et la lance (spec ptzd dans l'app § 5.7).
-# Le script ne touche ni à launchd, ni à bin/, ni à lib/ : au premier lancement, l'app propose
-# de remplacer l'ancienne installation, puis accompagne l'installation du SDK OBSBOT.
+# Compile PTZBot pour Mac depuis les sources (compilation de travail), avec ptzd dans Contents/Helpers et la source
+# d'obsbot-ai dans Contents/Resources, l'installe dans ~/Applications/PTZBot.app et la lance (spec ptzd dans l'app
+# § 5.7, spec distribution § 5.4). Les versions publiées s'installent plutôt depuis l'image disque (README).
+# Le script ne touche ni à launchd, ni à bin/, ni à lib/ : au premier lancement, l'app propose de remplacer
+# l'ancienne installation, puis accompagne l'installation du SDK OBSBOT, avec lequel elle compile obsbot-ai.
+# Une compilation de travail garde le numéro de compilation 1 : Sparkle n'y cherche jamais de mise à jour.
 # Usage : scripts/install-mac.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SDK="$ROOT/vendor/obsbot-sdk"
 APP="$HOME/Applications/PTZBot.app"
 APP_ID="io.github.djoko-cli.ptzbot"
 BUILT="$ROOT/mac/app/.build/Build/Products/Release/PTZBot.app"
@@ -17,18 +18,12 @@ if [ "$#" -ne 0 ]; then
     exit 2
 fi
 
-# obsbot-ai se compile avec les en-têtes du SDK ; le SDK lui-même n'entre jamais dans l'app.
-if [ ! -f "$SDK/include/dev/devs.hpp" ] || [ ! -f "$SDK/macos/arm64-release/libdev.dylib" ]; then
-    echo "SDK OBSBOT introuvable dans $SDK : décompressez-y l'archive reçue d'OBSBOT pour compiler obsbot-ai." >&2
-    exit 1
-fi
-
 if ! command -v xcodegen >/dev/null; then
     echo "xcodegen introuvable : brew install xcodegen" >&2
     exit 1
 fi
 
-echo "Compilation de PTZBot pour Mac (avec ptzd et obsbot-ai)…"
+echo "Compilation de PTZBot pour Mac (avec ptzd et la source d'obsbot-ai)…"
 (cd "$ROOT/mac/app" && xcodegen -q && xcodebuild build -project PTZBot.xcodeproj -scheme PTZBot \
     -configuration Release -destination 'platform=macOS,arch=arm64' -derivedDataPath .build -quiet)
 "$ROOT/mac/app/check-bundle.sh" "$BUILT" >/dev/null
@@ -69,5 +64,6 @@ if [ "$OPENED" = 0 ]; then
 fi
 echo "PTZBot est dans la barre des menus."
 echo "Au premier lancement, il propose de remplacer l'ancienne installation de ptzd s'il en trouve une."
-echo "Le SDK OBSBOT s'installe depuis son panneau : SDK OBSBOT › Installer le SDK…"
+echo "Le SDK OBSBOT s'installe depuis son panneau : SDK OBSBOT › Installer le SDK… ; PTZBot y compile obsbot-ai"
+echo "avec les outils de développement d'Apple (xcode-select --install s'ils manquent)."
 echo "Journal : tail -f \"$HOME/Library/Logs/obsbot-nacelle/ptzd.log\""

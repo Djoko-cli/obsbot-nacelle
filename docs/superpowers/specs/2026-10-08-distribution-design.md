@@ -81,7 +81,7 @@ Ils sont repris de maillage-thread avec leurs tests, puis adaptés de trois faç
 2. **Utilitaires :** `Contents/Helpers/*` entre dans le code à signer, après les cadres et avant l'app.
 3. **Contenu interdit :** les règles du § 5.1 s'ajoutent au contrôle du contenu du DMG.
 
-**Contrôle d'anonymisation.** Celui de maillage-thread est privé. Ici, la vérification de fuite des commits (adresses hors liste autorisée, noms `*.ts.net`, chemins `/Users/…`) s'applique au contenu du DMG, aux notes et au flux.
+**Contrôle d'anonymisation.** Celui de maillage-thread est privé. Ici, la vérification de fuite des commits (adresses hors liste autorisée, noms Tailscale, chemins personnels) s'applique au contenu du DMG, aux notes et au flux.
 
 **Le reste est inchangé :**
 - vérifications : `main` propre et à jour, version nouvelle, tests verts ;
@@ -199,3 +199,46 @@ Au lancement, si l'empreinte de `Resources/obsbot-ai.cpp` diffère de `sdk/obsbo
 - L'app iOS n'est pas distribuée ainsi : elle est signée avec le compte de chacun.
 - Le journal et la ligne de commande de `ptzd` restent en français.
 - La licence de redistribution du SDK est au backlog. Si OBSBOT l'accorde, `obsbot-ai` et le SDK pourront entrer dans le DMG, et la compilation locale servira de repli.
+
+## 12. Amendements (prototype)
+
+Le prototype (branche `proto/b2`) a été relu par Opus le 08/10. Ces points précisent la spec ou s'en écartent.
+
+### Compilation locale d'`obsbot-ai`
+
+- **Préparation dans `sdk/new/`, sous les noms définitifs** (`libdev.dylib`, `include/`, `obsbot-ai`, `obsbot-ai.sha256`), et non `*.new`. `-ldev` et `DYLD_LIBRARY_PATH` cherchent tous deux le nom `libdev.dylib`.
+- **Journal.** Avant le premier échange, `sdk/new/.transaction` liste les éléments échangés et ceux qui n'avaient pas de version précédente.
+  - Après un arrêt, la reprise remet chaque `.old` et retire les éléments neufs déjà en place.
+  - La validation consiste à retirer le journal, puis `sdk/new/`. Un `sdk/new/` vide sans journal compte comme validé.
+  - Un `sdk/new/` non vide sans journal compte comme « échange pas commencé » : il est effacé.
+  - Si l'annulation d'un échange échoue, le journal et `sdk/new/` restent, et la reprise suivante l'achève.
+  - Le `libdev.dylib.new` laissé par B1 est effacé à la reprise.
+- **Groupe de processus.** clang++ est lancé dans son propre groupe : un délai dépassé arrête aussi `clang -cc1` et `ld`.
+- **Outils absents.** Le panneau et la fenêtre « SDK OBSBOT » proposent « Installer les outils de développement… » avant tout choix du SDK, pour un SDK absent ou à compléter comme pour une recompilation. `xcode-select --install` n'est lancé que sur le clic de l'utilisateur.
+- Les vérifications du SDK sont mises à la file : jamais de fausse « compilation impossible » pendant une recompilation.
+- **Ligne SDK du panneau** (banc du 08/10) : à droite, un état court seulement (« Prêt », « Absent », « À compléter », « En quarantaine », « Incompatible », « Ne se charge pas », « Outils requis », « Recompilation… », « Compilation impossible », « obsbot-ai introuvable »).
+  - L'explication et le bouton vont sur une petite ligne dessous, sur toute la largeur. Ils remplacent les états longs du § 6.4.
+  - Pied du panneau : « Rechercher les mises à jour… » seul sur sa ligne, au-dessus de « Réglages… » et « Quitter ».
+
+### Bilingue
+
+- **Langue choisie explicitement**, au lieu de `Bundle.module` : le français si l'utilisateur le préfère à l'anglais, l'anglais sinon.
+  - La règle est `Bundle.preferredLocalizations(from: ["fr", "en"])`, appliquée aux langues préférées.
+  - Les textes sont lus dans `fr.lproj` ou `en.lproj` de PTZBotKit.
+  - Hors d'une app, `Bundle.module` prend l'anglais même sur un Mac en français.
+- **Réglage « Langue »** dans la fenêtre Réglages (banc du 08/10) : Automatique (la règle ci-dessus), Français ou English, appliqué tout de suite et retenu (`appLanguage`). Pour les fenêtres de Sparkle, choisies par macOS au lancement, le choix est recopié dans `AppleLanguages` du domaine de l'app (`["fr"]` ou `["en"]`, retiré en automatique) : elles suivent au prochain lancement.
+- **Le motif d'échec du suivi IA** (`uvcFailed`) est composé par `ptzd` et relu par l'app d'après les mêmes textes, `AIFailureText` de NacelleProtocol.
+
+### Mises à jour et publication
+
+- **`SUVerifyUpdateBeforeExtraction`** est à vrai dès 1.0.0 : la signature Ed25519 est toujours exigée, sans repli sur la signature de code. La publication le vérifie dans l'app compilée.
+  - `SURequireSignedFeed` n'est pas activé : il faudrait signer tout le flux à chaque publication.
+- **`--notes`** : les notes sont à la racine du dépôt, et `publier.sh` se place dans `mac/app`.
+- **Contrôle de fuite.** Chaque trouvaille est jugée par son jeton entier : l'adresse ou le nom complet doit être dans la liste autorisée.
+  - Dans le DMG seulement, les OID de RSA et d’Apple (arc `1.2.840`, puis `113549` ou `113635`), que porte `Autoupdate` de Sparkle, sont admis comme jetons.
+- **Utilitaires.** Après la signature, chaque utilitaire est relu : aucun droit, et le runtime renforcé présent. Un élément de `Contents/Helpers` qui n'est pas un exécutable ordinaire est refusé.
+- **Aucun binaire Mach-O** de l'app ne doit dépendre de `libdev` (`otool -L`), ni dans `check-bundle.sh`, ni dans la publication.
+- **Révision de Sparkle.** `sign_update` et `generate_keys`, pris dans le paquet résolu, exigent la révision de l'étiquette 2.10.0 (`eef1a539…`), lue dans `workspace-state.json`.
+  - xcodegen n'accepte qu'une exigence par paquet : `project.yml` garde `exactVersion`.
+- **`strip -S` de `ptzd`** dans une compilation de publication : ses symboles de débogage nommaient `.build` sous le dossier personnel.
+- **`sparkle-cli`** n'est pas dans les artefacts du paquet. La répétition le compile depuis la source 2.10.0.
