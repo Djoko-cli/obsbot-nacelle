@@ -7,10 +7,13 @@
 // Se termine quand l'entrée se ferme. Lancé par ptzd, seulement pendant qu'un client pilote.
 // En mode serve, la vraie sortie standard est réservée aux réponses : tout ce que le SDK écrit sur la
 // sortie standard va vers l'erreur standard (le journal), pour ne jamais se mêler aux réponses.
+// En mode serve, un fil surveille aussi le parent : si ptzd meurt pendant que le SDK bloque le fil principal,
+// on sort quand même, pour ne jamais laisser un utilitaire orphelin qui garde la caméra.
 #include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <dev/devs.hpp>
+#include <fcntl.h>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -57,9 +60,23 @@ static void reply(std::FILE *replies, const char *text) {
 }
 
 static int serve() {
+    // ptzd mort (même tué par SIGKILL) pendant que le SDK bloque le fil principal : on sort quand même,
+    // sans destructeurs (le système libère l'accès USB), pour ne jamais laisser deux utilitaires.
+    const pid_t parent = getppid();
+    if (parent == 1) {
+        _exit(0);
+    }
+    std::thread([parent] {
+        while (getppid() == parent) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        _exit(0);
+    }).detach();
     // La vraie sortie standard devient le canal des réponses ; le descripteur 1 pointe désormais sur
-    // l'erreur standard, où va tout le bruit du SDK.
-    std::FILE *replies = fdopen(dup(1), "w");
+    // l'erreur standard, où va tout le bruit du SDK. Copie en close-on-exec : un processus lancé par le SDK
+    // ne doit pas garder ce tuyau ouvert.
+    const int replyFd = fcntl(1, F_DUPFD_CLOEXEC, 3);
+    std::FILE *replies = replyFd >= 0 ? fdopen(replyFd, "w") : nullptr;
     if (replies == nullptr || dup2(2, 1) < 0) {
         std::fprintf(stderr, "obsbot-ai : sortie des réponses indisponible\n");
         return 2;
