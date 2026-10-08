@@ -1,0 +1,2063 @@
+{
+  "sourceLanguage": "fr",
+  "strings": {
+    "%@ (indiquée dans l'archive)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (stated in the archive)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (indiquée dans l'archive)"
+          }
+        }
+      }
+    },
+    "%@ (équipe %@)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (team %@)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (équipe %@)"
+          }
+        }
+      }
+    },
+    "%@ n'a pas pu être mis à la corbeille : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ could not be moved to the Trash: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ n'a pas pu être mis à la corbeille : %@"
+          }
+        }
+      }
+    },
+    "%@ · depuis %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · since %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · depuis %@"
+          }
+        }
+      }
+    },
+    "Absent": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Missing"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Absent"
+          }
+        }
+      }
+    },
+    "Actif": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Active"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actif"
+          }
+        }
+      }
+    },
+    "Ancienne installation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous installation"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ancienne installation"
+          }
+        }
+      }
+    },
+    "Appareil expulsé pour quelques minutes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device kicked out for a few minutes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appareil expulsé pour quelques minutes."
+          }
+        }
+      }
+    },
+    "Appareil inconnu : appairez-le depuis PTZBot sur le Mac.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown device: pair it from PTZBot on the Mac."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appareil inconnu : appairez-le depuis PTZBot sur le Mac."
+          }
+        }
+      }
+    },
+    "Apple Silicon : ✓": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Silicon: ✓"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Silicon : ✓"
+          }
+        }
+      }
+    },
+    "Apple Silicon : ✗ (%@)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Silicon: ✗ (%@)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Silicon : ✗ (%@)"
+          }
+        }
+      }
+    },
+    "Architecture": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Architecture"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Architecture"
+          }
+        }
+      }
+    },
+    "Arguments de ptzd refusés": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ptzd arguments refused"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arguments de ptzd refusés"
+          }
+        }
+      }
+    },
+    "Arrêté": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopped"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arrêté"
+          }
+        }
+      }
+    },
+    "Aucun iPhone connecté": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No iPhone connected"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun iPhone connecté"
+          }
+        }
+      }
+    },
+    "Authentification requise.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authentication required."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authentification requise."
+          }
+        }
+      }
+    },
+    "Autres copies ignorées": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other copies ignored"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autres copies ignorées"
+          }
+        }
+      }
+    },
+    "Caméra débranchée.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera unplugged."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caméra débranchée."
+          }
+        }
+      }
+    },
+    "Caméra · branchée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera · plugged in"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caméra · branchée"
+          }
+        }
+      }
+    },
+    "Caméra · débranchée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera · unplugged"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caméra · débranchée"
+          }
+        }
+      }
+    },
+    "Ce Mac": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Mac"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce Mac"
+          }
+        }
+      }
+    },
+    "Ce SDK n'a pas de version pour Apple Silicon (%@).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This SDK has no Apple silicon version (%@)."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce SDK n'a pas de version pour Apple Silicon (%@)."
+          }
+        }
+      }
+    },
+    "Ce SDK n'a pas de version pour Apple Silicon.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This SDK has no Apple silicon version."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce SDK n'a pas de version pour Apple Silicon."
+          }
+        }
+      }
+    },
+    "Ce choix contient un lien symbolique qui mène hors du dossier du SDK : il est refusé. Choisissez le SDK décompressé ou l'archive reçue.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This selection contains a symbolic link leading outside the SDK folder: it is refused. Choose the unzipped SDK or the archive you received."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce choix contient un lien symbolique qui mène hors du dossier du SDK : il est refusé. Choisissez le SDK décompressé ou l'archive reçue."
+          }
+        }
+      }
+    },
+    "Ce fichier n'est pas une bibliothèque Mach-O.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This file is not a Mach-O library."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce fichier n'est pas une bibliothèque Mach-O."
+          }
+        }
+      }
+    },
+    "Changer…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Change…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changer…"
+          }
+        }
+      }
+    },
+    "Choisissez l'archive ou le dossier du SDK : ses en-têtes sont nécessaires.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose the SDK archive or folder: its headers are needed."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisissez l'archive ou le dossier du SDK : ses en-têtes sont nécessaires."
+          }
+        }
+      }
+    },
+    "Commande réservée au Mac.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Command reserved for the Mac."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commande réservée au Mac."
+          }
+        }
+      }
+    },
+    "Compilation impossible": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compile failed"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compilation impossible"
+          }
+        }
+      }
+    },
+    "Copie du SDK impossible : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The SDK could not be copied: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copie du SDK impossible : %@"
+          }
+        }
+      }
+    },
+    "Démarrage…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Démarrage…"
+          }
+        }
+      }
+    },
+    "En quarantaine": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quarantined"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En quarantaine"
+          }
+        }
+      }
+    },
+    "Incompatible": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incompatible"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incompatible"
+          }
+        }
+      }
+    },
+    "Installer le SDK…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install SDK…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installer le SDK…"
+          }
+        }
+      }
+    },
+    "Installer les outils de développement…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install Developer Tools…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installer les outils de développement…"
+          }
+        }
+      }
+    },
+    "Installez d'abord les outils de développement d'Apple.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install Apple's developer tools first."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installez d'abord les outils de développement d'Apple."
+          }
+        }
+      }
+    },
+    "L'ancien obsbot-ai reste en service.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The previous obsbot-ai stays in use."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'ancien obsbot-ai reste en service."
+          }
+        }
+      }
+    },
+    "L'ancienne installation est arrêtée, mais sa plist n'a pas pu être renommée : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The previous installation is stopped, but its plist could not be renamed: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'ancienne installation est arrêtée, mais sa plist n'a pas pu être renommée : %@"
+          }
+        }
+      }
+    },
+    "L'ancienne installation n'a pas pu être arrêtée : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The previous installation could not be stopped: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'ancienne installation n'a pas pu être arrêtée : %@"
+          }
+        }
+      }
+    },
+    "L'ancienne installation ne s'est pas arrêtée à temps.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The previous installation did not stop in time."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'ancienne installation ne s'est pas arrêtée à temps."
+          }
+        }
+      }
+    },
+    "L'archive n'a pas pu être décompressée : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The archive could not be unzipped: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'archive n'a pas pu être décompressée : %@"
+          }
+        }
+      }
+    },
+    "La caméra a refusé la commande.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The camera refused the command."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La caméra a refusé la commande."
+          }
+        }
+      }
+    },
+    "La compilation d'obsbot-ai a échoué : l'ancien SDK est conservé. Le détail est dans le journal obsbot-ai-compilation.log.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "obsbot-ai could not be compiled: the previous SDK is kept. Details are in the obsbot-ai-compilation.log log."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La compilation d'obsbot-ai a échoué : l'ancien SDK est conservé. Le détail est dans le journal obsbot-ai-compilation.log."
+          }
+        }
+      }
+    },
+    "La source d'obsbot-ai est introuvable dans l'app.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The obsbot-ai source is missing from the app."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La source d'obsbot-ai est introuvable dans l'app."
+          }
+        }
+      }
+    },
+    "La source d'obsbot-ai manque dans l'app : réinstallez PTZBot.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The obsbot-ai source is missing from the app: reinstall PTZBot."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La source d'obsbot-ai manque dans l'app : réinstallez PTZBot."
+          }
+        }
+      }
+    },
+    "Le SDK OBSBOT est propriétaire : il ne peut pas être fourni avec PTZBot. Téléchargez-le sur obsbot.com, puis choisissez l'archive reçue (.zip) ou son dossier décompressé.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The OBSBOT SDK is proprietary: it cannot be shipped with PTZBot. Download it from obsbot.com, then choose the archive you received (.zip) or its unzipped folder."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le SDK OBSBOT est propriétaire : il ne peut pas être fourni avec PTZBot. Téléchargez-le sur obsbot.com, puis choisissez l'archive reçue (.zip) ou son dossier décompressé."
+          }
+        }
+      }
+    },
+    "Le SDK de lib/ n'a pas pu être repris : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The SDK in lib/ could not be taken over: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le SDK de lib/ n'a pas pu être repris : %@"
+          }
+        }
+      }
+    },
+    "Le SDK ne se charge pas : réinstallez-le pour retirer la quarantaine de sa copie.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The SDK does not load: reinstall it to remove the quarantine from its copy."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le SDK ne se charge pas : réinstallez-le pour retirer la quarantaine de sa copie."
+          }
+        }
+      }
+    },
+    "Le détail est dans le journal obsbot-ai-compilation.log.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Details are in the obsbot-ai-compilation.log log."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le détail est dans le journal obsbot-ai-compilation.log."
+          }
+        }
+      }
+    },
+    "Le port %@ est déjà pris : un autre ptzd tourne peut-être encore": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port %@ is already in use: another ptzd may still be running"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le port %@ est déjà pris : un autre ptzd tourne peut-être encore"
+          }
+        }
+      }
+    },
+    "Les en-têtes du SDK contiennent un lien symbolique ou un fichier spécial : ils sont refusés.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The SDK headers contain a symbolic link or a special file: they are refused."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les en-têtes du SDK contiennent un lien symbolique ou un fichier spécial : ils sont refusés."
+          }
+        }
+      }
+    },
+    "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai : installez-les, puis recommencez.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple's developer tools are needed to compile obsbot-ai: install them, then try again."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai : installez-les, puis recommencez."
+          }
+        }
+      }
+    },
+    "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai avec le SDK. Installez-les, puis vérifiez à nouveau.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple's developer tools are needed to compile obsbot-ai with the SDK. Install them, then check again."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai avec le SDK. Installez-les, puis vérifiez à nouveau."
+          }
+        }
+      }
+    },
+    "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple's developer tools are needed to compile obsbot-ai."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai."
+          }
+        }
+      }
+    },
+    "Ne répond pas": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not responding"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ne répond pas"
+          }
+        }
+      }
+    },
+    "Ne se charge pas": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Does not load"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ne se charge pas"
+          }
+        }
+      }
+    },
+    "Outils requis": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tools required"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outils requis"
+          }
+        }
+      }
+    },
+    "Ouverture à la connexion impossible : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open at login is unavailable: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouverture à la connexion impossible : %@"
+          }
+        }
+      }
+    },
+    "PTZBot n'a pas accès au réseau local : les iPhone ne le trouveront qu'avec Tailscale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PTZBot has no access to the local network: iPhones will only find it through Tailscale"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PTZBot n'a pas accès au réseau local : les iPhone ne le trouveront qu'avec Tailscale"
+          }
+        }
+      }
+    },
+    "PTZBot va copier ce fichier dans sa bibliothèque et retirer la quarantaine de cette copie. Ne le faites que si vous l'avez téléchargé depuis obsbot.com.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PTZBot will copy this file into its library and remove the quarantine from that copy. Only do this if you downloaded it from obsbot.com."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PTZBot va copier ce fichier dans sa bibliothèque et retirer la quarantaine de cette copie. Ne le faites que si vous l'avez téléchargé depuis obsbot.com."
+          }
+        }
+      }
+    },
+    "Plus tard": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Later"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plus tard"
+          }
+        }
+      }
+    },
+    "Provenance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Origin"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provenance"
+          }
+        }
+      }
+    },
+    "Prêt": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ready"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prêt"
+          }
+        }
+      }
+    },
+    "QR code expiré ou déjà utilisé : relancez l'appairage sur le Mac.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "QR code expired or already used: start pairing again on the Mac."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "QR code expiré ou déjà utilisé : relancez l'appairage sur le Mac."
+          }
+        }
+      }
+    },
+    "QR code refusé.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "QR code refused."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "QR code refusé."
+          }
+        }
+      }
+    },
+    "Quarantaine": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quarantine"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quarantaine"
+          }
+        }
+      }
+    },
+    "Recompilation…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recompiling…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recompilation…"
+          }
+        }
+      }
+    },
+    "Relancé après un arrêt inattendu (%lld)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restarted after an unexpected stop (%lld)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relancé après un arrêt inattendu (%lld)"
+          }
+        }
+      }
+    },
+    "Remplacer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replace"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remplacer"
+          }
+        }
+      }
+    },
+    "Remplacer l'ancienne installation…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replace Previous Installation…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remplacer l'ancienne installation…"
+          }
+        }
+      }
+    },
+    "Réinstallez le SDK depuis son archive ou son dossier : ses en-têtes manquent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reinstall the SDK from its archive or folder: its headers are missing."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réinstallez le SDK depuis son archive ou son dossier : ses en-têtes manquent."
+          }
+        }
+      }
+    },
+    "Réseau local": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local network"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réseau local"
+          }
+        }
+      }
+    },
+    "SDK OBSBOT requis": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OBSBOT SDK required"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SDK OBSBOT requis"
+          }
+        }
+      }
+    },
+    "Service": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Service"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Service"
+          }
+        }
+      }
+    },
+    "Signature": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signature"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signature"
+          }
+        }
+      }
+    },
+    "Signature invalide": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid signature"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signature invalide"
+          }
+        }
+      }
+    },
+    "Signature refusée.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signature refused."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signature refusée."
+          }
+        }
+      }
+    },
+    "Signé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signé"
+          }
+        }
+      }
+    },
+    "Signé, certificat non reconnu par Apple": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed, certificate not recognized by Apple"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signé, certificat non reconnu par Apple"
+          }
+        }
+      }
+    },
+    "Suivi IA non modifié : caméra introuvable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI tracking unchanged: camera not found."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suivi IA non modifié : caméra introuvable."
+          }
+        }
+      }
+    },
+    "Suivi IA non modifié : délai dépassé.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI tracking unchanged: timed out."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suivi IA non modifié : délai dépassé."
+          }
+        }
+      }
+    },
+    "Suivi IA non modifié : erreur du SDK OBSBOT.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI tracking unchanged: OBSBOT SDK error."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suivi IA non modifié : erreur du SDK OBSBOT."
+          }
+        }
+      }
+    },
+    "Suivi IA non modifié : obsbot-ai n'a pas pu être lancé.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI tracking unchanged: obsbot-ai could not be started."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suivi IA non modifié : obsbot-ai n'a pas pu être lancé."
+          }
+        }
+      }
+    },
+    "Suivi IA non modifié : obsbot-ai s'est arrêté avec le code %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI tracking unchanged: obsbot-ai stopped with code %@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suivi IA non modifié : obsbot-ai s'est arrêté avec le code %@."
+          }
+        }
+      }
+    },
+    "Suivi IA non modifié.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI tracking unchanged."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suivi IA non modifié."
+          }
+        }
+      }
+    },
+    "Tailscale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale"
+          }
+        }
+      }
+    },
+    "Tailscale introuvable : accès depuis l'extérieur indisponible": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale not found: no access from outside"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale introuvable : accès depuis l'extérieur indisponible"
+          }
+        }
+      }
+    },
+    "Une ancienne installation de ptzd tourne en arrière-plan. PTZBot va la remplacer : le service sera désormais actif seulement quand PTZBot est ouvert. Vos iPhone appairés sont conservés.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A previous installation of ptzd is running in the background. PTZBot will replace it: from now on, the service will only run while PTZBot is open. Your paired iPhones are kept."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une ancienne installation de ptzd tourne en arrière-plan. PTZBot va la remplacer : le service sera désormais actif seulement quand PTZBot est ouvert. Vos iPhone appairés sont conservés."
+          }
+        }
+      }
+    },
+    "Vie privée active : commande refusée.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy mode is on: command refused."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vie privée active : commande refusée."
+          }
+        }
+      }
+    },
+    "Vérification…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérification…"
+          }
+        }
+      }
+    },
+    "Vérifier à nouveau": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Again"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérifier à nouveau"
+          }
+        }
+      }
+    },
+    "config.json est invalide : ouvrez le journal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "config.json is invalid: open the log"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "config.json est invalide : ouvrez le journal"
+          }
+        }
+      }
+    },
+    "config.json n'a pas pu être créé : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "config.json could not be created: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "config.json n'a pas pu être créé : %@"
+          }
+        }
+      }
+    },
+    "connecté · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "connected · %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "connecté · %@"
+          }
+        }
+      }
+    },
+    "ditto a échoué (code %@).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ditto failed (code %@)."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ditto a échoué (code %@)."
+          }
+        }
+      }
+    },
+    "ditto n'a pas fini dans le délai imparti.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ditto did not finish in time."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ditto n'a pas fini dans le délai imparti."
+          }
+        }
+      }
+    },
+    "expulsé jusqu'à %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kicked out until %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "expulsé jusqu'à %@"
+          }
+        }
+      }
+    },
+    "hors ligne": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "offline"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "hors ligne"
+          }
+        }
+      }
+    },
+    "iPhone connectés · %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected iPhones · %lld"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone connectés · %lld"
+          }
+        }
+      }
+    },
+    "inconnue": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "unknown"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "inconnue"
+          }
+        }
+      }
+    },
+    "l'installation interrompue précédente n'a pas pu être annulée.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the previous interrupted installation could not be undone."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "l'installation interrompue précédente n'a pas pu être annulée."
+          }
+        }
+      }
+    },
+    "la copie n'est pas une bibliothèque arm64 ordinaire.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the copy is not a regular arm64 library."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "la copie n'est pas une bibliothèque arm64 ordinaire."
+          }
+        }
+      }
+    },
+    "launchctl bootout a échoué (code %@).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "launchctl bootout failed (code %@)."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "launchctl bootout a échoué (code %@)."
+          }
+        }
+      }
+    },
+    "le %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "on %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "le %@"
+          }
+        }
+      }
+    },
+    "les en-têtes copiés ne sont pas des fichiers ordinaires.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the copied headers are not regular files."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "les en-têtes copiés ne sont pas des fichiers ordinaires."
+          }
+        }
+      }
+    },
+    "libdev.dylib n'est pas un fichier ordinaire (lien symbolique, tube ou périphérique) : il est refusé.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "libdev.dylib is not a regular file (symbolic link, pipe or device): it is refused."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "libdev.dylib n'est pas un fichier ordinaire (lien symbolique, tube ou périphérique) : il est refusé."
+          }
+        }
+      }
+    },
+    "macos/arm64-release/libdev.dylib est introuvable dans ce choix.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macos/arm64-release/libdev.dylib was not found in this selection."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macos/arm64-release/libdev.dylib est introuvable dans ce choix."
+          }
+        }
+      }
+    },
+    "non": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "non"
+          }
+        }
+      }
+    },
+    "non signé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "not signed"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "non signé"
+          }
+        }
+      }
+    },
+    "obsbot-ai introuvable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "obsbot-ai not found"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "obsbot-ai introuvable"
+          }
+        }
+      }
+    },
+    "obsbot-ai ne charge pas ce SDK : l'ancien SDK, s'il y en avait un, est conservé.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "obsbot-ai does not load this SDK: the previous SDK, if any, is kept."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "obsbot-ai ne charge pas ce SDK : l'ancien SDK, s'il y en avait un, est conservé."
+          }
+        }
+      }
+    },
+    "obsbot-ai ne charge pas ce SDK : réinstallez-le.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "obsbot-ai does not load this SDK: reinstall it."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "obsbot-ai ne charge pas ce SDK : réinstallez-le."
+          }
+        }
+      }
+    },
+    "oui": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "yes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "oui"
+          }
+        }
+      }
+    },
+    "ptzd a refusé ce message.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ptzd refused this message."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ptzd a refusé ce message."
+          }
+        }
+      }
+    },
+    "ptzd demande une authentification : cette app ne passe que par 127.0.0.1.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ptzd asks for authentication: this app only connects through 127.0.0.1."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ptzd demande une authentification : cette app ne passe que par 127.0.0.1."
+          }
+        }
+      }
+    },
+    "ptzd n'a pas pu être lancé : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ptzd could not be started: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ptzd n'a pas pu être lancé : %@"
+          }
+        }
+      }
+    },
+    "ptzd ne s'arrête pas : ouvrez le journal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ptzd does not stop: open the log"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ptzd ne s'arrête pas : ouvrez le journal"
+          }
+        }
+      }
+    },
+    "ptzd s'arrête sans cesse : ouvrez le journal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ptzd keeps stopping: open the log"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ptzd s'arrête sans cesse : ouvrez le journal"
+          }
+        }
+      }
+    },
+    "une installation est déjà en cours.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "an installation is already in progress."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "une installation est déjà en cours."
+          }
+        }
+      }
+    },
+    "À compléter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incomplete"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À compléter"
+          }
+        }
+      }
+    },
+    "État inconnu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown state"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "État inconnu"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

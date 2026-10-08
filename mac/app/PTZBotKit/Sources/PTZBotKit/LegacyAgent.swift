@@ -10,7 +10,7 @@ public protocol Launchctl: Sendable {
 public struct SystemLaunchctl: Launchctl {
     public struct Failure: LocalizedError {
         public var status: Int32
-        public var errorDescription: String? { "launchctl bootout a échoué (code \(status))." }
+        public var errorDescription: String? { Localization.text("launchctl bootout a échoué (code \(String(status))).") }
     }
 
     public init() {}
@@ -68,11 +68,11 @@ public enum LegacyMigrationError: Error, Equatable, Sendable {
     public var message: String {
         switch self {
         case let .bootoutFailed(reason):
-            "L'ancienne installation n'a pas pu être arrêtée : \(reason)"
+            Localization.text("L'ancienne installation n'a pas pu être arrêtée : \(reason)")
         case .stillLoaded:
-            "L'ancienne installation ne s'est pas arrêtée à temps."
+            Localization.text("L'ancienne installation ne s'est pas arrêtée à temps.")
         case let .renameFailed(reason):
-            "L'ancienne installation est arrêtée, mais sa plist n'a pas pu être renommée : \(reason)"
+            Localization.text("L'ancienne installation est arrêtée, mais sa plist n'a pas pu être renommée : \(reason)")
         }
     }
 }
@@ -198,7 +198,7 @@ public struct LegacyAgent: Sendable {
                 try trash.trash(url)
                 report.trashed.append(path)
             } catch {
-                report.problems.append("\(path) n'a pas pu être mis à la corbeille : \(error.localizedDescription)")
+                report.problems.append(Localization.text("\(path) n'a pas pu être mis à la corbeille : \(error.localizedDescription)"))
             }
         }
 
@@ -210,7 +210,7 @@ public struct LegacyAgent: Sendable {
                 try manager.moveItem(at: oldSDK, to: newSDK)
                 report.movedSDK = true
             } catch {
-                report.problems.append("Le SDK de lib/ n'a pas pu être repris : \(error.localizedDescription)")
+                report.problems.append(Localization.text("Le SDK de lib/ n'a pas pu être repris : \(error.localizedDescription)"))
             }
         }
         return report

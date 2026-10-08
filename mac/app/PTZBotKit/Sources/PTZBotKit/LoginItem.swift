@@ -62,7 +62,7 @@ public final class LoginItemModel {
                 try service.unregister()
             }
         } catch {
-            lastError = "Ouverture à la connexion impossible : \(error.localizedDescription)"
+            lastError = Localization.text("Ouverture à la connexion impossible : \(error.localizedDescription)")
         }
         refresh()
     }

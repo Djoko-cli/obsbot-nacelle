@@ -52,19 +52,19 @@ public enum SDKInstallError: Error, Equatable, Sendable {
     public var message: String {
         switch self {
         case .incompatible:
-            "Ce SDK n'a pas de version pour Apple Silicon."
+            Localization.text("Ce SDK n'a pas de version pour Apple Silicon.")
         case let .copyFailed(reason):
-            "Copie du SDK impossible : \(reason)"
+            Localization.text("Copie du SDK impossible : \(reason)")
         case .unloadable:
-            "obsbot-ai ne charge pas ce SDK : l'ancien SDK, s'il y en avait un, est conservé."
+            Localization.text("obsbot-ai ne charge pas ce SDK : l'ancien SDK, s'il y en avait un, est conservé.")
         case .headersMissing:
             SDKRejection.headersMissing.message
         case .sourceMissing:
-            "La source d'obsbot-ai est introuvable dans l'app."
+            Localization.text("La source d'obsbot-ai est introuvable dans l'app.")
         case .toolsMissing:
-            "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai : installez-les, puis recommencez."
+            Localization.text("Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai : installez-les, puis recommencez.")
         case .compileFailed:
-            "La compilation d'obsbot-ai a échoué : l'ancien SDK est conservé. Le détail est dans le journal obsbot-ai-compilation.log."
+            Localization.text("La compilation d'obsbot-ai a échoué : l'ancien SDK est conservé. Le détail est dans le journal obsbot-ai-compilation.log.")
         }
     }
 }
@@ -198,11 +198,11 @@ public struct SDKInstaller: Sendable {
         guard let sourceHash = sourceHash() else { throw .sourceMissing }
         guard toolchain.isAvailable() else { throw .toolsMissing }
         guard progress.begin() else {
-            throw .copyFailed("une installation est déjà en cours.")
+            throw .copyFailed(Localization.text("une installation est déjà en cours."))
         }
         defer { progress.end() }
         guard recoverInterruptedInstall() else {
-            throw .copyFailed("l'installation interrompue précédente n'a pas pu être annulée.")
+            throw .copyFailed(Localization.text("l'installation interrompue précédente n'a pas pu être annulée."))
         }
         let manager = FileManager.default
         do {
@@ -213,11 +213,11 @@ public struct SDKInstaller: Sendable {
             try Self.copyHeaders(from: headers, to: stagedURL(.headers))
             // Les fichiers ont pu changer depuis leur examen : les copies elles-mêmes sont revérifiées.
             guard SDKInspector.isRegularFile(library), MachO.architectures(of: library)?.contains("arm64") == true else {
-                throw StagingRejected(reason: "la copie n'est pas une bibliothèque arm64 ordinaire.")
+                throw StagingRejected(reason: Localization.text("la copie n'est pas une bibliothèque arm64 ordinaire."))
             }
             guard SDKInspector.isPlainTree(stagedURL(.headers)),
                   SDKInspector.isRegularFile(stagedURL(.headers).appending(path: SDKInspector.mainHeaderPath)) else {
-                throw StagingRejected(reason: "les en-têtes copiés ne sont pas des fichiers ordinaires.")
+                throw StagingRejected(reason: Localization.text("les en-têtes copiés ne sont pas des fichiers ordinaires."))
             }
         } catch {
             discardStaging()
@@ -252,11 +252,11 @@ public struct SDKInstaller: Sendable {
         guard let sourceHash = sourceHash() else { throw .sourceMissing }
         guard toolchain.isAvailable() else { throw .toolsMissing }
         guard progress.begin() else {
-            throw .copyFailed("une installation est déjà en cours.")
+            throw .copyFailed(Localization.text("une installation est déjà en cours."))
         }
         defer { progress.end() }
         guard recoverInterruptedInstall() else {
-            throw .copyFailed("l'installation interrompue précédente n'a pas pu être annulée.")
+            throw .copyFailed(Localization.text("l'installation interrompue précédente n'a pas pu être annulée."))
         }
         do {
             try prepareStaging()

@@ -101,6 +101,8 @@ final class FakeLoginItem: LoginItemService {
 @MainActor
 final class FakeSettings: SettingsStore {
     var values: [String: Bool] = [:]
+    var strings: [String: String] = [:]
+    var arrays: [String: [String]] = [:]
 
     func bool(forKey key: String) -> Bool? {
         values[key]
@@ -108,6 +110,18 @@ final class FakeSettings: SettingsStore {
 
     func set(_ value: Bool, forKey key: String) {
         values[key] = value
+    }
+
+    func string(forKey key: String) -> String? {
+        strings[key]
+    }
+
+    func set(_ value: String?, forKey key: String) {
+        strings[key] = value
+    }
+
+    func set(_ value: [String]?, forKey key: String) {
+        arrays[key] = value
     }
 }
 

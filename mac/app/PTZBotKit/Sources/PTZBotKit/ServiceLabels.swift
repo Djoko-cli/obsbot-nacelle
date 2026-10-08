@@ -1,20 +1,21 @@
 import Foundation
 import NacelleProtocol
 
-/// Les textes du service, du SDK et de la migration (spec ptzd dans l'app § 5.6, § 6.1 et § 6.2), au vouvoiement.
+/// Les textes du service, du SDK et de la migration (spec ptzd dans l'app § 5.6, § 6.1 et § 6.2), au vouvoiement,
+/// traduits en anglais (spec distribution § 7.1).
 extension Labels {
     /// L'état sous le titre : la supervision de ptzd, puis la connexion de confiance pour « Actif ».
     public static func service(_ state: ServiceSupervisor.State, connection: PanelModel.Service, legacy: Bool) -> String {
         if legacy {
-            return "Ancienne installation"
+            return Localization.text("Ancienne installation")
         }
         switch state {
         case .stopped, .failed:
-            return "Arrêté"
+            return Localization.text("Arrêté")
         case .starting:
-            return "Démarrage…"
+            return Localization.text("Démarrage…")
         case let .restarting(count):
-            return "Relancé après un arrêt inattendu (\(count))"
+            return Localization.text("Relancé après un arrêt inattendu (\(count))")
         case .running:
             return service(connection)
         }
@@ -44,17 +45,17 @@ extension Labels {
     /// L'état court, à droite de la ligne « SDK OBSBOT » ; l'explication va dessous (`sdkDetail`).
     public static func sdk(_ status: SDKStatus?) -> String {
         switch status {
-        case .ready: "Prêt"
-        case .absent: "Absent"
-        case .quarantined: "En quarantaine"
-        case .incompatible: "Incompatible"
-        case .unloadable: "Ne se charge pas"
-        case .sourceMissing: "obsbot-ai introuvable"
-        case .toolsRequired: "Outils requis"
-        case .incomplete: "À compléter"
-        case .recompiling: "Recompilation…"
-        case .compileFailed: "Compilation impossible"
-        case nil: "Vérification…"
+        case .ready: Localization.text("Prêt")
+        case .absent: Localization.text("Absent")
+        case .quarantined: Localization.text("En quarantaine")
+        case .incompatible: Localization.text("Incompatible")
+        case .unloadable: Localization.text("Ne se charge pas")
+        case .sourceMissing: Localization.text("obsbot-ai introuvable")
+        case .toolsRequired: Localization.text("Outils requis")
+        case .incomplete: Localization.text("À compléter")
+        case .recompiling: Localization.text("Recompilation…")
+        case .compileFailed: Localization.text("Compilation impossible")
+        case nil: Localization.text("Vérification…")
         }
     }
 
@@ -94,15 +95,15 @@ extension Labels {
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 
-    public static let sdkFallback = "L'ancien obsbot-ai reste en service."
-    public static let compileLogHint = "Le détail est dans le journal obsbot-ai-compilation.log."
-    public static let sdkIncompleteDetail = "Réinstallez le SDK depuis son archive ou son dossier : ses en-têtes manquent."
-    public static let sdkToolsDetail = "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai."
-    public static let sdkQuarantinedDetail = "Le SDK ne se charge pas : réinstallez-le pour retirer la quarantaine de sa copie."
-    public static let sdkIncompatibleDetail = "Ce SDK n'a pas de version pour Apple Silicon."
-    public static let sdkUnloadableDetail = "obsbot-ai ne charge pas ce SDK : réinstallez-le."
-    public static let sdkSourceMissingDetail = "La source d'obsbot-ai manque dans l'app : réinstallez PTZBot."
-    public static let sdkToolsFirst = "Installez d'abord les outils de développement d'Apple."
+    public static var sdkFallback: String { Localization.text("L'ancien obsbot-ai reste en service.") }
+    public static var compileLogHint: String { Localization.text("Le détail est dans le journal obsbot-ai-compilation.log.") }
+    public static var sdkIncompleteDetail: String { Localization.text("Réinstallez le SDK depuis son archive ou son dossier : ses en-têtes manquent.") }
+    public static var sdkToolsDetail: String { Localization.text("Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai.") }
+    public static var sdkQuarantinedDetail: String { Localization.text("Le SDK ne se charge pas : réinstallez-le pour retirer la quarantaine de sa copie.") }
+    public static var sdkIncompatibleDetail: String { Localization.text("Ce SDK n'a pas de version pour Apple Silicon.") }
+    public static var sdkUnloadableDetail: String { Localization.text("obsbot-ai ne charge pas ce SDK : réinstallez-le.") }
+    public static var sdkSourceMissingDetail: String { Localization.text("La source d'obsbot-ai manque dans l'app : réinstallez PTZBot.") }
+    public static var sdkToolsFirst: String { Localization.text("Installez d'abord les outils de développement d'Apple.") }
 
     /// Le bouton de la ligne SDK : « Changer… » quand il est prêt (la fenêtre reste joignable), « Installer les
     /// outils de développement… » quand ils manquent (obsbot-ai ne pourrait pas être compilé), « Installer le SDK… »
@@ -113,9 +114,9 @@ extension Labels {
         }
         switch status {
         case nil, .recompiling, .sourceMissing: return nil
-        case .ready: return "Changer…"
+        case .ready: return Localization.text("Changer…")
         case .toolsRequired: return installTools
-        case .absent, .quarantined, .incompatible, .unloadable, .incomplete, .compileFailed: return "Installer le SDK…"
+        case .absent, .quarantined, .incompatible, .unloadable, .incomplete, .compileFailed: return Localization.text("Installer le SDK…")
         }
     }
 
@@ -133,26 +134,26 @@ extension Labels {
     }
 
     /// La fenêtre « SDK OBSBOT » quand les outils manquent : elle propose de les installer avant de choisir le SDK.
-    public static let sdkToolsExplanation = "Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai avec le SDK. Installez-les, puis vérifiez à nouveau."
-    public static let checkToolsAgain = "Vérifier à nouveau"
+    public static var sdkToolsExplanation: String { Localization.text("Les outils de développement d'Apple sont nécessaires pour compiler obsbot-ai avec le SDK. Installez-les, puis vérifiez à nouveau.") }
+    public static var checkToolsAgain: String { Localization.text("Vérifier à nouveau") }
 
-    public static let installTools = "Installer les outils de développement…"
+    public static var installTools: String { Localization.text("Installer les outils de développement…") }
 
-    public static let replaceLegacy = "Remplacer l'ancienne installation…"
+    public static var replaceLegacy: String { Localization.text("Remplacer l'ancienne installation…") }
 
     // MARK: - Sections du panneau
 
-    public static let serviceSection = "Service"
-    public static let noIPhone = "Aucun iPhone connecté"
+    public static var serviceSection: String { Localization.text("Service") }
+    public static var noIPhone: String { Localization.text("Aucun iPhone connecté") }
 
     /// « Caméra · branchée » ou « Caméra · débranchée » (débranchée aussi hors connexion).
     public static func cameraSection(_ presence: CameraPresence?) -> String {
-        "Caméra · \(presence == .connected ? "branchée" : "débranchée")"
+        presence == .connected ? Localization.text("Caméra · branchée") : Localization.text("Caméra · débranchée")
     }
 
     /// « iPhone connectés · n ».
     public static func iPhoneSection(count: Int) -> String {
-        "iPhone connectés · \(count)"
+        Localization.text("iPhone connectés · \(count)")
     }
 
     /// La petite ligne sous « Suivi IA » : le SDK manque, ou l'état ne se lit pas.
@@ -160,7 +161,7 @@ extension Labels {
         if needsSDK {
             return sdkRequired
         }
-        return tracking == .unknown ? "État inconnu" : nil
+        return tracking == .unknown ? Localization.text("État inconnu") : nil
     }
 
     /// Le suivi IA a besoin du SDK de l'app et d'un obsbot-ai qui le charge ; l'ancienne installation a le sien
@@ -169,16 +170,16 @@ extension Labels {
         !legacy && status?.aiUsable != true
     }
 
-    public static let sdkRequired = "SDK OBSBOT requis"
-    public static let tailscaleMissing = "Tailscale introuvable : accès depuis l'extérieur indisponible"
-    public static let localNetworkDenied = "PTZBot n'a pas accès au réseau local : les iPhone ne le trouveront qu'avec Tailscale"
+    public static var sdkRequired: String { Localization.text("SDK OBSBOT requis") }
+    public static var tailscaleMissing: String { Localization.text("Tailscale introuvable : accès depuis l'extérieur indisponible") }
+    public static var localNetworkDenied: String { Localization.text("PTZBot n'a pas accès au réseau local : les iPhone ne le trouveront qu'avec Tailscale") }
 
-    public static let migrationMessage = "Une ancienne installation de ptzd tourne en arrière-plan. PTZBot va la remplacer : le service sera désormais actif seulement quand PTZBot est ouvert. Vos iPhone appairés sont conservés."
-    public static let migrationReplace = "Remplacer"
-    public static let migrationLater = "Plus tard"
+    public static var migrationMessage: String { Localization.text("Une ancienne installation de ptzd tourne en arrière-plan. PTZBot va la remplacer : le service sera désormais actif seulement quand PTZBot est ouvert. Vos iPhone appairés sont conservés.") }
+    public static var migrationReplace: String { Localization.text("Remplacer") }
+    public static var migrationLater: String { Localization.text("Plus tard") }
 
-    public static let sdkExplanation = "Le SDK OBSBOT est propriétaire : il ne peut pas être fourni avec PTZBot. Téléchargez-le sur obsbot.com, puis choisissez l'archive reçue (.zip) ou son dossier décompressé."
-    public static let sdkConfirmation = "PTZBot va copier ce fichier dans sa bibliothèque et retirer la quarantaine de cette copie. Ne le faites que si vous l'avez téléchargé depuis obsbot.com."
+    public static var sdkExplanation: String { Localization.text("Le SDK OBSBOT est propriétaire : il ne peut pas être fourni avec PTZBot. Téléchargez-le sur obsbot.com, puis choisissez l'archive reçue (.zip) ou son dossier décompressé.") }
+    public static var sdkConfirmation: String { Localization.text("PTZBot va copier ce fichier dans sa bibliothèque et retirer la quarantaine de cette copie. Ne le faites que si vous l'avez téléchargé depuis obsbot.com.") }
 
     /// Une ligne des vérifications de la fenêtre « SDK OBSBOT ».
     public struct SDKCheck: Equatable, Sendable {
@@ -191,41 +192,42 @@ extension Labels {
     static func signatureText(_ candidate: SDKCandidate) -> String {
         switch candidate.signatureValid {
         case false:
-            return "Signature invalide"
+            return Localization.text("Signature invalide")
         case true:
-            guard candidate.appleAnchored == true else { return "Signé, certificat non reconnu par Apple" }
-            guard let signer = candidate.signer else { return "Signé" }
-            return candidate.team.map { "\(signer) (équipe \($0))" } ?? signer
+            guard candidate.appleAnchored == true else { return Localization.text("Signé, certificat non reconnu par Apple") }
+            guard let signer = candidate.signer else { return Localization.text("Signé") }
+            return candidate.team.map { Localization.text("\(signer) (équipe \($0))") } ?? signer
         case nil:
-            return "non signé"
+            return Localization.text("non signé")
         }
     }
 
     /// Architecture, signature, provenance et quarantaine (§ 6.2).
     public static func sdkChecks(_ candidate: SDKCandidate) -> [SDKCheck] {
         let architecture = candidate.isArm64
-            ? "Apple Silicon : ✓"
-            : "Apple Silicon : ✗ (\(candidate.architectures.joined(separator: ", ")))"
+            ? Localization.text("Apple Silicon : ✓")
+            : Localization.text("Apple Silicon : ✗ (\(candidate.architectures.joined(separator: ", ")))")
         var origin = [String]()
         if let url = candidate.origin?.url {
             origin.append(url)
         }
         if let date = candidate.origin?.date {
-            origin.append("le \(date.formatted(Date.FormatStyle(date: .long, time: .shortened).locale(Locale(identifier: "fr_FR"))))")
+            let formatted = date.formatted(Date.FormatStyle(date: .long, time: .shortened).locale(Localization.locale))
+            origin.append(Localization.text("le \(formatted)"))
         }
-        var provenance = origin.isEmpty ? "inconnue" : origin.joined(separator: " · ")
+        var provenance = origin.isEmpty ? Localization.text("inconnue") : origin.joined(separator: " · ")
         if !origin.isEmpty, candidate.origin?.fromInsideArchive == true {
-            provenance += " (indiquée dans l'archive)"
+            provenance = Localization.text("\(provenance) (indiquée dans l'archive)")
         }
         let signature = signatureText(candidate)
         var checks = [
-            SDKCheck(title: "Architecture", value: architecture),
-            SDKCheck(title: "Signature", value: signature),
-            SDKCheck(title: "Provenance", value: provenance),
-            SDKCheck(title: "Quarantaine", value: candidate.quarantined ? "oui" : "non"),
+            SDKCheck(title: Localization.text("Architecture"), value: architecture),
+            SDKCheck(title: Localization.text("Signature"), value: signature),
+            SDKCheck(title: Localization.text("Provenance"), value: provenance),
+            SDKCheck(title: Localization.text("Quarantaine"), value: candidate.quarantined ? Localization.text("oui") : Localization.text("non")),
         ]
         if !candidate.otherCopies.isEmpty {
-            checks.append(SDKCheck(title: "Autres copies ignorées", value: candidate.otherCopies.joined(separator: ", ")))
+            checks.append(SDKCheck(title: Localization.text("Autres copies ignorées"), value: candidate.otherCopies.joined(separator: ", ")))
         }
         return checks
     }

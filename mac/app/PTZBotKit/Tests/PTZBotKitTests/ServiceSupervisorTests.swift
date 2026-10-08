@@ -3,7 +3,7 @@ import Testing
 @testable import PTZBotKit
 
 @MainActor
-@Suite("Supervision de ptzd")
+@Suite("Supervision de ptzd", .french)
 struct ServiceSupervisorTests {
     let launcher = FakeLauncher()
     let settings = FakeSettings()
@@ -400,7 +400,7 @@ struct ServiceSupervisorTests {
 }
 
 @MainActor
-@Suite("Lanceur de processus réel")
+@Suite("Lanceur de processus réel", .french)
 struct FoundationProcessLauncherTests {
     @Test("Sortie ajoutée au journal ; fin signalée avec le code ; SIGKILL")
     func realProcess() async throws {

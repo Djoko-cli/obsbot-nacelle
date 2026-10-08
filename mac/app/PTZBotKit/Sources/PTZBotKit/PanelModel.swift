@@ -22,7 +22,7 @@ public final class PanelModel {
     public private(set) var state: StateSnapshot?
     /// Dernier état d'administration, nil hors connexion.
     public private(set) var admin: AdminState?
-    /// Dernier refus de ptzd, en clair ; effacé à l'action suivante.
+    /// Dernier refus de ptzd, en clair et dans la langue de l'app (`ErrorTexts`) ; effacé à l'action suivante.
     public private(set) var lastError: String?
     /// La fenêtre « Appairer un iPhone » ouverte, s'il y en a une.
     public private(set) var pairing: PairingSession?
@@ -157,11 +157,12 @@ public final class PanelModel {
             pairing?.adminChanged(admin)
         case let .pairingOpened(invitation):
             pairing?.received(invitation)
-        case let .error(_, message):
-            lastError = message
+        case let .error(code, message):
+            // Le texte de ptzd est en français : l'app montre le sien, traduit d'après le code.
+            lastError = ErrorTexts.text(for: code, message: message)
         case .challenge:
             // 127.0.0.1 n'est pas de confiance (ptzd de test) : l'app ne sait pas s'authentifier.
-            lastError = "ptzd demande une authentification : cette app ne passe que par 127.0.0.1."
+            lastError = Localization.text("ptzd demande une authentification : cette app ne passe que par 127.0.0.1.")
         case .paired, .webrtcAnswer, .webrtcError:
             break
         }
