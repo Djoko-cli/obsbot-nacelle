@@ -38,6 +38,9 @@ public struct SDKCandidate: Equatable, Sendable {
     /// racine Apple (`anchor apple generic`) ; faux si la signature est intacte mais d'un certificat inconnu d'Apple
     /// (auto-signé, ad hoc). Ce n'est pas un contrôle Gatekeeper.
     public var appleAnchored: Bool?
+    /// Le dossier `include` du SDK, à côté de `macos/` : les en-têtes avec lesquels obsbot-ai est compilé
+    /// (spec distribution § 6.1). nil : le choix ne peut pas être installé.
+    public var includeDirectory: URL?
 
     public var isArm64: Bool {
         architectures.contains("arm64")
@@ -53,7 +56,8 @@ public struct SDKCandidate: Equatable, Sendable {
         temporaryDirectory: URL? = nil,
         otherCopies: [String] = [],
         signatureValid: Bool? = nil,
-        appleAnchored: Bool? = nil
+        appleAnchored: Bool? = nil,
+        includeDirectory: URL? = nil
     ) {
         self.path = path
         self.architectures = architectures
@@ -65,6 +69,7 @@ public struct SDKCandidate: Equatable, Sendable {
         self.otherCopies = otherCopies
         self.signatureValid = signatureValid
         self.appleAnchored = appleAnchored
+        self.includeDirectory = includeDirectory
     }
 }
 
@@ -77,6 +82,10 @@ public enum SDKRejection: Error, Equatable, Sendable {
     case extractionFailed(String)
     /// Le chemin de `libdev.dylib` mène hors du choix (un dossier intermédiaire est un lien symbolique).
     case outsideArchive
+    /// Ni `include/dev/devs.hpp` à côté de `macos/`, ni archive ou dossier : un `libdev.dylib` seul (spec distribution § 6.1).
+    case headersMissing
+    /// Les en-têtes contiennent un lien symbolique ou un fichier spécial, ou mènent hors du choix.
+    case headersNotPlain
 
     public var message: String {
         switch self {
@@ -92,14 +101,21 @@ public enum SDKRejection: Error, Equatable, Sendable {
             "L'archive n'a pas pu être décompressée : \(reason)"
         case .outsideArchive:
             "Ce choix contient un lien symbolique qui mène hors du dossier du SDK : il est refusé. Choisissez le SDK décompressé ou l'archive reçue."
+        case .headersMissing:
+            "Choisissez l'archive ou le dossier du SDK : ses en-têtes sont nécessaires."
+        case .headersNotPlain:
+            "Les en-têtes du SDK contiennent un lien symbolique ou un fichier spécial : ils sont refusés."
         }
     }
 }
 
-/// Examine un `.zip` du SDK, son dossier décompressé ou directement un `libdev.dylib`.
+/// Examine un `.zip` du SDK ou son dossier décompressé ; un `libdev.dylib` seul est refusé, faute d'en-têtes.
 public enum SDKInspector {
     /// Chemin du SDK pour Mac Apple Silicon dans l'archive d'OBSBOT.
     public static let libraryPath = "macos/arm64-release/libdev.dylib"
+    /// Les en-têtes, à la racine du SDK, et celui qu'obsbot-ai inclut.
+    public static let includePath = "include"
+    public static let mainHeaderPath = "dev/devs.hpp"
     static let quarantineAttribute = "com.apple.quarantine"
     static let whereFromsAttribute = "com.apple.metadata:kMDItemWhereFroms"
 
@@ -118,13 +134,14 @@ public enum SDKInspector {
         }
         if isDirectory.boolValue {
             guard let located = try locate(in: url) else { throw .notFound }
-            return try describe(located.library, archive: nil, temporaryDirectory: nil, otherCopies: located.otherCopies)
+            let headers = try headers(of: located.root)
+            return try describe(located.library, archive: nil, temporaryDirectory: nil, otherCopies: located.otherCopies, includeDirectory: headers)
         }
         if url.pathExtension.lowercased() == "zip" {
             // Le zip lui-même doit être un fichier ordinaire : un lien vers une archive n'est pas décompressé.
             guard isRegularFile(url) else { throw .notRegularFile }
             let directory = try extract(url)
-            let located: (library: URL, otherCopies: [String])?
+            let located: (library: URL, root: URL, otherCopies: [String])?
             do {
                 located = try locate(in: directory)
             } catch {
@@ -136,13 +153,46 @@ public enum SDKInspector {
                 throw .notFound
             }
             do {
-                return try describe(located.library, archive: url, temporaryDirectory: directory, otherCopies: located.otherCopies)
+                let headers = try headers(of: located.root)
+                return try describe(located.library, archive: url, temporaryDirectory: directory, otherCopies: located.otherCopies, includeDirectory: headers)
             } catch {
                 try? FileManager.default.removeItem(at: directory)
                 throw error
             }
         }
-        return try describe(url, archive: nil, temporaryDirectory: nil, otherCopies: [])
+        // Un fichier seul (libdev.dylib) : sans en-têtes, obsbot-ai ne peut pas être compilé.
+        throw .headersMissing
+    }
+
+    /// Le dossier `include` à la racine du SDK : `include/dev/devs.hpp` doit être un fichier ordinaire, et tout le
+    /// dossier ne contenir que des dossiers et des fichiers ordinaires, sans quitter la racine (liens refusés).
+    static func headers(of root: URL) throws(SDKRejection) -> URL {
+        let include = root.appending(path: includePath)
+        guard existsWithoutFollowing(include) else { throw .headersMissing }
+        guard isDirectoryWithoutFollowing(include) else { throw .headersNotPlain }
+        let rootPath = root.resolvingSymlinksInPath().path + "/"
+        guard include.resolvingSymlinksInPath().path.hasPrefix(rootPath) else { throw .headersNotPlain }
+        let main = include.appending(path: mainHeaderPath)
+        guard existsWithoutFollowing(main) else { throw .headersMissing }
+        guard isPlainTree(include), isRegularFile(main) else { throw .headersNotPlain }
+        return include
+    }
+
+    /// Un dossier, sans suivre les liens.
+    static func isDirectoryWithoutFollowing(_ url: URL) -> Bool {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType == .typeDirectory
+    }
+
+    /// Le dossier ne contient, à toute profondeur, que des dossiers et des fichiers ordinaires (pas de lien ni de
+    /// fichier spécial), dossiers cachés compris.
+    static func isPlainTree(_ directory: URL) -> Bool {
+        guard isDirectoryWithoutFollowing(directory),
+              let enumerator = FileManager.default.enumerator(atPath: directory.path) else { return false }
+        for case let relative as String in enumerator {
+            let type = (try? FileManager.default.attributesOfItem(atPath: directory.appending(path: relative).path))?[.type] as? FileAttributeType
+            guard type == .typeRegular || type == .typeDirectory else { return false }
+        }
+        return true
     }
 
     /// Efface le dossier d'extraction d'une archive.
@@ -158,7 +208,7 @@ public enum SDKInspector {
     }
 
     /// Existe, sans suivre les liens (un lien cassé existe, et sera refusé comme tel).
-    private static func existsWithoutFollowing(_ url: URL) -> Bool {
+    static func existsWithoutFollowing(_ url: URL) -> Bool {
         (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil
     }
 
@@ -166,7 +216,7 @@ public enum SDKInspector {
     /// choisi ou sous un de ses sous-dossiers directs (le dossier de tête de l'archive d'OBSBOT). Les autres
     /// `libdev.dylib` (jusqu'à 5 niveaux, sans dossiers cachés ni paquets) sont seulement listés.
     /// Refuse (`outsideArchive`) un chemin dont le dossier intermédiaire est un lien vers un autre emplacement.
-    static func locate(in directory: URL) throws(SDKRejection) -> (library: URL, otherCopies: [String])? {
+    static func locate(in directory: URL) throws(SDKRejection) -> (library: URL, root: URL, otherCopies: [String])? {
         let manager = FileManager.default
         let subdirectories = ((try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
                                                                  options: [.skipsHiddenFiles])) ?? [])
@@ -200,7 +250,7 @@ public enum SDKInspector {
                 }
             }
         }
-        return (library, others.sorted())
+        return (library, root, others.sorted())
     }
 
     /// Décompresse l'archive dans un dossier temporaire avec `ditto`. Au-delà de `timeout`, `ditto` est arrêté et
@@ -239,7 +289,13 @@ public enum SDKInspector {
         return directory
     }
 
-    private static func describe(_ library: URL, archive: URL?, temporaryDirectory: URL?, otherCopies: [String]) throws(SDKRejection) -> SDKCandidate {
+    private static func describe(
+        _ library: URL,
+        archive: URL?,
+        temporaryDirectory: URL?,
+        otherCopies: [String],
+        includeDirectory: URL
+    ) throws(SDKRejection) -> SDKCandidate {
         guard isRegularFile(library) else { throw .notRegularFile }
         guard let architectures = MachO.architectures(of: library) else { throw .notMachO }
         guard architectures.contains("arm64") else { throw .noArm64(architectures: architectures) }
@@ -264,7 +320,8 @@ public enum SDKInspector {
             temporaryDirectory: temporaryDirectory,
             otherCopies: otherCopies,
             signatureValid: signing.valid,
-            appleAnchored: signing.appleAnchored
+            appleAnchored: signing.appleAnchored,
+            includeDirectory: includeDirectory
         )
     }
 

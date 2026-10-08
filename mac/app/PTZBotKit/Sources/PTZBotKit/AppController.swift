@@ -27,6 +27,8 @@ public final class AppController {
     public private(set) var migrationProblems: [String] = []
     /// nil pendant la vérification.
     public private(set) var sdkStatus: SDKStatus?
+    /// Les outils de développement d'Apple sont installés (`xcode-select -p`) ; nil avant la première vérification.
+    public private(set) var toolsAvailable: Bool?
     public private(set) var tailscaleMissing = false
     public private(set) var configError: String?
     public let supervisor: ServiceSupervisor
@@ -38,6 +40,8 @@ public final class AppController {
     @ObservationIgnored private let scheduler: any Scheduler
     @ObservationIgnored private let confirmMigration: @MainActor () async -> Bool
     @ObservationIgnored private var launched = false
+    /// La vérification du SDK en cours : la suivante l'attend (jamais deux à la fois).
+    @ObservationIgnored private var sdkRefresh: Task<Void, Never>?
     /// `config.json` est prêt (créé au besoin) : l'app relit le port de ptzd.
     @ObservationIgnored public var onConfigReady: (@MainActor () -> Void)?
 
@@ -116,9 +120,44 @@ public final class AppController {
         }
     }
 
+    /// L'état du SDK, après une recompilation d'obsbot-ai si la source de l'app a changé (spec distribution § 6.3) :
+    /// « Recompilation… » pendant ce temps, sans rien demander. Les appels sont mis à la file : une vérification ne
+    /// lit jamais l'état pendant la recompilation d'une autre (elle y verrait une fausse « compilation impossible »).
     public func refreshSDK() async {
+        let previous = sdkRefresh
+        let task = Task { @MainActor in
+            await previous?.value
+            await self.performSDKRefresh()
+        }
+        sdkRefresh = task
+        await task.value
+    }
+
+    private func performSDKRefresh() async {
         let installer = sdkInstaller
+        let toolchain = installer.toolchain
+        toolsAvailable = await Task.detached { toolchain.isAvailable() }.value
+        if await Task.detached(operation: { installer.needsRecompile() }).value {
+            sdkStatus = .recompiling
+            // Un échec laisse l'ancien obsbot-ai en service ; `status()` le dit.
+            _ = await Task.detached { (try? installer.recompileIfNeeded()) ?? false }.value
+        }
         sdkStatus = await Task.detached { installer.status() }.value
+    }
+
+    /// Panneau ouvert : si les outils de développement manquaient, ils ont pu être installés depuis.
+    public func panelOpened() async {
+        if case .toolsRequired = sdkStatus {
+            await refreshSDK()
+        } else if toolsAvailable == false {
+            await refreshSDK()
+        }
+    }
+
+    /// « Installer les outils de développement… » : `xcode-select --install`, l'utilisateur accepte chez Apple.
+    public func installDeveloperTools() {
+        let toolchain = sdkInstaller.toolchain
+        Task.detached { toolchain.requestInstall() }
     }
 
     /// Arrête ptzd (SIGTERM, puis SIGKILL à 5 s), puis `completion`, une seule fois, au plus tard après `quitTimeout`.
