@@ -1,0 +1,6 @@
+{
+  "port": 1986,
+  "allowedSources": ["127.0.0.1", "192.0.2.10"],
+  "volumeFloor": 0.30,
+  "voiceThreshold": 0.01
+}
