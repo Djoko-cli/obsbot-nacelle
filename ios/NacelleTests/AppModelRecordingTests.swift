@@ -70,8 +70,8 @@ final class RecordingHarness {
         return transport
     }
 
-    func send(privacy: Bool, on transport: FakeTransport) throws {
-        let snapshot = StateSnapshot(camera: .connected, control: .ready, privacy: privacy, pan: 0, tilt: 0, zoom: 0, moving: false)
+    func send(privacy: Bool, camera: CameraPresence = .connected, on transport: FakeTransport) throws {
+        let snapshot = StateSnapshot(camera: camera, control: .ready, privacy: privacy, pan: 0, tilt: 0, zoom: 0, moving: false)
         transport.emit(.message(try NacelleCodec.encode(ServerMessage.state(snapshot))))
     }
 
@@ -691,7 +691,12 @@ struct AppModelRecordingTests {
         h.model.toggleCleanFeed()
         // Pas encore connecté : l'interface reste visible (le bandeau d'état compte).
         #expect(!h.model.cleanFeed)
-        _ = try h.ready()
+        let transport = try h.ready()
+        #expect(h.model.cleanFeed)
+        // Caméra débranchée, connexion intacte : l'interface revient avec « Caméra débranchée ».
+        try h.send(privacy: false, camera: .absent, on: transport)
+        #expect(!h.model.cleanFeed)
+        try h.send(privacy: false, on: transport)
         #expect(h.model.cleanFeed)
         h.model.video.phase = .lost
         #expect(!h.model.cleanFeed)

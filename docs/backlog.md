@@ -30,3 +30,7 @@ Garder l'installation manuelle par l'app comme repli. Claude peut rédiger la de
 ## Rotation de obsbot-ai.log
 
 Le journal `obsbot-ai.log` (sortie du SDK et de `obsbot-ai`, dans le dossier des journaux de `ptzd`) grossit sans limite. Depuis le mode résident, le SDK reste chargé jusqu'à 10 minutes après chaque activité : son bruit peut croître plus vite qu'avant. À mesurer au banc (croissance sur 10 minutes de mode résident) ; si elle est nette, faire tourner le fichier à une taille maximale (par exemple 1 Mo, en gardant une ou deux copies), au lancement de l'utilitaire plutôt qu'en cours d'exécution, pour ne pas couper une ligne que le SDK est en train d'écrire.
+
+## Silence de comblement à la minuterie de ClipRecorder
+
+Les fragments MP4 de l'enregistrement iOS ne se ferment que si la piste son avance. Sans son du tout (flux sans piste audio, interruption audio en cours d'enregistrement), le filet de sécurité des fragments ne joue plus : la finalisation normale reste complète, mais une app tuée ou une finalisation ratée perd ce qui suit la perte du son. Correction : la minuterie de `ClipRecorder` écrit elle-même du silence quand le son a plus de 0,5 s de retard, jusqu'à 0,25 s avant la dernière image, ancré sur `sessionStart`. Puis un mini-banc de synchronisation (claquement de mains) pour vérifier que le son réel reprend sans décalage.
