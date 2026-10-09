@@ -3,6 +3,21 @@
   <channel>
     <title>PTZBot</title>
     <item>
+      <title>1.0.1</title>
+      <pubDate>Fri, 09 Oct 2026 08:35:23 +0000</pubDate>
+      <sparkle:version>176</sparkle:version>
+      <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+<meta charset="utf-8">
+<p><strong>English</strong></p>
+<ul><li>Instant AI tracking: once the OBSBOT SDK is loaded, turning tracking on or off takes effect within a few milliseconds instead of about four seconds. PTZBot keeps <code>obsbot-ai</code> running while an iPhone or the Mac is controlling the camera, and stops it after ten minutes without activity. The first order after opening the app can still take a few seconds, the time for the SDK to load; after that, it is immediate. PTZBot recompiles <code>obsbot-ai</code> by itself after this update, if the SDK is installed.</li><li>The app now has an icon: the photo of the camera.</li></ul>
+<p><strong>Français</strong></p>
+<ul><li>Suivi IA instantané : une fois le SDK OBSBOT chargé, allumer ou couper le suivi prend effet en quelques millisecondes, au lieu d'environ quatre secondes. PTZBot garde <code>obsbot-ai</code> en marche tant qu'un iPhone ou le Mac pilote la caméra, et l'arrête après dix minutes sans activité. Le premier ordre après l'ouverture de l'app peut encore prendre quelques secondes, le temps que le SDK se charge ; ensuite, c'est immédiat. PTZBot recompile <code>obsbot-ai</code> seul après cette mise à jour, si le SDK est installé.</li><li>L'app a désormais une icône : la photo de la caméra.</li></ul>
+]]></description>
+      <enclosure url="https://github.com/Djoko-cli/obsbot-nacelle/releases/download/ptzbot-v1.0.1/PTZBot-1.0.1.dmg" length="3012747" type="application/octet-stream" sparkle:edSignature="VdwqIIj3Yhavkq+BkMMxpoW3dyNgAHzKTtcGv6lvr7b5e4uVLF39IxDM7B6emerSpHK+kO3IVxdjeyw053ulCg=="/>
+    </item>
+    <item>
       <title>1.0.0</title>
       <pubDate>Thu, 08 Oct 2026 20:48:40 +0000</pubDate>
       <sparkle:version>162</sparkle:version>
