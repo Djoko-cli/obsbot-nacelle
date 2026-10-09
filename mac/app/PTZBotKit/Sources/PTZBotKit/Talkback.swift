@@ -154,16 +154,27 @@ public final class TalkbackModel {
     @ObservationIgnored private let state: any TalkbackStateSource
     @ObservationIgnored private let process: any ProcessProbe
     @ObservationIgnored private let scheduler: any Scheduler
+    @ObservationIgnored private let settings: any SettingsStore
+    /// Le numéro de compilation de l'app qui tourne (`CFBundleVersion`) ; nil s'il est inconnu.
+    @ObservationIgnored private let bundleVersion: String?
     @ObservationIgnored private var poll: (any Cancellable)?
     @ObservationIgnored private var watching = false
     /// L'instant (horloge du `Scheduler`) du premier « Démarrage… » d'affilée.
     @ObservationIgnored private var startingSince: TimeInterval?
 
-    public init(service: any LoginItemService, state: any TalkbackStateSource, process: any ProcessProbe, scheduler: any Scheduler) {
+    /// La clé du réglage qui retient le numéro de compilation pour lequel l'agent a été inscrit.
+    public static let registeredBuildKey = "talkbackRegisteredBuild"
+
+    public init(
+        service: any LoginItemService, state: any TalkbackStateSource, process: any ProcessProbe, scheduler: any Scheduler,
+        settings: any SettingsStore, bundleVersion: String?
+    ) {
         self.service = service
         self.state = state
         self.process = process
         self.scheduler = scheduler
+        self.settings = settings
+        self.bundleVersion = bundleVersion
         refresh()
     }
 
@@ -225,15 +236,48 @@ public final class TalkbackModel {
             if enabled {
                 try service.register()
                 registerFailed = false
+                settings.set(bundleVersion, forKey: Self.registeredBuildKey)
             } else {
                 try service.unregister()
+                settings.set(nil as String?, forKey: Self.registeredBuildKey)
             }
         } catch {
             if enabled { registerFailed = true }
             lastError = Localization.text("Talkback impossible : \(error.localizedDescription)")
         }
         refresh()
-        // L'invitation à autoriser dit déjà ce qu'il y a à faire.
+        clearErrorIfApprovalNeeded()
+    }
+
+    /// Réinscrit l'agent après une mise à jour de l'app, à appeler une fois au lancement.
+    ///
+    /// Pourquoi : l'app est signée par un certificat auto-signé, sans Team ID. macOS attache alors à l'agent une
+    /// contrainte de lancement qui épingle le binaire `talkd` tel qu'il était à l'inscription. Après une mise à jour
+    /// (Sparkle), le nouveau `talkd` viole cette contrainte et launchd le refuse (« Launch Constraint Violation »,
+    /// état « spawn failed »). Désinscrire puis réinscrire l'agent depuis la nouvelle app règle le problème.
+    ///
+    /// Seulement si l'agent est inscrit (`.enabled` ou `.requiresApproval`) et si le numéro de compilation retenu à
+    /// l'inscription diffère de celui de l'app, ou manque (agent inscrit par une version qui ne le retenait pas). Une
+    /// compilation de travail porte le numéro 1 : la règle est la même, elle ne réinscrit que si le numéro change.
+    /// Une seule tentative par lancement : en cas d'échec l'erreur est montrée, le numéro reste, rien n'est retenté.
+    public func reregisterIfUpdated() {
+        guard let bundleVersion else { return }
+        let registered = service.status == .enabled || service.status == .requiresApproval
+        guard registered, settings.string(forKey: Self.registeredBuildKey) != bundleVersion else { return }
+        lastError = nil
+        do {
+            try service.unregister()
+            try service.register()
+            settings.set(bundleVersion, forKey: Self.registeredBuildKey)
+        } catch {
+            lastError = Localization.text("Talkback impossible : \(error.localizedDescription)")
+        }
+        refresh()
+        clearErrorIfApprovalNeeded()
+    }
+
+    /// L'invitation à autoriser dit déjà ce qu'il y a à faire.
+    private func clearErrorIfApprovalNeeded() {
         if status == .requiresApproval {
             lastError = nil
         }
