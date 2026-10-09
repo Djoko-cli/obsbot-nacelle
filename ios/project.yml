@@ -40,6 +40,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSLocalNetworkUsageDescription: "À la maison, l'app trouve le Mac et la caméra sur le Wi-Fi, sans Tailscale."
         NSCameraUsageDescription: "Pour scanner le QR code d'appairage affiché sur le Mac."
+        NSPhotoLibraryAddUsageDescription: "Pour ranger dans Photos les vidéos que vous enregistrez."
         NSBonjourServices:
           - _nacelle._tcp
         NSAppTransportSecurity:
