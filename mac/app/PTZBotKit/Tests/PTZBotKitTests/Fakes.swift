@@ -9,6 +9,11 @@ final class FakeScheduler: Scheduler {
     private var tasks: [FakeTask] = []
     private var counter = 0
 
+    /// Actions programmées et pas annulées.
+    var pendingCount: Int {
+        tasks.filter { !$0.cancelled }.count
+    }
+
     @discardableResult
     func schedule(after delay: TimeInterval, _ action: @escaping @MainActor @Sendable () -> Void) -> any Cancellable {
         counter += 1
@@ -201,5 +206,27 @@ final class FakeLauncher: ProcessLauncher {
         let process = FakeProcess(pid: pid_t(1000 + launched.count), arguments: arguments, outputURL: outputURL, onExit: onExit)
         launched.append(process)
         return process
+    }
+}
+
+/// L'état écrit par talkd, simulé.
+@MainActor
+final class FakeTalkbackState: TalkbackStateSource {
+    var state: TalkbackState?
+    private(set) var reads = 0
+
+    func read() -> TalkbackState? {
+        reads += 1
+        return state
+    }
+}
+
+/// Les processus vivants, simulés.
+@MainActor
+final class FakeProcessProbe: ProcessProbe {
+    var alive: Set<Int32> = []
+
+    func isAlive(pid: Int32) -> Bool {
+        alive.contains(pid)
     }
 }

@@ -239,6 +239,57 @@
         }
       }
     },
+    "Arrêté (voir le journal)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopped (see the log)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arrêté (voir le journal)"
+          }
+        }
+      }
+    },
+    "Arrêté : erreur réseau (voir le journal)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopped: network error (see the log)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arrêté : erreur réseau (voir le journal)"
+          }
+        }
+      }
+    },
+    "Arrêté : le port UDP est déjà utilisé (voir le journal)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopped: the UDP port is already in use (see the log)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arrêté : le port UDP est déjà utilisé (voir le journal)"
+          }
+        }
+      }
+    },
     "Aucun iPhone connecté": {
       "extractionState": "manual",
       "localizations": {
@@ -290,6 +341,23 @@
         }
       }
     },
+    "Autorisation requise": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authorization required"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorisation requise"
+          }
+        }
+      }
+    },
     "Autorisez PTZBot dans Réglages › Général › Ouverture": {
       "extractionState": "manual",
       "localizations": {
@@ -303,6 +371,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Autorisez PTZBot dans Réglages › Général › Ouverture"
+          }
+        }
+      }
+    },
+    "Autorisez Talkback dans Réglages › Général › Ouverture": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow Talkback in System Settings › General › Login Items"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorisez Talkback dans Réglages › Général › Ouverture"
           }
         }
       }
@@ -562,6 +647,40 @@
         }
       }
     },
+    "Désactivé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disabled"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Désactivé"
+          }
+        }
+      }
+    },
+    "En lecture": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playing"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En lecture"
+          }
+        }
+      }
+    },
     "En quarantaine": {
       "extractionState": "manual",
       "localizations": {
@@ -592,6 +711,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Incompatible"
+          }
+        }
+      }
+    },
+    "Indisponible": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unavailable"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indisponible"
           }
         }
       }
@@ -1667,6 +1803,23 @@
         }
       }
     },
+    "Talkback impossible : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talkback failed: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talkback impossible : %@"
+          }
+        }
+      }
+    },
     "Une ancienne installation de ptzd tourne en arrière-plan. PTZBot va la remplacer : le service sera désormais actif seulement quand PTZBot est ouvert. Vos iPhone appairés sont conservés.": {
       "extractionState": "manual",
       "localizations": {
@@ -2190,6 +2343,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "ptzd s'arrête sans cesse : ouvrez le journal"
+          }
+        }
+      }
+    },
+    "talkd ne démarre pas (voir le journal)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "talkd is not starting (see the log)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "talkd ne démarre pas (voir le journal)"
           }
         }
       }
