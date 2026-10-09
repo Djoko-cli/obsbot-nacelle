@@ -1,5 +1,6 @@
 import AVFoundation
 import AudioToolbox
+import Synchronization
 @preconcurrency import WebRTC
 
 /// Périphérique audio de WebRTC en sortie seule (audio dans PTZBot) : il joue le son reçu et ne touche
@@ -11,6 +12,11 @@ import AudioToolbox
 /// notifications du système y sont renvoyées par `dispatchAsync` (seule la lecture de `delegate` pour
 /// ce renvoi se fait sur leur fil ; la fabrique est statique, `terminateDevice` n'arrive pas en pratique). `getPlayoutData` ne change que quand
 /// l'unité est arrêtée, et le fil audio ne fait que le lire.
+///
+/// Enregistrement (spec enregistrement § 4.2) : le fil audio copie le PCM qu'il vient de recevoir de WebRTC
+/// dans `recordingRing`, puis, si le haut-parleur est muet, remplace la sortie par du silence. Sur ce fil :
+/// ni allocation, ni verrou, ni attente. Le tampon est réservé à la création, les deux commandes
+/// (`capturing`, `speakerMuted`) sont des atomiques, et la lecture de l'horloge n'appelle pas le noyau.
 final class PlayoutAudioDevice: NSObject, RTCAudioDevice, @unchecked Sendable {
     static let sampleRate = 48_000.0
     static let channels = 1
@@ -20,6 +26,13 @@ final class PlayoutAudioDevice: NSObject, RTCAudioDevice, @unchecked Sendable {
     /// Fourni par WebRTC à l'initialisation ; lu sur le fil audio pendant la lecture.
     private var getPlayoutData: RTCAudioDeviceGetPlayoutDataBlock?
     private var observers: [any NSObjectProtocol] = []
+
+    /// Le son joué, copié pour le `ClipRecorder` : 2 s au plus de retard toléré.
+    let recordingRing = AudioRingBuffer(capacity: Int(sampleRate) * channels * 2)
+    /// La copie dans `recordingRing` est en marche.
+    private let capturing = Atomic<Bool>(false)
+    /// La sortie envoie du silence au haut-parleur ; la copie, elle, garde le vrai son.
+    private let speakerMuted = Atomic<Bool>(false)
 
     private(set) var isInitialized = false
     private(set) var isPlayoutInitialized = false
@@ -47,6 +60,30 @@ final class PlayoutAudioDevice: NSObject, RTCAudioDevice, @unchecked Sendable {
 
     var outputLatency: TimeInterval {
         AVAudioSession.sharedInstance().outputLatency
+    }
+
+    var isCapturing: Bool {
+        capturing.load(ordering: .acquiring)
+    }
+
+    var isSpeakerMuted: Bool {
+        speakerMuted.load(ordering: .acquiring)
+    }
+
+    /// Début d'une copie : le tampon est vidé d'abord (le consommateur est à l'arrêt, le producteur n'écrit pas encore).
+    func beginCapture() {
+        recordingRing.reset()
+        capturing.store(true, ordering: .releasing)
+    }
+
+    /// Fin de la copie. Ce qui reste dans le tampon peut encore être repris.
+    func endCapture() {
+        capturing.store(false, ordering: .releasing)
+    }
+
+    /// Muet : le haut-parleur reçoit du silence, mais WebRTC continue de livrer le son (copie comprise).
+    func setSpeakerMuted(_ muted: Bool) {
+        speakerMuted.store(muted, ordering: .releasing)
     }
 
     func initialize(with delegate: any RTCAudioDeviceDelegate) -> Bool {
@@ -220,8 +257,9 @@ final class PlayoutAudioDevice: NSObject, RTCAudioDevice, @unchecked Sendable {
         isPlayoutInitialized = false
     }
 
-    /// Fil audio : demande à WebRTC les échantillons à jouer ; silence s'il n'y en a pas.
-    fileprivate func render(
+    /// Fil audio : demande à WebRTC les échantillons à jouer ; silence s'il n'y en a pas. Puis copie pour
+    /// l'enregistrement, et silence au haut-parleur s'il est muet.
+    func render(
         _ flags: UnsafeMutablePointer<AudioUnitRenderActionFlags>,
         _ timestamp: UnsafePointer<AudioTimeStamp>,
         _ bus: UInt32,
@@ -230,14 +268,40 @@ final class PlayoutAudioDevice: NSObject, RTCAudioDevice, @unchecked Sendable {
     ) -> OSStatus {
         guard let getPlayoutData else {
             flags.pointee.insert(.unitRenderAction_OutputIsSilence)
-            for buffer in UnsafeMutableAudioBufferListPointer(data) {
-                if let bytes = buffer.mData {
-                    memset(bytes, 0, Int(buffer.mDataByteSize))
-                }
-            }
+            silence(data)
             return noErr
         }
-        return getPlayoutData(flags, timestamp, Int(bus), frames, data)
+        let status = getPlayoutData(flags, timestamp, Int(bus), frames, data)
+        guard status == noErr else { return status }
+        if capturing.load(ordering: .acquiring) {
+            capture(data, silent: flags.pointee.contains(.unitRenderAction_OutputIsSilence))
+        }
+        if speakerMuted.load(ordering: .acquiring) {
+            flags.pointee.insert(.unitRenderAction_OutputIsSilence)
+            silence(data)
+        }
+        return noErr
+    }
+
+    /// Copie le premier tampon (mono entrelacé) dans le tampon circulaire. Une sortie signalée silencieuse
+    /// peut contenir n'importe quoi : elle est copiée comme des zéros.
+    private func capture(_ data: UnsafeMutablePointer<AudioBufferList>, silent: Bool) {
+        guard let buffer = UnsafeMutableAudioBufferListPointer(data).first, let bytes = buffer.mData else { return }
+        let count = Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size
+        let time = HostClock.nowNanoseconds()
+        if silent {
+            recordingRing.writeSilence(count: count, time: time)
+        } else {
+            recordingRing.write(bytes.assumingMemoryBound(to: Int16.self), count: count, time: time)
+        }
+    }
+
+    private func silence(_ data: UnsafeMutablePointer<AudioBufferList>) {
+        for buffer in UnsafeMutableAudioBufferListPointer(data) {
+            if let bytes = buffer.mData {
+                memset(bytes, 0, Int(buffer.mDataByteSize))
+            }
+        }
     }
 }
 
