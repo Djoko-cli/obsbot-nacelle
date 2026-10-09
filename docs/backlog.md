@@ -34,3 +34,7 @@ Le journal `obsbot-ai.log` (sortie du SDK et de `obsbot-ai`, dans le dossier des
 ## Silence de comblement à la minuterie de ClipRecorder
 
 Les fragments MP4 de l'enregistrement iOS ne se ferment que si la piste son avance. Sans son du tout (flux sans piste audio, interruption audio en cours d'enregistrement), le filet de sécurité des fragments ne joue plus : la finalisation normale reste complète, mais une app tuée ou une finalisation ratée perd ce qui suit la perte du son. Correction : la minuterie de `ClipRecorder` écrit elle-même du silence quand le son a plus de 0,5 s de retard, jusqu'à 0,25 s avant la dernière image, ancré sur `sessionStart`. Puis un mini-banc de synchronisation (claquement de mains) pour vérifier que le son réel reprend sans décalage.
+
+## Voix de l'iPhone dans les vidéos du bouton rec
+
+Pendant un enregistrement (bouton rec de l'app iOS), ajouter à la vidéo la voix captée par le micro de l'iPhone quand on maintient le bouton « parler » (spec `2026-10-09-parler-ios-design.md`), à la source, en plus du son de la caméra. Aujourd'hui, la voix n'y arrive qu'indirectement, par le haut-parleur du Mac capté par le micro de la caméra. À trancher : mixer les deux sons dans une seule piste AAC ou garder deux pistes, et le recalage dans le temps entre le micro de l'iPhone et le son reçu.
