@@ -10,10 +10,22 @@ struct TalkbackTests {
     let state = FakeTalkbackState()
     let process = FakeProcessProbe()
     let scheduler = FakeScheduler()
+    let settings = FakeSettings()
     let model: TalkbackModel
 
     init() {
-        model = TalkbackModel(service: service, state: state, process: process, scheduler: scheduler)
+        model = TalkbackModel(
+            service: service, state: state, process: process, scheduler: scheduler,
+            settings: settings, bundleVersion: "7"
+        )
+    }
+
+    /// Un modèle sur les mêmes doublures, pour une autre compilation de l'app.
+    private func makeModel(bundleVersion: String?) -> TalkbackModel {
+        TalkbackModel(
+            service: service, state: state, process: process, scheduler: scheduler,
+            settings: settings, bundleVersion: bundleVersion
+        )
     }
 
     private func speaking(_ speaking: Bool, pid: Int32 = 4242) -> TalkbackState {
@@ -76,6 +88,152 @@ struct TalkbackTests {
         #expect(plist["ProcessType"] as? String == "Interactive")
         #expect(plist["AssociatedBundleIdentifiers"] as? [String] == ["io.github.djoko-cli.ptzbot"])
         #expect(plist["ProgramArguments"] == nil)
+    }
+
+    // MARK: - Réinscription après une mise à jour
+
+    private struct Refused: LocalizedError {
+        var errorDescription: String? { "refusé" }
+    }
+
+    @Test("Interrupteur allumé : le numéro de compilation est retenu ; éteint, il est effacé")
+    func switchRemembersBuild() {
+        model.setEnabled(true)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
+        model.setEnabled(false)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == nil)
+    }
+
+    @Test("Inscription refusée par l'interrupteur : aucun numéro retenu")
+    func failedSwitchKeepsNoBuild() {
+        service.failure = Refused()
+        model.setEnabled(true)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == nil)
+    }
+
+    @Test("Désinscription refusée par l'interrupteur : le numéro retenu reste")
+    func failedUnregisterKeepsBuild() {
+        model.setEnabled(true)
+        service.failure = Refused()
+        model.setEnabled(false)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
+    }
+
+    @Test("Même numéro de compilation qu'à l'inscription : rien n'est touché")
+    func sameBuild() {
+        model.setEnabled(true)
+        let before = (service.registerCalls, service.unregisterCalls)
+        makeModel(bundleVersion: "7").reregisterIfUpdated()
+        #expect(service.registerCalls == before.0)
+        #expect(service.unregisterCalls == before.1)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
+    }
+
+    @Test("Autre numéro de compilation : désinscription, réinscription, nouveau numéro retenu")
+    func newBuild() {
+        model.setEnabled(true)
+        let before = (service.registerCalls, service.unregisterCalls)
+        let updated = makeModel(bundleVersion: "8")
+        updated.reregisterIfUpdated()
+        #expect(service.unregisterCalls == before.1 + 1)
+        #expect(service.registerCalls == before.0 + 1)
+        #expect(service.status == .enabled)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "8")
+        #expect(updated.lastError == nil)
+        #expect(updated.isEnabled)
+    }
+
+    @Test("Agent inscrit par une version qui ne retenait rien (la 1.0.2) : réinscription")
+    func noRememberedBuild() {
+        service.status = .enabled
+        model.reregisterIfUpdated()
+        #expect(service.unregisterCalls == 1)
+        #expect(service.registerCalls == 1)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
+    }
+
+    @Test("Agent en attente d'accord : réinscrit aussi")
+    func requiresApprovalIsRegistered() {
+        service.status = .requiresApproval
+        service.statusAfterRegister = .requiresApproval
+        model.reregisterIfUpdated()
+        #expect(service.unregisterCalls == 1)
+        #expect(service.registerCalls == 1)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
+        #expect(model.status == .requiresApproval)
+        #expect(model.lastError == nil)
+    }
+
+    @Test("Agent non inscrit : rien, même sans numéro retenu")
+    func notRegistered() {
+        model.reregisterIfUpdated()
+        #expect(service.unregisterCalls == 0)
+        #expect(service.registerCalls == 0)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == nil)
+        #expect(model.status == .disabled)
+    }
+
+    @Test("Agent introuvable (jamais inscrit) : rien")
+    func notFound() {
+        service.status = .notFound
+        model.reregisterIfUpdated()
+        #expect(service.unregisterCalls == 0)
+        #expect(service.registerCalls == 0)
+    }
+
+    @Test("Compilation de travail (numéro 1) : rien si 1 est déjà retenu ; réinscrit en venant d'une version publiée, et inversement")
+    func workingBuild() {
+        settings.strings[TalkbackModel.registeredBuildKey] = "1"
+        service.status = .enabled
+        makeModel(bundleVersion: "1").reregisterIfUpdated()
+        #expect(service.registerCalls == 0)
+        #expect(service.unregisterCalls == 0)
+
+        settings.strings[TalkbackModel.registeredBuildKey] = "42"
+        makeModel(bundleVersion: "1").reregisterIfUpdated()
+        #expect(service.registerCalls == 1)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "1")
+
+        makeModel(bundleVersion: "42").reregisterIfUpdated()
+        #expect(service.registerCalls == 2)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "42")
+    }
+
+    @Test("Désinscription refusée : erreur affichée, numéro inchangé, une seule tentative")
+    func unregisterFails() {
+        service.status = .enabled
+        settings.strings[TalkbackModel.registeredBuildKey] = "6"
+        service.failure = Refused()
+        model.reregisterIfUpdated()
+        #expect(model.lastError == "Talkback impossible : refusé")
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "6")
+        #expect(service.unregisterCalls == 1)
+        #expect(service.registerCalls == 0)
+    }
+
+    @Test("Réinscription refusée : erreur affichée, numéro inchangé, une seule tentative")
+    func registerFails() {
+        service.status = .enabled
+        settings.strings[TalkbackModel.registeredBuildKey] = "6"
+        service.registerFailure = Refused()
+        model.reregisterIfUpdated()
+        #expect(model.lastError == "Talkback impossible : refusé")
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "6")
+        #expect(service.unregisterCalls == 1)
+        #expect(service.registerCalls == 1)
+        // Rien n'est retenté ni par le suivi ni par un relevé d'état.
+        model.beginWatching()
+        scheduler.advance(by: 5)
+        #expect(service.unregisterCalls == 1)
+        #expect(service.registerCalls == 1)
+    }
+
+    @Test("Numéro de compilation inconnu : rien")
+    func unknownBuild() {
+        service.status = .enabled
+        makeModel(bundleVersion: nil).reregisterIfUpdated()
+        #expect(service.unregisterCalls == 0)
+        #expect(service.registerCalls == 0)
     }
 
     // MARK: - États

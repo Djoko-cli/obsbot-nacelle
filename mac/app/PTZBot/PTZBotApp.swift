@@ -70,7 +70,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             service: TalkbackAgent(),
             state: FileTalkbackStateSource(url: paths.talkbackState),
             process: SystemProcessProbe(),
-            scheduler: scheduler
+            scheduler: scheduler,
+            settings: UserDefaultsSettingsStore(defaults: .standard),
+            bundleVersion: Bundle.main.infoDictionary?["CFBundleVersion"] as? String
         )
         let installer = SDKInstaller.system(paths: paths)
         controller = AppController(
@@ -110,6 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !started else { return }
         started = true
         panel.start()
+        talkback.reregisterIfUpdated()
         talkback.refresh()
         network.check()
         Task { await controller.launch() }

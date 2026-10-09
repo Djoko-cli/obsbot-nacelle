@@ -82,15 +82,21 @@ final class FakeLoginItem: LoginItemService {
     var failure: (any Error)?
     private(set) var settingsOpened = 0
     var statusAfterRegister: SMAppService.Status = .enabled
+    /// Un échec réservé à `register()` (`unregister()` réussit alors).
+    var registerFailure: (any Error)?
+    private(set) var registerCalls = 0
+    private(set) var unregisterCalls = 0
 
     func register() throws {
-        if let failure {
-            throw failure
+        registerCalls += 1
+        if let error = failure ?? registerFailure {
+            throw error
         }
         status = statusAfterRegister
     }
 
     func unregister() throws {
+        unregisterCalls += 1
         if let failure {
             throw failure
         }
