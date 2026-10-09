@@ -6,6 +6,23 @@ release and to the update window.
 PTZBot pour Mac. Chaque section a un bloc **English**, puis un bloc **Français** ; les mêmes notes servent à la
 version GitHub et à la fenêtre de mise à jour.
 
+## 1.0.2
+
+**English**
+
+- Talkback: the microphone button of the camera in the Home app now plays your voice on the Mac's built-in
+  speakers, even when PTZBot is closed. Turn on "Talkback" in the panel, then add the Homebridge line given in the
+  README. While someone speaks, the speakers are raised to at least 30 % (or unmuted), then put back. Only your
+  Homebridge host and the Mac itself are accepted; no microphone is opened and no sound is recorded.
+
+**Français**
+
+- Talkback : le bouton micro de la caméra dans l'app Maison fait désormais sortir votre voix par les haut-parleurs
+  intégrés du Mac, même PTZBot fermé. Allumez « Talkback » dans le panneau, puis ajoutez la ligne Homebridge donnée
+  dans le README. Pendant la parole, les haut-parleurs sont remontés à 30 % au moins (ou sortis de la sourdine),
+  puis remis comme avant. Seuls votre hôte Homebridge et le Mac lui-même sont acceptés ; aucun micro n'est ouvert
+  et aucun son n'est enregistré.
+
 ## 1.0.1
 
 **English**
