@@ -237,9 +237,10 @@ final class AppModel {
     private(set) var cleanFeedWanted = false
 
     /// Mode épuré en vigueur : l'interface est masquée, sauf le bouton rec et le badge pendant un enregistrement.
-    /// Seulement connecté, la vidéo jouant : dès que la connexion flanche, l'interface revient avec son bandeau.
+    /// Seulement connecté, la vidéo jouant et la caméra branchée : dès que l'un manque, l'interface revient avec son
+    /// bandeau (une caméra débranchée laisse la connexion ouverte, sur une image figée).
     var cleanFeed: Bool {
-        cleanFeedWanted && ptz.link == .connected && video.phase == .playing
+        cleanFeedWanted && ptz.link == .connected && video.phase == .playing && ptz.state?.camera == .connected
     }
 
     /// Un tap sur la vidéo masque l'interface, un autre la fait revenir.

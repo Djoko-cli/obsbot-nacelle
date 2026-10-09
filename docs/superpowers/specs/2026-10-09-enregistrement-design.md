@@ -173,7 +173,10 @@ Il écrit un MP4 avec `AVAssetWriter`, dans le dossier temporaire de l'app (`PTZ
    (`movieFragmentInterval`). Si la finalisation échoue (iOS peut invalider l'encodeur en arrière-plan) ou si l'app
    meurt, le fichier reste lisible jusqu'au dernier fragment au lieu d'être perdu en entier. Un fragment ne se
    ferme que lorsque toutes les pistes ont avancé : la piste son doit donc recevoir des blocs (de la parole, du
-   silence du périphérique ou du silence de comblement).
+   silence du périphérique ou du silence de comblement). Limite connue (relecture finale) : sans son du tout (flux
+   sans piste audio, interruption audio en cours), aucun fragment ne se ferme ; la finalisation normale reste
+   complète, mais le filet ne couvre alors que ce qui précède la perte du son. Correction prévue au backlog
+   (silence de comblement écrit par la minuterie).
 6. **§ 6, arrêt sur échec d'écriture.** Dès la première erreur d'écriture, l'enregistreur prévient l'app, qui
    arrête l'enregistrement et traite le fichier comme à un arrêt normal : « L'enregistrement a échoué. » s'affiche
    tout de suite, sans attendre un appui. Cette règle remplace « Échec d'écriture du MP4 » du tableau.
@@ -194,5 +197,5 @@ Il écrit un MP4 avec `AVAssetWriter`, dans le dossier temporaire de l'app (`PTZ
     réglages, boutons son, suivi IA et vie privée, joystick, zoom, bandeau d'état, barre d'état d'iOS et indicateur
     d'accueil. Un second tap la rend. Pendant un enregistrement (ou sa sauvegarde), le bouton rec, à sa place, et le
     badge restent ; au repos, rien. Les bandeaux de l'enregistrement (vidéo rangée, échec, vidéo hors de Photos)
-    restent affichés. Le mode ne vaut que connecté, la vidéo jouant : à la moindre coupure, l'interface revient avec
-    son bandeau, et le mode épuré reprend au retour de la vidéo. Il n'est jamais retenu d'un lancement à l'autre.
+    restent affichés. Le mode ne vaut que connecté, la vidéo jouant et la caméra branchée : à la moindre coupure
+    (ou caméra débranchée), l'interface revient avec son bandeau, et le mode épuré reprend au retour. Il n'est jamais retenu d'un lancement à l'autre.
