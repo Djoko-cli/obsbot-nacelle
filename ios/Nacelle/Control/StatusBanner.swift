@@ -1,3 +1,4 @@
+import Foundation
 import NacelleProtocol
 
 /// Ce que le bandeau d'état doit connaître.
@@ -15,6 +16,19 @@ struct BannerInputs: Equatable {
 /// Un ordre de suivi IA en cours (`control == .taking`) n'a pas de bandeau : le bouton du suivi IA l'indique.
 enum StatusBanner {
     static let qrRefused = "QR code refusé : relancez l'appairage sur le Mac"
+
+    // Enregistrement (spec enregistrement § 6).
+    static let photosDenied = "L'accès à Photos est refusé : autorisez-le dans Réglages › PTZBot › Photos."
+    static let lowSpaceAtStart = "Espace insuffisant sur l'iPhone pour enregistrer."
+    static let lowSpaceStopped = "Enregistrement arrêté : espace insuffisant."
+    static let recordingFailed = "L'enregistrement a échoué."
+    static let photosFailed = "La vidéo n'a pas pu être ajoutée à Photos."
+
+    /// « Vidéo enregistrée dans Photos (0:42) » ; sans durée connue (réessai d'un fichier resté), sans parenthèses.
+    static func saved(duration: TimeInterval?) -> String {
+        guard let duration else { return "Vidéo enregistrée dans Photos" }
+        return "Vidéo enregistrée dans Photos (\(RecordingFormat.duration(duration)))"
+    }
 
     static func text(for inputs: BannerInputs) -> String? {
         if inputs.macUnreachable {

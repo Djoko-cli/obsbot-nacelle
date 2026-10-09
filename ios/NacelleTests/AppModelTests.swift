@@ -25,8 +25,16 @@ struct AppModelTests {
                 pairingRecord: PairingRecord(defaults: defaults),
                 scheduler: scheduler
             ),
-            video: VideoSession(scheduler: scheduler),
-            scheduler: scheduler
+            video: VideoSession(scheduler: scheduler, audioDevice: PlayoutAudioDevice()),
+            scheduler: scheduler,
+            recording: RecordingServices(
+                makeRecorder: { FakeClipRecorder() },
+                photos: FakePhotoSaver(),
+                files: RecordingFiles(directory: FileManager.default.temporaryDirectory.appendingPathComponent("nacelle-none-\(UUID().uuidString)")) { _ in false },
+                freeSpace: { .max },
+                background: FakeBackgroundTasks(),
+                now: { Date() }
+            )
         )
     }
 

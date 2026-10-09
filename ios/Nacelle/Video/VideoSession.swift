@@ -6,6 +6,10 @@ import Observation
 /// par `signal`, qui la relaie à go2rtc (spec accès local § 8.4). Le son est toujours reçu ; `playsAudio`
 /// décide seulement s'il est joué, pour qu'activer le son soit immédiat. Coupé, il reste décodé et
 /// sorti à volume nul : un peu de batterie, sans gêne pour les autres apps (`.mixWithOthers`).
+///
+/// Enregistrement (spec enregistrement § 4.2) : pendant qu'on enregistre, la piste audio reste active même si
+/// le son est coupé dans l'app ; c'est le périphérique audio qui envoie alors du silence au haut-parleur
+/// (`setSpeakerMuted`) tout en copiant le vrai son pour le fichier.
 @MainActor
 @Observable
 final class VideoSession {
@@ -22,9 +26,16 @@ final class VideoSession {
     static let gatheringTimeout: TimeInterval = 2
     static let retryDelays: [TimeInterval] = [1, 2, 4, 8]
 
-    private(set) var phase: Phase = .idle
+    /// Modifiable de l'extérieur pour les tests seulement, qui n'ouvrent pas de vraie connexion WebRTC.
+    var phase: Phase = .idle
     /// Le son reçu est joué ; sinon, il est reçu mais muet.
     private(set) var playsAudio = false
+    /// Une image vidéo au moins est arrivée sur la connexion courante.
+    private(set) var hasFrame = false
+    /// Un enregistrement est en cours : la piste audio reste active, quoi qu'en dise `playsAudio`.
+    private(set) var isRecording = false
+    /// Appelé quand la session vidéo s'arrête ou se perd (l'enregistrement en cours doit alors se terminer).
+    @ObservationIgnored var onEnded: (@MainActor () -> Void)?
 
     @ObservationIgnored private let scheduler: any Scheduler
     @ObservationIgnored private var signal: Signal?
@@ -35,8 +46,16 @@ final class VideoSession {
     @ObservationIgnored private var track: RTCVideoTrack?
     @ObservationIgnored private var audioTrack: RTCAudioTrack?
     @ObservationIgnored private var renderer: RTCMTLVideoView?
+    @ObservationIgnored private var recordingRenderer: RecordingRenderer?
+    /// Signale la première image de chaque connexion.
+    @ObservationIgnored private(set) lazy var probe = FrameProbe { [weak self] in
+        Task { @MainActor in self?.frameReceived() }
+    }
     @ObservationIgnored private var retry: (any Cancellable)?
     @ObservationIgnored private var gathering: CheckedContinuation<Void, Never>?
+
+    /// Le périphérique audio, unique : il copie aussi le son pour l'enregistrement.
+    static let audioDevice = PlayoutAudioDevice()
 
     private static let factory: RTCPeerConnectionFactory = {
         RTCInitializeSSL()
@@ -44,12 +63,65 @@ final class VideoSession {
         return RTCPeerConnectionFactory(
             encoderFactory: RTCDefaultVideoEncoderFactory(),
             decoderFactory: RTCDefaultVideoDecoderFactory(),
-            audioDevice: PlayoutAudioDevice()
+            audioDevice: audioDevice
         )
     }()
 
-    init(scheduler: any Scheduler) {
+    /// Le périphérique audio de cette session.
+    @ObservationIgnored private let audioDevice: PlayoutAudioDevice
+
+    /// `audioDevice` : celui de l'app par défaut. Les tests en passent un neuf, pour ne pas partager l'état
+    /// du périphérique statique (muet, capture) entre des essais qui tournent en parallèle ; WebRTC, lui,
+    /// reste branché sur le périphérique statique, et aucun essai ne crée de connexion.
+    init(scheduler: any Scheduler, audioDevice: PlayoutAudioDevice = VideoSession.audioDevice) {
         self.scheduler = scheduler
+        self.audioDevice = audioDevice
+        applyAudioState()
+    }
+
+    /// Le tampon où le périphérique audio copie le son joué.
+    var audioRing: AudioRingBuffer {
+        audioDevice.recordingRing
+    }
+
+    /// État voulu de la piste audio : active si le son est joué, ou si on enregistre.
+    var audioTrackEnabled: Bool {
+        playsAudio || isRecording
+    }
+
+    /// Une image vient d'arriver (appelé par `probe`, et par les tests).
+    func frameReceived() {
+        hasFrame = true
+    }
+
+    /// Début d'un enregistrement : le tampon audio est vidé, les images sont transmises à `recorder`, la piste
+    /// audio reste active et le haut-parleur ne joue que si le son est voulu.
+    func beginRecording(with recorder: any ClipRecording) {
+        endRecording()
+        isRecording = true
+        audioDevice.beginCapture()
+        let renderer = RecordingRenderer(recorder: recorder)
+        recordingRenderer = renderer
+        track?.add(renderer)
+        applyAudioState()
+    }
+
+    /// Fin de l'enregistrement : la piste audio retrouve l'état du bouton son. Sans effet hors enregistrement.
+    func endRecording() {
+        guard isRecording else { return }
+        isRecording = false
+        audioDevice.endCapture()
+        if let recordingRenderer {
+            track?.remove(recordingRenderer)
+        }
+        recordingRenderer = nil
+        applyAudioState()
+    }
+
+    /// La piste audio suit `audioTrackEnabled` ; le haut-parleur, lui, ne suit que le son voulu.
+    private func applyAudioState() {
+        audioTrack?.isEnabled = audioTrackEnabled
+        audioDevice.setSpeakerMuted(!playsAudio)
     }
 
     /// La vue qui affiche l'image, fournie par VideoView.
@@ -61,7 +133,7 @@ final class VideoSession {
     /// Joue ou coupe le son reçu, tout de suite et pour les connexions suivantes.
     func setPlaysAudio(_ on: Bool) {
         playsAudio = on
-        audioTrack?.isEnabled = on
+        applyAudioState()
     }
 
     func start(signal: @escaping Signal) {
@@ -77,6 +149,7 @@ final class VideoSession {
         retry = nil
         teardown()
         phase = .idle
+        onEnded?()
     }
 
     private func connect() {
@@ -138,11 +211,15 @@ final class VideoSession {
             if let renderer {
                 track.add(renderer)
             }
+            track.add(probe)
+            if let recordingRenderer {
+                track.add(recordingRenderer)
+            }
         }
         let audio = peer.addTransceiver(of: .audio, init: receiveOnly)
         if let track = audio?.receiver.track as? RTCAudioTrack {
-            track.isEnabled = playsAudio
             audioTrack = track
+            applyAudioState()
         }
         self.peer = peer
         self.observer = observer
@@ -184,6 +261,7 @@ final class VideoSession {
     private func lost() {
         teardown()
         phase = .lost
+        onEnded?()
         guard signal != nil else { return }
         let delay = Self.retryDelays[min(attempt, Self.retryDelays.count - 1)]
         attempt += 1
@@ -199,6 +277,12 @@ final class VideoSession {
         if let renderer {
             track?.remove(renderer)
         }
+        track?.remove(probe)
+        if let recordingRenderer {
+            track?.remove(recordingRenderer)
+        }
+        probe.reset()
+        hasFrame = false
         track = nil
         audioTrack = nil
         peer?.close()
