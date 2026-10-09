@@ -182,6 +182,25 @@ With a free Apple account, the app expires after 7 days: redo step 2.
 
 Tests: `(cd ios && xcodegen && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build)`.
 
+### Talkback (speaking through the camera from the Home app)
+
+The microphone button of the camera in the Home app plays your voice on the Mac's **built-in speakers**, even when PTZBot is closed. A small background agent, `talkd`, stored inside the app, receives the voice from Homebridge over UDP (port 1986) and plays it; it never opens a microphone.
+
+1. In the PTZBot panel, turn on **Talkback**. The status reads "Ready".
+2. Allow your Homebridge host in `~/Library/Application Support/ObsbotNacelle/talkd.json`, then turn Talkback off and on again so `talkd` reads it:
+
+   ```json
+   { "port": 1986, "allowedSources": ["127.0.0.1", "192.0.2.10"], "volumeFloor": 0.30, "voiceThreshold": 0.01 }
+   ```
+
+3. In the Homebridge camera configuration (`homebridge-camera-ffmpeg`, experimental option), add, with the Mac's address:
+
+   ```
+   "returnAudioTarget": "-f s16le -ar 16000 -ac 1 udp://<Mac address>:1986?pkt_size=640"
+   ```
+
+While someone speaks, the built-in speakers are raised to at least 30 % (or unmuted), then put back. Packets from any other address are ignored. The log is `~/Library/Logs/obsbot-nacelle/talkd.log`; no sound is recorded. Design: [speaker spec](docs/superpowers/specs/2026-10-08-haut-parleur-design.md).
+
 ### go2rtc
 
 `ptzd` relays the video negotiation to go2rtc's API on 127.0.0.1: the API therefore no longer needs to be open to the network. Suggested configuration (in `go2rtc.yaml`, to adapt):
@@ -215,7 +234,7 @@ streams:
 
 ### Uninstalling
 
-In PTZBot for Mac, **Settings…** › uncheck **Open at login**, then **Quit** (`ptzd` stops with the app), and move `/Applications/PTZBot.app` (or `~/Applications/PTZBot.app` for a build from source) to the Trash.
+In PTZBot for Mac, turn off **Talkback** (its agent keeps running otherwise), **Settings…** › uncheck **Open at login**, then **Quit** (`ptzd` stops with the app), and move `/Applications/PTZBot.app` (or `~/Applications/PTZBot.app` for a build from source) to the Trash.
 
 The data stays in `~/Library/Application Support/ObsbotNacelle/` (settings, paired iPhones, SDK, its headers and `obsbot-ai`) and the logs in `~/Library/Logs/obsbot-nacelle/`, until you delete them:
 
@@ -425,6 +444,25 @@ Avec un compte Apple gratuit, l'app expire au bout de 7 jours : refaire l'étape
 
 Tests : `(cd ios && xcodegen && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build)`.
 
+### Talkback (parler par la caméra depuis l'app Maison)
+
+Le bouton micro de la caméra dans l'app Maison fait sortir votre voix par les **haut-parleurs intégrés** du Mac, même PTZBot fermé. Un petit agent en arrière-plan, `talkd`, rangé dans l'app, reçoit la voix de Homebridge en UDP (port 1986) et la joue ; il n'ouvre jamais de micro.
+
+1. Dans le panneau de PTZBot, allumer **Talkback**. L'état indique « Prêt ».
+2. Autoriser l'hôte Homebridge dans `~/Library/Application Support/ObsbotNacelle/talkd.json`, puis éteindre et rallumer Talkback pour que `talkd` le relise :
+
+   ```json
+   { "port": 1986, "allowedSources": ["127.0.0.1", "192.0.2.10"], "volumeFloor": 0.30, "voiceThreshold": 0.01 }
+   ```
+
+3. Dans la configuration de la caméra dans Homebridge (`homebridge-camera-ffmpeg`, option expérimentale), ajouter, avec l'adresse du Mac :
+
+   ```
+   "returnAudioTarget": "-f s16le -ar 16000 -ac 1 udp://<adresse du Mac>:1986?pkt_size=640"
+   ```
+
+Pendant la parole, les haut-parleurs intégrés sont remontés à 30 % au moins (ou sortis de la sourdine), puis remis comme avant. Les paquets de toute autre adresse sont ignorés. Le journal est `~/Library/Logs/obsbot-nacelle/talkd.log` ; aucun son n'est enregistré. Conception : [spec haut-parleur](docs/superpowers/specs/2026-10-08-haut-parleur-design.md).
+
 ### go2rtc
 
 `ptzd` relaie la négociation vidéo à l'API de go2rtc sur 127.0.0.1 : l'API n'a donc plus besoin d'être ouverte au réseau. Configuration conseillée (dans `go2rtc.yaml`, à adapter) :
@@ -458,7 +496,7 @@ streams:
 
 ### Désinstaller
 
-Dans PTZBot pour Mac, **Réglages…** › décocher **Ouvrir à la connexion**, puis **Quitter** (`ptzd` s'arrête avec l'app), et mettre `/Applications/PTZBot.app` (ou `~/Applications/PTZBot.app` pour une compilation depuis les sources) à la corbeille.
+Dans PTZBot pour Mac, éteindre **Talkback** (sinon son agent continue de tourner), **Réglages…** › décocher **Ouvrir à la connexion**, puis **Quitter** (`ptzd` s'arrête avec l'app), et mettre `/Applications/PTZBot.app` (ou `~/Applications/PTZBot.app` pour une compilation depuis les sources) à la corbeille.
 
 Les données restent dans `~/Library/Application Support/ObsbotNacelle/` (réglages, iPhone appairés, SDK, ses en-têtes et `obsbot-ai`) et les journaux dans `~/Library/Logs/obsbot-nacelle/`, tant qu'on ne les supprime pas :
 
