@@ -220,7 +220,7 @@ Ajoutés le 2026-10-09, après les essais sur le Mac de Majid et pendant le prot
   - Un champ facultatif **`failure`** est écrit juste avant `exit` quand la socket UDP ne s'ouvre pas : `portBusy` (port déjà utilisé) ou `socket` (autre erreur). Sans échec, le champ est absent : les fichiers d'avant restent valides. Écrire ce fichier ne touche pas CoreAudio.
 - **Statuts du panneau.** En plus de « Prêt », « Désactivé », « Autorisation requise » et « En lecture » :
   - « Démarrage… » quand l'agent est inscrit mais que talkd n'a pas écrit son état (ou que son processus n'existe plus) ;
-  - « Indisponible » quand la plist de l'agent manque dans l'app (compilation sans agent, `SMAppService.Status.notFound`) ; l'interrupteur est alors grisé.
+  - « Indisponible » quand la plist de l'agent manque dans l'app (compilation sans agent, `SMAppService.Status.notFound`) ; l'interrupteur reste utilisable pour réessayer. `notFound` seul, avant toute inscription, donne « Désactivé » (banc du 09/10).
   - « Arrêté : le port UDP est déjà utilisé (voir le journal) », « Arrêté : erreur réseau (voir le journal) » ou « Arrêté (voir le journal) » dès qu'un `failure` est écrit ;
   - « talkd ne démarre pas (voir le journal) » quand l'agent est inscrit mais que talkd n'a pas tourné depuis plus de 15 s, comptées depuis le premier « Démarrage… ». Cela couvre aussi un agent refusé par launchd (plist en quarantaine, par exemple).
   - Ces deux statuts et « Autorisation requise » s'affichent en orange.
