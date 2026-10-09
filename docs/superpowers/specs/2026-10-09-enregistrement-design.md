@@ -150,3 +150,49 @@ Il écrit un MP4 avec `AVAssetWriter`, dans le dossier temporaire de l'app (`PTZ
 5. **4G :** 1 min d'enregistrement, puis une coupure de réseau (mode avion). La vidéo est sauvée.
 6. **Charge :** 10 min d'enregistrement. Pas de saccade à l'écran, une chauffe raisonnable, et une taille de fichier
    proche de l'estimation (environ 45 Mo par minute en 1080p).
+
+## 9. Amendements (prototype)
+
+Écarts à la spec constatés au prototype et acceptés. Ils remplacent le texte des sections citées.
+
+1. **§ 4.2, tampon audio plein : le bloc est refusé.** Quand le tampon est plein, le fil temps réel refuse le
+   nouveau bloc (et compte la perte) au lieu d'effacer les plus anciens. Effacer depuis le producteur casserait le
+   contrat à un producteur et un consommateur, et ne se ferait que par compare-and-swap, interdit sur le fil
+   temps réel. Pour un fichier, l'effet est le même : un trou de même durée, comblé par du silence d'après les
+   heures.
+2. **§ 3, place du badge.** En portrait, le badge « ● 00:42 » est sous la rangée des boutons, faute de place dans
+   elle. En paysage, il est dans la rangée, au centre (avec le bandeau à côté s'il y en a un), à la demande de Majid
+   au banc. Il reste visible dans toutes les orientations.
+3. **§ 6, bandeau composé quand l'espace manque.** L'arrêt sur manque d'espace affiche un seul bandeau composé :
+   « Enregistrement arrêté : espace insuffisant. Vidéo enregistrée dans Photos (0:42) ». Deux bandeaux à moins
+   d'une seconde d'écart seraient illisibles.
+4. **§ 3, bandeau sur sa propre ligne en portrait.** En portrait (hauteur « regular »), le bandeau passe sur une
+   ligne centrée, sous la rangée du haut et au-dessus du badge : la rangée de cinq boutons ne laisse que 60 à
+   115 points au texte. En paysage, il reste dans la rangée.
+5. **§ 4.1, fragments MP4 toutes les 2 s.** Le rédacteur écrit un fragment complet toutes les 2 s
+   (`movieFragmentInterval`). Si la finalisation échoue (iOS peut invalider l'encodeur en arrière-plan) ou si l'app
+   meurt, le fichier reste lisible jusqu'au dernier fragment au lieu d'être perdu en entier. Un fragment ne se
+   ferme que lorsque toutes les pistes ont avancé : la piste son doit donc recevoir des blocs (de la parole, du
+   silence du périphérique ou du silence de comblement).
+6. **§ 6, arrêt sur échec d'écriture.** Dès la première erreur d'écriture, l'enregistreur prévient l'app, qui
+   arrête l'enregistrement et traite le fichier comme à un arrêt normal : « L'enregistrement a échoué. » s'affiche
+   tout de suite, sans attendre un appui. Cette règle remplace « Échec d'écriture du MP4 » du tableau.
+7. **§ 6, finalisation en échec mais fichier lisible : ajouté à Photos.** Si le MP4 se lit malgré l'échec, il est
+   ajouté directement à Photos avec le bandeau de réussite (sans durée : « Vidéo enregistrée dans Photos »), après
+   « L'enregistrement a échoué. » quand l'échec vient d'une erreur d'écriture en cours de route. Le bandeau
+   d'échec ne s'affiche que si le fichier est illisible (il est alors effacé) ou si l'ajout à Photos échoue.
+8. **§ 6, bandeau « La vidéo n'a pas pu être ajoutée à Photos. » : bouton de fermeture.** Il garde « Réessayer » et
+   reçoit une croix (VoiceOver : « Fermer »). La fermeture masque le bandeau et garde le fichier temporaire, effacé
+   au bout de 7 jours comme prévu ; l'état de connexion reprend sa place. Une autre vidéo non ajoutée ramène le
+   bandeau.
+9. **§ 4.2, trou de son comblé par morceaux.** Le silence qui comble un trou (appel, Siri) est écrit par morceaux
+   d'au plus 1 s, jamais en un seul bloc, quelle que soit la durée du trou. Un trou laissé vide serait resserré par
+   le MP4 et le son arriverait en avance sur l'image.
+10. **§ 3, bouton grisé tant que la vidéo ne joue pas.** Le bouton exige aussi que la connexion vidéo soit en lecture,
+    en plus d'une image reçue.
+11. **§ 3, mode épuré (demande de Majid au banc).** Un tap sur la vidéo nue masque l'interface en fondu : roue des
+    réglages, boutons son, suivi IA et vie privée, joystick, zoom, bandeau d'état, barre d'état d'iOS et indicateur
+    d'accueil. Un second tap la rend. Pendant un enregistrement (ou sa sauvegarde), le bouton rec, à sa place, et le
+    badge restent ; au repos, rien. Les bandeaux de l'enregistrement (vidéo rangée, échec, vidéo hors de Photos)
+    restent affichés. Le mode ne vaut que connecté, la vidéo jouant : à la moindre coupure, l'interface revient avec
+    son bandeau, et le mode épuré reprend au retour de la vidéo. Il n'est jamais retenu d'un lancement à l'autre.
