@@ -126,7 +126,8 @@ public final class TalkbackModel {
     public enum Status: Equatable, Sendable {
         /// L'agent n'est pas inscrit.
         case disabled
-        /// L'agent n'est pas dans l'app (compilation sans agent) : l'interrupteur ne peut rien faire.
+        /// Une inscription a échoué, par exemple parce que l'agent n'est pas dans l'app (compilation sans agent) :
+        /// l'interrupteur reste utilisable pour réessayer. `notFound` seul, avant toute inscription, donne `.disabled`.
         case unavailable
         /// macOS attend l'accord de l'utilisateur dans Réglages › Général › Ouverture.
         case requiresApproval
