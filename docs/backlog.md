@@ -38,3 +38,7 @@ Les fragments MP4 de l'enregistrement iOS ne se ferment que si la piste son avan
 ## Voix de l'iPhone dans les vidéos du bouton rec
 
 Pendant un enregistrement (bouton rec de l'app iOS), ajouter à la vidéo la voix captée par le micro de l'iPhone quand on maintient le bouton « parler » (spec `2026-10-09-parler-ios-design.md`), à la source, en plus du son de la caméra. Aujourd'hui, la voix n'y arrive qu'indirectement, par le haut-parleur du Mac capté par le micro de la caméra. À trancher : mixer les deux sons dans une seule piste AAC ou garder deux pistes, et le recalage dans le temps entre le micro de l'iPhone et le son reçu.
+
+## Pincer pour zoomer sur la vidéo (app iOS)
+
+Un geste de pincement à deux doigts sur la vidéo pour zoomer, en plus du curseur de zoom. À trancher : piloter le zoom de la caméra (le même que le curseur, ordres UVC envoyés par `ptzd`, ce qui change aussi l'image de HomeKit et des enregistrements) ou un zoom numérique de l'affichage seul, sur l'iPhone. Si c'est la caméra : limiter le débit des ordres pendant le geste (comme le curseur), et garder le joystick et le tap du mode épuré sans conflit avec le pincement.
