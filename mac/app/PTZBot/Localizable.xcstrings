@@ -596,6 +596,23 @@
         }
       }
     },
+    "Talkback": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talkback"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talkback"
+          }
+        }
+      }
+    },
     "Valable encore %@ · une seule fois": {
       "extractionState": "manual",
       "localizations": {

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- L'agent de Talkback (spec haut-parleur § 7), embarqué dans PTZBot.app/Contents/Library/LaunchAgents et inscrit
+	     par SMAppService.agent(plistName:) depuis l'interrupteur du panneau. Il tourne aussi quand PTZBot est fermé. -->
+	<key>Label</key>
+	<string>io.github.djoko-cli.obsbot-nacelle.talkd</string>
+	<!-- Relatif à l'app : le binaire reste celui de la version installée, et suit les mises à jour. -->
+	<key>BundleProgram</key>
+	<string>Contents/Helpers/talkd</string>
+	<!-- Fait apparaître l'agent sous PTZBot dans Réglages › Général › Ouverture. -->
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>io.github.djoko-cli.ptzbot</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<!-- Au moins 10 s entre deux lancements : une relance en rafale créerait une rafale de clients CoreAudio (spec § 10). -->
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<!-- Standard dégradait le son des enfants de go2rtc sous launchd, Background faisait saccader la vidéo. -->
+	<key>ProcessType</key>
+	<string>Interactive</string>
+</dict>
+</plist>

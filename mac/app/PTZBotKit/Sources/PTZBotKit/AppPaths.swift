@@ -41,6 +41,16 @@ public struct AppPaths: Equatable, Sendable {
         helpers.appending(path: "ptzd")
     }
 
+    /// talkd, l'utilitaire de Talkback : lancé par l'agent launchd de l'app, pas par PTZBot.
+    public var talkd: URL {
+        helpers.appending(path: "talkd")
+    }
+
+    /// L'état que talkd écrit (« En lecture » dans le panneau).
+    public var talkbackState: URL {
+        support.appending(path: "talkd-state.json")
+    }
+
     /// obsbot-ai, compilé chez l'utilisateur à côté du SDK (spec distribution § 6.4) : jamais dans l'app.
     public var obsbotAI: URL {
         sdkDirectory.appending(path: "obsbot-ai")

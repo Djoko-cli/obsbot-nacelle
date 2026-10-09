@@ -1,7 +1,8 @@
 #!/bin/bash
-# Phase de construction de PTZBot (project.yml) : compile ptzd et le copie dans Contents/Helpers, copie la source
-# d'obsbot-ai (mac/ai/main.cpp) dans Contents/Resources/obsbot-ai.cpp, puis refuse le paquet s'il contient le SDK
-# OBSBOT, ses en-têtes ou un binaire obsbot-ai (spec distribution § 5.1). obsbot-ai est compilé sur le Mac de
+# Phase de construction de PTZBot (project.yml) : compile ptzd et talkd et les copie dans Contents/Helpers, copie la
+# plist de l'agent de talkd dans Contents/Library/LaunchAgents (spec haut-parleur § 7), copie la source d'obsbot-ai
+# (mac/ai/main.cpp) dans Contents/Resources/obsbot-ai.cpp, puis refuse le paquet s'il contient le SDK OBSBOT, ses
+# en-têtes ou un binaire obsbot-ai (spec distribution § 5.1). obsbot-ai est compilé sur le Mac de
 # l'utilisateur, avec le SDK qu'il fournit (spec distribution § 6) : la construction n'a plus besoin du SDK.
 set -euo pipefail
 
@@ -26,6 +27,24 @@ if [ "${DEPLOYMENT_POSTPROCESSING:-NO}" = "YES" ]; then
     /usr/bin/xcrun strip -S "$HELPERS/ptzd"
     /usr/bin/codesign --force --sign - "$HELPERS/ptzd"
 fi
+
+# talkd (retour audio de la caméra, spec haut-parleur), de la même façon que ptzd.
+echo "Compilation de talkd…"
+env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" TMPDIR="${TMPDIR:-/tmp}" DEVELOPER_DIR="$DEVELOPER_DIR" \
+    /usr/bin/xcrun swift build -c release --package-path "$ROOT/mac/talkd" --product talkd
+TALKD_BIN="$(env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" DEVELOPER_DIR="$DEVELOPER_DIR" \
+    /usr/bin/xcrun swift build -c release --package-path "$ROOT/mac/talkd" --show-bin-path)"
+install -m 755 "$TALKD_BIN/talkd" "$HELPERS/talkd"
+if [ "${DEPLOYMENT_POSTPROCESSING:-NO}" = "YES" ]; then
+    /usr/bin/xcrun strip -S "$HELPERS/talkd"
+    /usr/bin/codesign --force --sign - "$HELPERS/talkd"
+fi
+
+# L'agent launchd de talkd, que SMAppService.agent(plistName:) inscrit depuis l'interrupteur « Talkback » : sa plist
+# est dans Contents/Library/LaunchAgents, son BundleProgram vise Contents/Helpers/talkd.
+LAUNCH_AGENTS="$APP/Contents/Library/LaunchAgents"
+mkdir -p "$LAUNCH_AGENTS"
+install -m 644 "$ROOT/mac/app/LaunchAgents/io.github.djoko-cli.obsbot-nacelle.talkd.plist" "$LAUNCH_AGENTS/"
 
 echo "Source d'obsbot-ai…"
 install -m 644 "$ROOT/mac/ai/main.cpp" "$RESOURCES/obsbot-ai.cpp"

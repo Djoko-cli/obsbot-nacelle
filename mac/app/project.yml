@@ -83,17 +83,20 @@ targets:
         # La phase des utilitaires compile mac/ptzd et copie la source d'obsbot-ai.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
     postBuildScripts:
-      # ptzd dans Contents/Helpers, la source d'obsbot-ai dans Contents/Resources ; jamais le SDK ni un binaire
-      # obsbot-ai dans le paquet (spec distribution § 5.1). Toujours exécutée : swift build sait ce qui a changé
-      # dans mac/ptzd.
-      - name: Utilitaire ptzd et source d'obsbot-ai
+      # ptzd et talkd dans Contents/Helpers, la plist de l'agent de talkd dans Contents/Library/LaunchAgents, la
+      # source d'obsbot-ai dans Contents/Resources ; jamais le SDK ni un binaire obsbot-ai dans le paquet (spec
+      # distribution § 5.1). Toujours exécutée : swift build sait ce qui a changé dans mac/ptzd et mac/talkd.
+      - name: Utilitaires ptzd et talkd, agent de talkd et source d'obsbot-ai
         script: '"$SRCROOT/build-helpers.sh"'
         basedOnDependencyAnalysis: false
         inputFiles:
           - $(SRCROOT)/build-helpers.sh
           - $(SRCROOT)/../ai/main.cpp
+          - $(SRCROOT)/LaunchAgents/io.github.djoko-cli.obsbot-nacelle.talkd.plist
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/ptzd
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/talkd
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchAgents/io.github.djoko-cli.obsbot-nacelle.talkd.plist
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/obsbot-ai.cpp
 schemes:
   PTZBot:

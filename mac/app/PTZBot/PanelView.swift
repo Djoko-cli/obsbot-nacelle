@@ -5,6 +5,7 @@ import SwiftUI
 /// Le panneau sous l'icône (spec app Mac § 8.1, maquette B).
 struct PanelView: View {
     let model: PanelModel
+    let talkback: TalkbackModel
     let settings: SettingsModel
     let app: AppController
     let network: LocalNetworkState
@@ -64,6 +65,11 @@ struct PanelView: View {
             // développement ont pu être installés.
             network.check()
             Task { await app.panelOpened() }
+            // L'état de Talkback (« En lecture ») est relu chaque seconde tant que le panneau est ouvert.
+            talkback.beginWatching()
+        }
+        .onDisappear {
+            talkback.endWatching()
         }
     }
 
@@ -118,6 +124,27 @@ struct PanelView: View {
                 }
                 if model.config.isFallback {
                     PanelNote(AppText.text("config.json illisible : port 1985 essayé."))
+                }
+            }
+            Divider()
+            // Talkback : le retour audio de la caméra vers les haut-parleurs du Mac. Indépendant de ptzd : l'agent
+            // tourne aussi quand PTZBot est fermé, d'où ni grisé avec le service ni arrêté par « Quitter ».
+            PanelRow(icon: "speaker.wave.2", title: AppText.text("Talkback")) {
+                Toggle(AppText.text("Talkback"), isOn: Binding(get: { talkback.isEnabled }, set: { talkback.setEnabled($0) }))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            } notes: {
+                PanelNote(Labels.talkbackStatus(talkback.status), color: talkback.needsAttention ? .orange : nil)
+                if talkback.status == .requiresApproval {
+                    Button(Labels.talkbackApproval) {
+                        talkback.openSystemSettings()
+                    }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                }
+                if let error = talkback.lastError {
+                    PanelNote(error, color: .red)
                 }
             }
             Divider()

@@ -2,14 +2,15 @@ import PTZBotKit
 import SwiftUI
 
 /// PTZBot pour Mac (spec app Mac, spec ptzd dans l'app, spec distribution) : une icône dans la barre des menus,
-/// un panneau, quatre fenêtres, ptzd lancé comme processus enfant, et les mises à jour par Sparkle.
+/// un panneau, quatre fenêtres, ptzd lancé comme processus enfant, Talkback (l'agent talkd, indépendant de l'app) et les
+/// mises à jour par Sparkle.
 @main
 struct PTZBotApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
         MenuBarExtra {
-            PanelView(model: delegate.panel, settings: delegate.settings, app: delegate.controller, network: delegate.network)
+            PanelView(model: delegate.panel, talkback: delegate.talkback, settings: delegate.settings, app: delegate.controller, network: delegate.network)
                 .followsLanguage(delegate.language)
         } label: {
             Image(nsImage: MenuBarIcon.image())
@@ -55,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let language = AppLanguageModel.system()
     let scheduler = MainScheduler()
     let panel: PanelModel
+    let talkback: TalkbackModel
     let settings: SettingsModel
     let controller: AppController
     let sdkWindow: SDKWindowModel
@@ -64,6 +66,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     override init() {
         let paths = AppPaths.system()
         panel = PanelModel(config: .load(from: paths.config), transport: URLSessionAdminTransport(), scheduler: scheduler)
+        talkback = TalkbackModel(
+            service: TalkbackAgent(),
+            state: FileTalkbackStateSource(url: paths.talkbackState),
+            process: SystemProcessProbe(),
+            scheduler: scheduler
+        )
         let installer = SDKInstaller.system(paths: paths)
         controller = AppController(
             supervisor: .system(paths: paths.service, scheduler: scheduler),
@@ -102,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !started else { return }
         started = true
         panel.start()
+        talkback.refresh()
         network.check()
         Task { await controller.launch() }
     }

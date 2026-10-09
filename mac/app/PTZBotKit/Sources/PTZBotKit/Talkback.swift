@@ -1,0 +1,289 @@
+import Foundation
+import Observation
+import ServiceManagement
+
+/// Talkback : le retour audio de la caméra vers les haut-parleurs du Mac (spec haut-parleur). Un agent launchd
+/// embarqué dans l'app (`Contents/Library/LaunchAgents`) lance `talkd` ; l'interrupteur du panneau l'inscrit ou le
+/// désinscrit, et l'agent continue de tourner quand PTZBot est fermé.
+public enum Talkback {
+    /// Le label de l'agent, celui de sa plist (`mac/app/LaunchAgents`).
+    public static let label = "io.github.djoko-cli.obsbot-nacelle.talkd"
+    public static var plistName: String {
+        "\(label).plist"
+    }
+}
+
+/// Implémentation réelle de l'inscription de l'agent : `SMAppService.agent(plistName:)`, comme `MainAppLoginItem`
+/// pour l'app (même protocole, donc mêmes tests).
+@MainActor
+public final class TalkbackAgent: LoginItemService {
+    private var service: SMAppService {
+        SMAppService.agent(plistName: Talkback.plistName)
+    }
+
+    public init() {}
+
+    public var status: SMAppService.Status {
+        service.status
+    }
+
+    public func register() throws {
+        try service.register()
+    }
+
+    public func unregister() throws {
+        try service.unregister()
+    }
+
+    public func openSystemSettings() {
+        SMAppService.openSystemSettingsLoginItems()
+    }
+}
+
+/// L'état que talkd écrit (`talkd-state.json`, même format que `TalkState` dans mac/talkd) : une prise de parole
+/// est en lecture, depuis quand, le processus qui l'a écrit, et l'échec qui l'a arrêté au démarrage s'il y en a un
+/// (`failure`, absent des anciens fichiers).
+public struct TalkbackState: Codable, Equatable, Sendable {
+    public var speaking: Bool
+    public var since: Date
+    public var pid: Int32
+    public var failure: String?
+
+    public init(speaking: Bool, since: Date, pid: Int32, failure: String? = nil) {
+        self.speaking = speaking
+        self.since = since
+        self.pid = pid
+        self.failure = failure
+    }
+
+    public static var decoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+}
+
+@MainActor
+public protocol TalkbackStateSource: AnyObject {
+    /// nil : fichier absent ou illisible.
+    func read() -> TalkbackState?
+}
+
+/// Lit `talkd-state.json`.
+@MainActor
+public final class FileTalkbackStateSource: TalkbackStateSource {
+    private let url: URL
+
+    public init(url: URL) {
+        self.url = url
+    }
+
+    public func read() -> TalkbackState? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? TalkbackState.decoder.decode(TalkbackState.self, from: data)
+    }
+}
+
+/// Pourquoi talkd s'est arrêté au démarrage (champ `failure` de son état).
+public enum TalkbackFailure: Equatable, Sendable {
+    /// Le port UDP de talkd est déjà utilisé.
+    case portBusy
+    /// Une autre erreur de la socket.
+    case socket
+    /// Un code que cette version de l'app ne connaît pas.
+    case other
+
+    public init(code: String) {
+        switch code {
+        case "portBusy": self = .portBusy
+        case "socket": self = .socket
+        default: self = .other
+        }
+    }
+}
+
+/// Un processus existe-t-il ? (L'état d'un talkd arrêté ou tué reste dans le fichier.)
+@MainActor
+public protocol ProcessProbe: AnyObject {
+    func isAlive(pid: Int32) -> Bool
+}
+
+@MainActor
+public final class SystemProcessProbe: ProcessProbe {
+    public init() {}
+
+    /// `kill(pid, 0)` n'envoie rien : il dit seulement si le processus existe (EPERM : il existe, à un autre utilisateur).
+    public func isAlive(pid: Int32) -> Bool {
+        guard pid > 0 else { return false }
+        return kill(pid, 0) == 0 || errno == EPERM
+    }
+}
+
+/// L'interrupteur « Talkback » et la ligne d'état dessous (spec haut-parleur § 6).
+@MainActor
+@Observable
+public final class TalkbackModel {
+    public enum Status: Equatable, Sendable {
+        /// L'agent n'est pas inscrit.
+        case disabled
+        /// L'agent n'est pas dans l'app (compilation sans agent) : l'interrupteur ne peut rien faire.
+        case unavailable
+        /// macOS attend l'accord de l'utilisateur dans Réglages › Général › Ouverture.
+        case requiresApproval
+        /// Inscrit, mais talkd n'a pas (encore) écrit son état : il démarre.
+        case starting
+        /// Inscrit, talkd tourne et attend.
+        case ready
+        /// Une prise de parole est en lecture.
+        case playing
+        /// talkd s'est arrêté sur un échec au démarrage (port occupé…) ; launchd le relance.
+        case failed(TalkbackFailure)
+        /// Inscrit, mais talkd n'a pas tourné depuis plus de 15 s (agent refusé par launchd, plantage…).
+        case notRunning
+    }
+
+    /// Pendant que le panneau est ouvert, l'état est relu à cet intervalle (secondes).
+    public static let pollInterval: TimeInterval = 1
+    /// Au-delà de ce délai en « Démarrage… » (secondes), talkd est dit « ne démarre pas ».
+    public static let startupGrace: TimeInterval = 15
+
+    public private(set) var status: Status = .disabled
+    public private(set) var lastError: String?
+    @ObservationIgnored private let service: any LoginItemService
+    @ObservationIgnored private let state: any TalkbackStateSource
+    @ObservationIgnored private let process: any ProcessProbe
+    @ObservationIgnored private let scheduler: any Scheduler
+    @ObservationIgnored private var poll: (any Cancellable)?
+    @ObservationIgnored private var watching = false
+    /// L'instant (horloge du `Scheduler`) du premier « Démarrage… » d'affilée.
+    @ObservationIgnored private var startingSince: TimeInterval?
+
+    public init(service: any LoginItemService, state: any TalkbackStateSource, process: any ProcessProbe, scheduler: any Scheduler) {
+        self.service = service
+        self.state = state
+        self.process = process
+        self.scheduler = scheduler
+        refresh()
+    }
+
+    /// L'interrupteur est allumé : l'agent est inscrit (même s'il attend l'accord de l'utilisateur).
+    public var isEnabled: Bool {
+        status != .disabled && status != .unavailable
+    }
+
+    /// La ligne d'état demande l'attention (orange) : une action ou un coup d'œil au journal.
+    public var needsAttention: Bool {
+        switch status {
+        case .requiresApproval, .failed, .notRunning: true
+        case .disabled, .unavailable, .starting, .ready, .playing: false
+        }
+    }
+
+    public func refresh() {
+        let next = currentStatus()
+        if next == .starting {
+            let since = startingSince ?? scheduler.now
+            startingSince = since
+            status = scheduler.now - since >= Self.startupGrace ? .notRunning : .starting
+        } else {
+            startingSince = nil
+            status = next
+        }
+    }
+
+    /// La dernière inscription a échoué : avec « introuvable », l'agent est alors vraiment indisponible.
+    private var registerFailed = false
+
+    /// Le statut lu, avant le délai de grâce du démarrage.
+    private func currentStatus() -> Status {
+        switch service.status {
+        case .notRegistered:
+            return .disabled
+        case .notFound:
+            // macOS répond « introuvable » pour un agent jamais inscrit, même présent dans l'app : l'interrupteur reste
+            // utilisable. Seule une inscription refusée dans cet état dit l'agent vraiment indisponible.
+            return registerFailed ? .unavailable : .disabled
+        case .requiresApproval:
+            return .requiresApproval
+        case .enabled:
+            guard let current = state.read() else { return .starting }
+            // Un échec n'est écrit que juste avant `exit` : vivant ou non, ce talkd s'arrête.
+            if let failure = current.failure {
+                return .failed(TalkbackFailure(code: failure))
+            }
+            guard process.isAlive(pid: current.pid) else { return .starting }
+            return current.speaking ? .playing : .ready
+        @unknown default:
+            return .disabled
+        }
+    }
+
+    public func setEnabled(_ enabled: Bool) {
+        lastError = nil
+        do {
+            if enabled {
+                try service.register()
+                registerFailed = false
+            } else {
+                try service.unregister()
+            }
+        } catch {
+            if enabled { registerFailed = true }
+            lastError = Localization.text("Talkback impossible : \(error.localizedDescription)")
+        }
+        refresh()
+        // L'invitation à autoriser dit déjà ce qu'il y a à faire.
+        if status == .requiresApproval {
+            lastError = nil
+        }
+    }
+
+    public func openSystemSettings() {
+        service.openSystemSettings()
+    }
+
+    /// Panneau ouvert : l'état est relu chaque seconde (« En lecture »).
+    public func beginWatching() {
+        refresh()
+        guard !watching else { return }
+        watching = true
+        scheduleNextPoll()
+    }
+
+    /// Panneau fermé : plus rien n'est relu.
+    public func endWatching() {
+        watching = false
+        poll?.cancel()
+        poll = nil
+    }
+
+    private func scheduleNextPoll() {
+        poll = scheduler.schedule(after: Self.pollInterval) { [weak self] in
+            guard let self, watching else { return }
+            refresh()
+            scheduleNextPoll()
+        }
+    }
+}
+
+/// Les textes de Talkback, au vouvoiement, traduits en anglais (spec distribution § 7.1).
+extension Labels {
+    /// La ligne d'état sous l'interrupteur.
+    public static func talkbackStatus(_ status: TalkbackModel.Status) -> String {
+        switch status {
+        case .disabled: Localization.text("Désactivé")
+        case .unavailable: Localization.text("Indisponible")
+        case .requiresApproval: Localization.text("Autorisation requise")
+        case .starting: Localization.text("Démarrage…")
+        case .ready: Localization.text("Prêt")
+        case .playing: Localization.text("En lecture")
+        case .failed(.portBusy): Localization.text("Arrêté : le port UDP est déjà utilisé (voir le journal)")
+        case .failed(.socket): Localization.text("Arrêté : erreur réseau (voir le journal)")
+        case .failed(.other): Localization.text("Arrêté (voir le journal)")
+        case .notRunning: Localization.text("talkd ne démarre pas (voir le journal)")
+        }
+    }
+
+    /// Le bouton qui ouvre Réglages › Général › Ouverture quand macOS attend l'accord.
+    public static var talkbackApproval: String { Localization.text("Autorisez Talkback dans Réglages › Général › Ouverture") }
+}
