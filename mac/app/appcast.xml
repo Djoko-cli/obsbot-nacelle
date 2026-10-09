@@ -3,6 +3,21 @@
   <channel>
     <title>PTZBot</title>
     <item>
+      <title>1.0.2</title>
+      <pubDate>Fri, 09 Oct 2026 11:52:12 +0000</pubDate>
+      <sparkle:version>182</sparkle:version>
+      <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+<meta charset="utf-8">
+<p><strong>English</strong></p>
+<ul><li>Talkback: the microphone button of the camera in the Home app now plays your voice on the Mac's built-in speakers, even when PTZBot is closed. Turn on "Talkback" in the panel, give your Homebridge host's address in <code>~/Library/Application Support/ObsbotNacelle/talkd.json</code> (see the README), then add the Homebridge line given there. While someone speaks, the speakers are raised to at least 30 % (or unmuted), then put back. Only your Homebridge host and the Mac itself are accepted; no microphone is opened and no sound is recorded.</li></ul>
+<p><strong>Français</strong></p>
+<ul><li>Talkback : le bouton micro de la caméra dans l'app Maison fait désormais sortir votre voix par les haut-parleurs intégrés du Mac, même PTZBot fermé. Allumez « Talkback » dans le panneau, indiquez l'adresse de votre hôte Homebridge dans <code>~/Library/Application Support/ObsbotNacelle/talkd.json</code> (voir le README), puis ajoutez la ligne Homebridge donnée dans le README. Pendant la parole, les haut-parleurs sont remontés à 30 % au moins (ou sortis de la sourdine), puis remis comme avant. Seuls votre hôte Homebridge et le Mac lui-même sont acceptés ; aucun micro n'est ouvert et aucun son n'est enregistré.</li></ul>
+]]></description>
+      <enclosure url="https://github.com/Djoko-cli/obsbot-nacelle/releases/download/ptzbot-v1.0.2/PTZBot-1.0.2.dmg" length="3162228" type="application/octet-stream" sparkle:edSignature="p+RM5p6IwgE8YyHarHS0xWk3/nVGTpJdY9ST0CDevFzCL21k4mgRKMvQhIn1ZFdO+WmD1OfHZ6n1yLawLPPYDQ=="/>
+    </item>
+    <item>
       <title>1.0.1</title>
       <pubDate>Fri, 09 Oct 2026 08:35:23 +0000</pubDate>
       <sparkle:version>176</sparkle:version>
