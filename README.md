@@ -137,6 +137,8 @@ Tests: `(cd mac/app/PTZBotKit && swift test)`; publication tools: `python3 -m un
 
 Requirements: Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), an Apple ID (a free account is enough), the Mac side installed, and Tailscale on the iPhone to control the camera away from home. The iOS app is still in French only.
 
+Recording: the record button (between AI tracking and privacy) saves the received video and sound into Photos, as an MP4 (H.264 and AAC), until you stop it. The sound is recorded even when muted in the app. Entering privacy mode, losing the connection, sending the app to the background or running low on space stops the recording and saves it; in privacy mode the button stays greyed out. A tap on the video hides the controls for a clean picture (only the record button and its timer stay during a recording); another tap brings them back.
+
 1. Set the signing team in a local setting, not versioned. Its identifier is the OU field of the "Apple Development" certificates in the keychain:
 
    ```bash
@@ -377,6 +379,8 @@ Tests : `(cd mac/app/PTZBotKit && swift test)` ; outils de publication : `python
 ### App iOS
 
 Prérequis : Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), un identifiant Apple (un compte gratuit suffit), le côté Mac installé, et Tailscale sur l'iPhone pour piloter hors de la maison. L'app iOS n'est encore qu'en français.
+
+Enregistrement : le bouton rec (entre le suivi IA et la vie privée) range dans Photos la vidéo et le son reçus, en MP4 (H.264 et AAC), jusqu'à ce qu'on l'arrête. Le son est enregistré même coupé dans l'app. L'entrée en vie privée, la coupure de la connexion, le passage en arrière-plan ou le manque d'espace arrêtent l'enregistrement et le sauvent ; en vie privée, le bouton reste grisé. Un tap sur la vidéo masque les commandes pour une image nette (pendant un enregistrement, seuls le bouton rec et son chrono restent) ; un autre tap les rend.
 
 1. Indiquer l'équipe de signature dans un réglage local, non versionné. Son identifiant est le champ OU des certificats « Apple Development » du trousseau :
 
