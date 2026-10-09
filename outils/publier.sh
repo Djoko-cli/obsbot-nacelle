@@ -37,6 +37,7 @@ exec /usr/bin/python3 ../../outils/publication.py publier "$@" --identite "$IDEN
   --projet PTZBot.xcodeproj --schema PTZBot --cible PTZBot \
   --test 'cd ../../Packages/NacelleProtocol && swift test' \
   --test 'cd ../ptzd && swift test' \
+  --test 'cd ../talkd && swift test' \
   --test 'cd PTZBotKit && swift test' \
   --test '/usr/bin/python3 -m unittest discover -s ../../outils/tests' \
   --test 'bash -n ../../scripts/install-mac.sh' \
