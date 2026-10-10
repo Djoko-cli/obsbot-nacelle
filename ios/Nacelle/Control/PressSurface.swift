@@ -32,6 +32,10 @@ struct PressSurface: UIViewRepresentable {
             pressed = true
         }
 
+        // Le doigt qui glisse ne change rien (le bouton reste tenu jusqu'au relâchement), et ne remonte pas vers la vue
+        // parente, comme le posé.
+        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {}
+
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
             pressed = false
         }
