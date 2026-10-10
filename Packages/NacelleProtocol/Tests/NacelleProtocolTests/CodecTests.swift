@@ -158,15 +158,29 @@ struct ServerMessageTests {
         #expect(snapshot.talkback == .unavailable)
     }
 
-    @Test("Talkback prêt : écrit et relu, et une valeur inconnue est rejetée")
+    @Test("Talkback prêt : écrit et relu")
     func talkbackReady() throws {
         var snapshot = Self.known
         snapshot.talkback = .ready
         let text = try NacelleCodec.encode(ServerMessage.state(snapshot))
         #expect(text.contains(#""talkback":"ready""#))
         #expect(try NacelleCodec.decodeServer(text) == .state(snapshot))
-        let bad = text.replacingOccurrences(of: #""talkback":"ready""#, with: #""talkback":"bientot""#)
-        #expect(throws: (any Error).self) { try NacelleCodec.decodeServer(bad) }
+    }
+
+    @Test("Une valeur de talkback inconnue (un futur ptzd) se lit « indisponible » : l'état reste lisible")
+    func unknownTalkbackValue() throws {
+        var snapshot = Self.known
+        snapshot.talkback = .ready
+        let text = try NacelleCodec.encode(ServerMessage.state(snapshot))
+        let future = text.replacingOccurrences(of: #""talkback":"ready""#, with: #""talkback":"bientot""#)
+        guard case let .state(decoded) = try NacelleCodec.decodeServer(future) else {
+            Issue.record("state attendu")
+            return
+        }
+        #expect(decoded.talkback == .unavailable)
+        var expected = snapshot
+        expected.talkback = .unavailable
+        #expect(decoded == expected)
     }
 
     @Test("adminState : dates en secondes depuis 1970, absences écrites null, jamais de secret")

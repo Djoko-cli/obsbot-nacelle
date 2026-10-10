@@ -158,8 +158,9 @@ extension StateSnapshot: Codable {
             moving: try container.decode(Bool.self, forKey: .moving),
             // Un ptzd d'avant le suivi IA n'envoie pas ce champ.
             aiTracking: try container.decodeIfPresent(AITracking.self, forKey: .aiTracking) ?? .unknown,
-            // Un ptzd d'avant la parole n'envoie pas ce champ.
-            talkback: try container.decodeIfPresent(TalkbackAvailability.self, forKey: .talkback) ?? .unavailable
+            // Un ptzd d'avant la parole n'envoie pas ce champ, et un ptzd futur pourrait y ajouter une valeur : dans les
+            // deux cas la parole est indisponible, et le reste de l'état reste lisible (iPhones déjà installés).
+            talkback: (try? container.decodeIfPresent(TalkbackAvailability.self, forKey: .talkback)) ?? .unavailable
         )
     }
 
