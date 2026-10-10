@@ -42,6 +42,9 @@ protocol WebSocketTransport: AnyObject {
     var remoteAddress: String? { get }
     func open(_ endpoint: WebSocketEndpoint)
     func send(_ text: String)
+    /// Une trame voix en WebSocket binaire (spec parler § 4). `completion` signale que l'envoi est parti (ou
+    /// perdu) : l'appelant n'en envoie pas une autre avant, pour que sa file reste bornée.
+    func sendVoice(_ frame: Data, completion: @escaping @MainActor () -> Void)
     func close()
 }
 
@@ -84,6 +87,16 @@ final class URLSessionWebSocketTransport: NSObject, WebSocketTransport {
 
     func send(_ text: String) {
         task?.send(.string(text)) { _ in }
+    }
+
+    func sendVoice(_ frame: Data, completion: @escaping @MainActor () -> Void) {
+        guard let task else {
+            completion()
+            return
+        }
+        task.send(.data(frame)) { _ in
+            Task { @MainActor in completion() }
+        }
     }
 
     func close() {

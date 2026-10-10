@@ -98,6 +98,18 @@ final class NWWebSocketTransport: WebSocketTransport {
         connection?.send(content: Data(text.utf8), contentContext: context, isComplete: true, completion: .idempotent)
     }
 
+    func sendVoice(_ frame: Data, completion: @escaping @MainActor () -> Void) {
+        guard let connection else {
+            completion()
+            return
+        }
+        let metadata = NWProtocolWebSocket.Metadata(opcode: .binary)
+        let context = NWConnection.ContentContext(identifier: "voice", metadata: [metadata])
+        connection.send(content: frame, contentContext: context, isComplete: true, completion: .contentProcessed { _ in
+            Task { @MainActor in completion() }
+        })
+    }
+
     /// L'adresse IPv4 d'un point d'arrivée résolu, sans zone ; nil pour IPv6 ou un nom.
     nonisolated static func ipv4(_ endpoint: NWEndpoint) -> String? {
         guard case let .hostPort(.ipv4(address), _) = endpoint else { return nil }
