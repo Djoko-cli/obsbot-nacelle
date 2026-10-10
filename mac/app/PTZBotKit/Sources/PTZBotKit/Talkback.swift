@@ -167,6 +167,10 @@ public final class TalkbackModel {
     @ObservationIgnored private var startingSince: TimeInterval?
     /// L'agent a été réinscrit par la mise à jour pendant ce lancement, et talkd n'a pas encore tourné depuis.
     @ObservationIgnored private var reregisteredThisLaunch = false
+    /// Réinscription automatique en cours (environ une seconde au lancement d'une nouvelle version) : l'interrupteur est
+    /// grisé et `setEnabled` sans effet, pour qu'un clic ne la contrarie pas (éteindre puis être rallumé d'office, ou
+    /// une erreur « déjà inscrit »).
+    public private(set) var isReregistering = false
     /// `lastError` porte l'avis de redémarrage (`Labels.talkbackRestartAdvice`) : il disparaît quand talkd repart.
     @ObservationIgnored private var restartAdviceShown = false
 
@@ -266,6 +270,7 @@ public final class TalkbackModel {
     }
 
     public func setEnabled(_ enabled: Bool) {
+        guard !isReregistering else { return }
         lastError = nil
         // Éteindre puis rallumer est le remède de l'avis : il n'a plus lieu d'être.
         reregisteredThisLaunch = false
@@ -305,6 +310,8 @@ public final class TalkbackModel {
         guard let bundleVersion, bundleVersion != Self.workingBuildNumber else { return }
         let registered = service.status == .enabled || service.status == .requiresApproval
         guard registered, settings.string(forKey: Self.registeredBuildKey) != bundleVersion else { return }
+        isReregistering = true
+        defer { isReregistering = false }
         lastError = nil
         do {
             // On attend la fin de la désinscription : launchd démonte encore l'ancien job, et réinscrire avant risque un
