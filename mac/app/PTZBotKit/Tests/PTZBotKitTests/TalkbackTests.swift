@@ -165,6 +165,29 @@ struct TalkbackTests {
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
     }
 
+    @Test("Pendant la réinscription, l'interrupteur est sans effet : un clic ne la contrarie pas")
+    func toggleIgnoredWhileReregistering() async {
+        service.status = .enabled
+        settings.strings[TalkbackModel.registeredBuildKey] = "6"
+        service.holdUnregister = true
+        let task = Task { await model.reregisterIfUpdated() }
+        var waited = 0
+        while !service.isUnregisterPending, waited < 500 {
+            try? await Task.sleep(for: .milliseconds(10))
+            waited += 1
+        }
+        #expect(model.isReregistering)
+        model.setEnabled(false)
+        #expect(service.unregisterCalls == 1)
+        service.finishUnregister()
+        await task.value
+        #expect(!model.isReregistering)
+        #expect(service.status == .enabled)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
+        model.setEnabled(false)
+        #expect(service.status == .notRegistered)
+    }
+
     @Test("Agent inscrit par une version qui ne retenait rien (la 1.0.2) : réinscription")
     func noRememberedBuild() async {
         service.status = .enabled
