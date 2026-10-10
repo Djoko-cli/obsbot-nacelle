@@ -35,6 +35,10 @@ public final class TalkbackAgent: LoginItemService {
         try service.unregister()
     }
 
+    public func unregisterAndWait() async throws {
+        try await service.unregister()
+    }
+
     public func openSystemSettings() {
         SMAppService.openSystemSettingsLoginItems()
     }
@@ -260,13 +264,16 @@ public final class TalkbackModel {
     /// l'inscription diffère de celui de l'app, ou manque (agent inscrit par une version qui ne le retenait pas). Une
     /// compilation de travail porte le numéro 1 : la règle est la même, elle ne réinscrit que si le numéro change.
     /// Une seule tentative par lancement : en cas d'échec l'erreur est montrée, le numéro reste, rien n'est retenté.
-    public func reregisterIfUpdated() {
+    /// La désinscription est attendue avant l'inscription : l'appelant relit l'état (`refresh`) après coup.
+    public func reregisterIfUpdated() async {
         guard let bundleVersion else { return }
         let registered = service.status == .enabled || service.status == .requiresApproval
         guard registered, settings.string(forKey: Self.registeredBuildKey) != bundleVersion else { return }
         lastError = nil
         do {
-            try service.unregister()
+            // On attend la fin de la désinscription : launchd démonte encore l'ancien job, et réinscrire avant risque un
+            // refus, ou un agent « inscrit » mais pas chargé (`SMAppService.h`).
+            try await service.unregisterAndWait()
             try service.register()
             settings.set(bundleVersion, forKey: Self.registeredBuildKey)
         } catch {

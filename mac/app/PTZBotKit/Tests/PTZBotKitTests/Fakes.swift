@@ -103,6 +103,30 @@ final class FakeLoginItem: LoginItemService {
         status = .notRegistered
     }
 
+    /// Garde `unregisterAndWait()` en suspens jusqu'à `finishUnregister()`.
+    var holdUnregister = false
+    private var heldUnregister: CheckedContinuation<Void, Never>?
+
+    var isUnregisterPending: Bool {
+        heldUnregister != nil
+    }
+
+    func unregisterAndWait() async throws {
+        unregisterCalls += 1
+        if let failure {
+            throw failure
+        }
+        if holdUnregister {
+            await withCheckedContinuation { heldUnregister = $0 }
+        }
+        status = .notRegistered
+    }
+
+    func finishUnregister() {
+        heldUnregister?.resume()
+        heldUnregister = nil
+    }
+
     func openSystemSettings() {
         settingsOpened += 1
     }
