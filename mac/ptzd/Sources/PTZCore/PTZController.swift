@@ -32,6 +32,8 @@ public final class PTZController {
     private var settle: (any Cancellable)?
     private var verifyTarget = false
     private var lastControl: ControlState = .idle
+    /// Retour audio de talkd, lu par `TalkbackWatcher` (spec parler § 5).
+    private var talkback: TalkbackAvailability = .unavailable
 
     public init(
         camera: any CameraDevice,
@@ -60,6 +62,13 @@ public final class PTZController {
         zoom.onChange = { [weak self] in self?.publish() }
         privacy.onChange = { [weak self] in self?.publish() }
         control.onChange = { [weak self] in self?.controlChanged() }
+    }
+
+    /// Le retour audio devient prêt ou indisponible : l'état est rediffusé si la valeur change.
+    public func setTalkback(_ value: TalkbackAvailability) {
+        guard value != talkback else { return }
+        talkback = value
+        publish()
     }
 
     /// Un iPhone vient de s'authentifier : prépare l'utilitaire du suivi IA avant son premier ordre.
@@ -291,7 +300,8 @@ public final class PTZController {
             tilt: motion.position?.tilt,
             zoom: zoom.value,
             moving: motion.isMoving,
-            aiTracking: control.tracking
+            aiTracking: control.tracking,
+            talkback: talkback
         )
         guard next != snapshot else { return }
         snapshot = next
