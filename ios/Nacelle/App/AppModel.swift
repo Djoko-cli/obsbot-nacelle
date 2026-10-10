@@ -49,6 +49,8 @@ final class AppModel {
 
     let ptz: PTZClient
     let video: VideoSession
+    /// « Maintenir pour parler » : la voix de l'iPhone vers les haut-parleurs du Mac (spec parler).
+    let speaker: Speaker
     /// Connecté (ou en train de se connecter) au contrôle et à la vidéo.
     private(set) var isActive = false
     @ObservationIgnored private var isForeground = false
@@ -89,10 +91,18 @@ final class AppModel {
     static let minimumFreeSpaceWhileRecording: Int64 = 200_000_000
     static let spaceCheckInterval: TimeInterval = 10
 
-    init(store: SettingsStore, ptz: PTZClient, video: VideoSession, scheduler: any Scheduler, recording services: RecordingServices) {
+    init(
+        store: SettingsStore,
+        ptz: PTZClient,
+        video: VideoSession,
+        scheduler: any Scheduler,
+        recording services: RecordingServices,
+        speech: SpeechServices
+    ) {
         self.store = store
         self.ptz = ptz
         self.video = video
+        speaker = Speaker(audio: speech.audio, link: ptz, permission: speech.permission)
         self.scheduler = scheduler
         self.services = services
         settings = store.load()
@@ -108,9 +118,18 @@ final class AppModel {
         ptz.onStateChange = { [weak self] in
             self?.syncSound()
             self?.stopRecordingIfUnsafe()
+            self?.stopSpeakingIfUnavailable()
+        }
+        speaker.onStopped = { [weak self] reason in
+            switch reason {
+            case .micDenied: self?.show(StatusBanner.micDenied)
+            case .failure: self?.show(StatusBanner.micFailed)
+            case .release, .connection, .talkbackOff, .background, .interruption: break
+            }
         }
         video.onEnded = { [weak self] in
             self?.stopRecording(.connection)
+            self?.stopSpeakingIfUnavailable()
         }
         services.files.purgeOldFiles(now: services.now())
         photoAccessDenied = services.photos.access == .denied
@@ -136,7 +155,8 @@ final class AppModel {
             ),
             video: VideoSession(scheduler: scheduler),
             scheduler: scheduler,
-            recording: .live()
+            recording: .live(),
+            speech: .live()
         )
     }
 
@@ -148,6 +168,7 @@ final class AppModel {
         isActive = true
         syncSound()
         refreshPhotoAccess()
+        speaker.refreshAccess()
         recoverLeftoverClip()
         ptz.start(settings: settings)
         // Offre vidéo relayée par ptzd (spec accès local § 8.4).
@@ -160,6 +181,8 @@ final class AppModel {
     /// déconnecter. Le système peut annuler le glissé du joystick sans qu'aucun relâchement n'arrive.
     func pause() {
         ptz.setJoystick(.zero)
+        // Même cause pour la parole : le système peut annuler l'appui sans qu'aucun relâchement n'arrive.
+        speaker.release()
     }
 
     /// Appairage avec le QR code affiché par `ptzd pair` sur le Mac.
@@ -195,6 +218,7 @@ final class AppModel {
     /// Arrière-plan : arrêt de la nacelle, fermeture du WebSocket et de la vidéo.
     func deactivate() {
         isForeground = false
+        speaker.stop(.background)
         // D'abord la sauvegarde : elle démarre sous une tâche de fond avant que l'app ne soit suspendue.
         stopRecording(.background)
         disconnect()
@@ -306,6 +330,77 @@ final class AppModel {
     /// Bouton vie privée utilisable : connecté et caméra présente.
     var privacyToggleEnabled: Bool {
         ptz.link == .connected && ptz.state?.camera == .connected
+    }
+
+    // MARK: Parole
+
+    /// Ce qui permet, ou non, de parler (spec parler § 6.1).
+    enum SpeakAvailability: Equatable {
+        case ready
+        /// Pas de connexion à ptzd, ou son état n'est pas encore connu.
+        case noConnection
+        /// Talkback est éteint (ou absent) sur le Mac.
+        case talkbackOff
+        /// La vidéo n'est pas en lecture : le périphérique audio de WebRTC ne tourne pas, et la parole en dépend.
+        case noVideo
+    }
+
+    var speakAvailability: SpeakAvailability {
+        guard ptz.link == .connected, let state = ptz.state else { return .noConnection }
+        guard state.talkback == .ready else { return .talkbackOff }
+        return video.phase == .playing ? .ready : .noVideo
+    }
+
+    /// Bouton atténué : parler est impossible, ou le micro est refusé (il reste touchable : il explique).
+    /// La vie privée n'empêche pas de parler : parler ne montre rien et n'écoute rien de la pièce.
+    var speakDimmed: Bool {
+        speakAvailability != .ready || speaker.micDenied
+    }
+
+    /// Le doigt est sur le bouton et le micro est ouvert ou en train de l'être.
+    var isSpeaking: Bool {
+        speaker.isActive
+    }
+
+    /// Appui pris en compte, micro pas encore en direct : bouton rouge avec un anneau, jauge muette.
+    /// VoiceOver annonce « Préparation du micro ».
+    var isPreparingSpeak: Bool {
+        speaker.isPreparing
+    }
+
+    /// Niveau du micro pour la jauge ; nul tant que le micro n'est pas en direct.
+    var micLevel: Float {
+        speaker.isMicLive ? speaker.level : 0
+    }
+
+    /// Le doigt se pose sur le bouton : parle, ou dit pourquoi c'est impossible.
+    func pressSpeak() {
+        switch speakAvailability {
+        case .noConnection:
+            show(StatusBanner.speakNoConnection)
+        case .talkbackOff:
+            show(StatusBanner.speakTalkbackOff)
+        case .noVideo:
+            show(StatusBanner.speakNoVideo)
+        case .ready:
+            Task { await speaker.press() }
+        }
+    }
+
+    /// Le doigt se lève.
+    func releaseSpeak() {
+        speaker.release()
+    }
+
+    /// Connexion perdue, Talkback devenu indisponible ou vidéo perdue : la parole s'arrête.
+    private func stopSpeakingIfUnavailable() {
+        guard speaker.isActive else { return }
+        switch speakAvailability {
+        case .ready: break
+        case .noConnection: speaker.stop(.connection)
+        case .talkbackOff: speaker.stop(.talkbackOff)
+        case .noVideo: speaker.stop(.connection)
+        }
     }
 
     // MARK: Enregistrement

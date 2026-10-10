@@ -12,6 +12,9 @@ final class FakeTransport: WebSocketTransport {
     private(set) var opened: [WebSocketEndpoint] = []
     private(set) var sent: [String] = []
     private(set) var closeCount = 0
+    /// Trames voix envoyées, et leurs fins d'envoi en attente (le test les déclenche).
+    private(set) var voiceSent: [Data] = []
+    private var voiceCompletions: [@MainActor () -> Void] = []
 
     func open(_ endpoint: WebSocketEndpoint) {
         opened.append(endpoint)
@@ -19,6 +22,22 @@ final class FakeTransport: WebSocketTransport {
 
     func send(_ text: String) {
         sent.append(text)
+    }
+
+    func sendVoice(_ frame: Data, completion: @escaping @MainActor () -> Void) {
+        voiceSent.append(frame)
+        voiceCompletions.append(completion)
+    }
+
+    /// Envois de trames voix dont la fin n'est pas encore signalée.
+    var pendingVoiceCompletions: Int {
+        voiceCompletions.count
+    }
+
+    /// Signale la fin du plus ancien envoi de trame voix.
+    func completeVoice() {
+        guard !voiceCompletions.isEmpty else { return }
+        voiceCompletions.removeFirst()()
     }
 
     func close() {

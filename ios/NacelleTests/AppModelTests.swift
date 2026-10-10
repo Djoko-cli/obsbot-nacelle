@@ -34,7 +34,8 @@ struct AppModelTests {
                 freeSpace: { .max },
                 background: FakeBackgroundTasks(),
                 now: { Date() }
-            )
+            ),
+            speech: .fake()
         )
     }
 

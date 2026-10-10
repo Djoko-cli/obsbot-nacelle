@@ -725,6 +725,14 @@ final class PTZClient {
         candidate.transport.send(text)
     }
 
+    /// Envoie une trame voix de `VoiceFrame.byteCount` octets sur la connexion authentifiée. Faux, sans rien
+    /// envoyer, hors connexion ou à une autre taille. `completion` signale la fin de l'envoi.
+    func sendVoice(_ frame: Data, completion: @escaping @MainActor () -> Void) -> Bool {
+        guard link == .connected, let active, VoiceFrame.isValid(frame) else { return false }
+        active.transport.sendVoice(frame, completion: completion)
+        return true
+    }
+
     private func scheduleRepeat() {
         repeater = scheduler.schedule(after: Self.repeatInterval) { [weak self] in
             self?.repeatTick()

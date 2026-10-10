@@ -100,6 +100,17 @@ struct ControlScreen: View {
                     )
                     .hiddenInCleanFeed(clean)
                     Spacer()
+                    // Entre le joystick et le zoom. Masqué en mode épuré comme les autres commandes.
+                    SpeakButton(
+                        isSpeaking: model.isSpeaking,
+                        isPreparing: model.isPreparingSpeak,
+                        dimmed: model.speakDimmed,
+                        level: model.micLevel,
+                        onPress: { model.pressSpeak() },
+                        onRelease: { model.releaseSpeak() }
+                    )
+                    .hiddenInCleanFeed(clean)
+                    Spacer()
                     ZoomSlider(
                         value: model.ptz.state?.zoom,
                         isEnabled: model.controlsEnabled,
@@ -237,6 +248,100 @@ struct ControlScreen: View {
         .disabled(!model.privacyToggleEnabled)
         .opacity(model.privacyToggleEnabled ? 1 : 0.4)
         .accessibilityLabel(privacyOn ? "Quitter la vie privée" : "Vie privée")
+    }
+}
+
+/// « Maintenir pour parler » (spec parler § 6.1) : un grand bouton rond qui parle tant que le doigt reste posé.
+/// Rouge dès le toucher, avec un anneau qui tourne tant que le micro se prépare (la session audio bascule, ce qui prend
+/// un instant) ; puis une petite jauge du niveau du micro, quand les premières trames sont captées : c'est le moment de
+/// parler. Atténué (mais touchable : un appui dit pourquoi)
+/// quand parler est impossible.
+private struct SpeakButton: View {
+    let isSpeaking: Bool
+    /// Le micro n'est pas encore en direct : anneau tournant, jauge muette.
+    let isPreparing: Bool
+    let dimmed: Bool
+    let level: Float
+    let onPress: () -> Void
+    let onRelease: () -> Void
+    /// Le doigt est posé, d'après `PressSurface` : le toucher brut, annulé par le système compris (alerte de permission,
+    /// Centre de contrôle, appel).
+    @State private var pressing = false
+
+    /// Rouge dès que le doigt se pose, sans attendre la bascule audio du modèle (banc du 10/10 : le bouton paraissait
+    /// lent alors que le son était capté dès l'appui).
+    private var held: Bool {
+        (pressing && !dimmed) || isSpeaking
+    }
+
+    /// L'anneau tourne du toucher jusqu'au micro en direct.
+    private var showsRing: Bool {
+        held && (isPreparing || !isSpeaking)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(held ? AnyShapeStyle(.red.opacity(0.85)) : AnyShapeStyle(.ultraThinMaterial))
+            VStack(spacing: 6) {
+                Image(systemName: held ? "mic.fill" : "mic")
+                    .font(.title2)
+                if isSpeaking, !isPreparing {
+                    // La jauge : une barre qui suit le niveau du micro.
+                    Capsule()
+                        .fill(.white.opacity(0.35))
+                        .frame(width: 36, height: 5)
+                        .overlay(alignment: .leading) {
+                            Capsule()
+                                .fill(.white)
+                                .frame(width: 36 * CGFloat(min(max(level, 0), 1)), height: 5)
+                        }
+                        .accessibilityHidden(true)
+                }
+            }
+            .foregroundStyle(.white)
+            if showsRing {
+                PreparingRing()
+            }
+        }
+        .frame(width: 72, height: 72)
+        .contentShape(Circle())
+        .opacity(dimmed ? 0.4 : 1)
+        .overlay {
+            PressSurface { now in
+                pressing = now
+                if now {
+                    onPress()
+                } else {
+                    onRelease()
+                }
+            }
+            .clipShape(Circle())
+        }
+        .sensoryFeedback(.impact(weight: .medium), trigger: held)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(isPreparing ? "Préparation du micro" : isSpeaking ? "Parole en cours" : "Maintenir pour parler")
+        .accessibilityHint("Parler par les haut-parleurs du Mac")
+        // Maintenir : VoiceOver laisse passer le toucher tel quel (double toucher prolongé).
+        .accessibilityAddTraits([.isButton, .allowsDirectInteraction])
+    }
+}
+
+/// L'anneau qui tourne autour du bouton « parler » pendant la préparation du micro. Immobile (arc fixe) quand l'utilisateur
+/// a demandé de réduire les animations.
+private struct PreparingRing: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(paused: reduceMotion)) { context in
+            let turn = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
+            Circle()
+                .trim(from: 0, to: 0.3)
+                .stroke(.white, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                .rotationEffect(.degrees(turn * 360))
+                .padding(3)
+        }
+        .accessibilityHidden(true)
     }
 }
 

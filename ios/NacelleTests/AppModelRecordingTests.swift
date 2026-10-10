@@ -54,7 +54,8 @@ final class RecordingHarness {
                 freeSpace: { knobs.freeSpace },
                 background: background,
                 now: { knobs.now }
-            )
+            ),
+            speech: .fake()
         )
     }
 

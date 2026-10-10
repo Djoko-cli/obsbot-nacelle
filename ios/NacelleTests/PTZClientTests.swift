@@ -856,4 +856,48 @@ struct PTZClientTests {
         client.setPrivacy(true)
         #expect(commands(tailscale) == [.takeControl, .zoom(value: 40), .privacy(on: true)])
     }
+
+    // MARK: - Voix (spec parler § 4 et § 6.2)
+
+    @Test("Trame voix : envoyée en binaire sur la connexion retenue, fin d'envoi signalée")
+    func sendsVoiceFrame() throws {
+        try connect()
+        let frame = Data(repeating: 3, count: VoiceFrame.byteCount)
+        var completed = 0
+        #expect(client.sendVoice(frame) { completed += 1 })
+        #expect(tailscale.voiceSent == [frame])
+        // Rien de la voix n'est passé par le canal texte.
+        #expect(commands(tailscale) == [.takeControl])
+        tailscale.completeVoice()
+        #expect(completed == 1)
+    }
+
+    @Test("Trame voix par le réseau local (TLS) : même chemin")
+    func sendsVoiceLocally() throws {
+        let local = try connectLocal()
+        #expect(client.sendVoice(Data(count: VoiceFrame.byteCount)) {})
+        #expect(local.voiceSent.count == 1)
+    }
+
+    @Test("Hors connexion (avant l'authentification, après une coupure) : refusée, rien n'est envoyé")
+    func voiceRefusedWithoutLink() throws {
+        #expect(!client.sendVoice(Data(count: VoiceFrame.byteCount)) {})
+        client.start(settings: settings)
+        tailscale.emit(.opened)
+        #expect(!client.sendVoice(Data(count: VoiceFrame.byteCount)) {})
+        try emit(.challenge(nonce: nonce), on: tailscale)
+        try emit(.authenticated, on: tailscale)
+        #expect(client.sendVoice(Data(count: VoiceFrame.byteCount)) {})
+        tailscale.emit(.closed)
+        #expect(!client.sendVoice(Data(count: VoiceFrame.byteCount)) {})
+        #expect(tailscale.voiceSent.count == 1)
+    }
+
+    @Test("Seule une trame de la taille exacte part")
+    func voiceSizeChecked() throws {
+        try connect()
+        #expect(!client.sendVoice(Data(count: 639)) {})
+        #expect(!client.sendVoice(Data()) {})
+        #expect(tailscale.voiceSent.isEmpty)
+    }
 }

@@ -24,6 +24,13 @@ enum StatusBanner {
     static let recordingFailed = "L'enregistrement a échoué."
     static let photosFailed = "La vidéo n'a pas pu être ajoutée à Photos."
 
+    // Parole (spec parler § 6.1).
+    static let speakTalkbackOff = "Talkback est éteint sur le Mac"
+    static let speakNoConnection = "Pas de connexion au Mac"
+    static let speakNoVideo = "La vidéo n'est pas connectée : la parole a besoin du son de la caméra."
+    static let micDenied = "L'accès au micro est refusé : autorisez-le dans Réglages › PTZBot"
+    static let micFailed = "Le micro n'a pas pu démarrer."
+
     /// « Vidéo enregistrée dans Photos (0:42) » ; sans durée connue (réessai d'un fichier resté), sans parenthèses.
     static func saved(duration: TimeInterval?) -> String {
         guard let duration else { return "Vidéo enregistrée dans Photos" }
