@@ -383,7 +383,10 @@ final class AppModel {
         case .noVideo:
             show(StatusBanner.speakNoVideo)
         case .ready:
-            Task { await speaker.press() }
+            // Démarrage immédiat : `press` pose le doigt (`desired`) et la phase `.starting` avant de rendre la main. Avec
+            // une `Task` ordinaire, un relâchement traité avant que la tâche ne démarre serait perdu, et le micro
+            // s'ouvrirait ensuite sans aucun doigt posé.
+            Task.immediate { await speaker.press() }
         }
     }
 

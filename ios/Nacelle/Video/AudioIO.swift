@@ -4,15 +4,16 @@ import Synchronization
 
 /// La session audio de l'app, derrière un protocole pour que les tests n'en ouvrent aucune.
 ///
-/// Spec parler § 6.2 : la catégorie est posée une seule fois, à l'avance (`prepare`) ; l'appui et le relâchement ne
-/// changent que le mode (`setSpeakingMode`), ce qui évite de reconfigurer tout le circuit audio d'iOS à chaque prise de
-/// parole.
+/// Spec parler § 6.2 et § 11.6 : la catégorie `.playAndRecord` est posée à l'avance (`prepare`) ; l'appui et le
+/// relâchement ne changent que le mode (`setSpeakingMode`), mais catégorie, mode et options sont reposés ensemble à
+/// chaque changement (sinon iOS revient à l'écouteur). Comme la catégorie et les options sont les mêmes, iOS ne
+/// reconstruit pas le circuit audio à chaque prise de parole.
 protocol PlayoutSession: AnyObject, Sendable {
     /// Pose la catégorie `.playAndRecord`, mode par défaut, sans ouvrir d'entrée : tant qu'aucune unité ne lit le micro,
     /// iOS n'en capte rien (pas de voyant orange). Faux si le système refuse.
     func prepare() -> Bool
-    /// Passe en mode voix (`true`, pendant la parole) ou revient au mode par défaut (`false`), sans toucher à la
-    /// catégorie ni aux options. Faux si le système refuse.
+    /// Passe en mode voix (`true`, pendant la parole) ou revient au mode par défaut (`false`). Catégorie et options sont
+    /// reposées avec le mode, identiques à celles de `prepare`. Faux si le système refuse.
     func setSpeakingMode(_ speaking: Bool) -> Bool
     /// Active ; désactive en prévenant les autres apps (leur musique reprend).
     func setActive(_ active: Bool) throws

@@ -285,6 +285,34 @@ struct AppModelSpeakTests {
         h.model.deactivate()
     }
 
+    @Test("F1 : appui et relâchement d'affilée (appui bref, double toucher VoiceOver) : jamais de parole sans doigt")
+    func pressThenReleaseImmediately() async throws {
+        try h.connect()
+        h.model.pressSpeak()
+        h.model.releaseSpeak()
+        // Le démarrage éventuel a largement le temps de se faire : on laisse la file principale se vider.
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(!h.model.isSpeaking)
+        #expect(h.model.speaker.phase == .idle)
+        #expect(h.audio.endCount == h.audio.beginCount)
+        h.model.deactivate()
+    }
+
+    @Test("F1 : relâché pendant le démarrage du micro : il se referme dès qu'il est prêt, chaque begin a son end")
+    func releaseWhileStarting() async throws {
+        try h.connect()
+        h.audio.holdBegin = true
+        h.model.pressSpeak()
+        h.model.releaseSpeak()
+        #expect(await h.until { h.audio.isBeginPending })
+        h.audio.finishBegin(true)
+        #expect(await h.until { h.model.speaker.phase == .idle })
+        #expect(!h.model.isSpeaking)
+        #expect(h.audio.beginCount == 1)
+        #expect(h.audio.endCount == 1)
+        h.model.deactivate()
+    }
+
     @Test("Le niveau du micro est visible dans le modèle pendant la parole")
     func levelVisible() async throws {
         try h.connect()
