@@ -203,21 +203,29 @@ struct TalkbackTests {
         #expect(service.registerCalls == 0)
     }
 
-    @Test("Compilation de travail (numéro 1) : rien si 1 est déjà retenu ; réinscrit en venant d'une version publiée, et inversement")
+    @Test("F3 : compilation de travail (numéro 1) : jamais de réinscription, ni depuis une version publiée ni sans numéro retenu")
     func workingBuild() async {
-        settings.strings[TalkbackModel.registeredBuildKey] = "1"
         service.status = .enabled
+        settings.strings[TalkbackModel.registeredBuildKey] = "42"
         await makeModel(bundleVersion: "1").reregisterIfUpdated()
         #expect(service.registerCalls == 0)
         #expect(service.unregisterCalls == 0)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "42")
 
-        settings.strings[TalkbackModel.registeredBuildKey] = "42"
+        settings.strings[TalkbackModel.registeredBuildKey] = nil
         await makeModel(bundleVersion: "1").reregisterIfUpdated()
-        #expect(service.registerCalls == 1)
-        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "1")
+        #expect(service.registerCalls == 0)
+        #expect(service.unregisterCalls == 0)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == nil)
+    }
 
+    @Test("F3 : l'app publiée reprend l'agent qu'une compilation de travail avait inscrit (numéro 1 retenu)")
+    func publishedBuildTakesOverFromWorkingBuild() async {
+        service.status = .enabled
+        settings.strings[TalkbackModel.registeredBuildKey] = "1"
         await makeModel(bundleVersion: "42").reregisterIfUpdated()
-        #expect(service.registerCalls == 2)
+        #expect(service.unregisterCalls == 1)
+        #expect(service.registerCalls == 1)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "42")
     }
 
