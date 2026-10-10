@@ -166,6 +166,8 @@ public final class TalkbackModel {
     /// L'instant (horloge du `Scheduler`) du premier « Démarrage… » d'affilée.
     @ObservationIgnored private var startingSince: TimeInterval?
 
+    /// Le numéro de compilation d'une compilation de travail (`CFBundleVersion` du projet, sans numéro de publication).
+    public static let workingBuildNumber = "1"
     /// La clé du réglage qui retient le numéro de compilation pour lequel l'agent a été inscrit.
     public static let registeredBuildKey = "talkbackRegisteredBuild"
 
@@ -262,11 +264,13 @@ public final class TalkbackModel {
     ///
     /// Seulement si l'agent est inscrit (`.enabled` ou `.requiresApproval`) et si le numéro de compilation retenu à
     /// l'inscription diffère de celui de l'app, ou manque (agent inscrit par une version qui ne le retenait pas). Une
-    /// compilation de travail porte le numéro 1 : la règle est la même, elle ne réinscrit que si le numéro change.
+    /// compilation de travail (numéro 1) ne réinscrit jamais d'elle-même : elle déplacerait l'agent de l'app publiée vers
+    /// sa propre copie (même identifiant, autre emplacement : `BTMErrorDomain -95` au banc du 09/10). L'app publiée, mise
+    /// à jour sur place par Sparkle, reprend l'agent après une bascule faite depuis une copie de travail.
     /// Une seule tentative par lancement : en cas d'échec l'erreur est montrée, le numéro reste, rien n'est retenté.
     /// La désinscription est attendue avant l'inscription : l'appelant relit l'état (`refresh`) après coup.
     public func reregisterIfUpdated() async {
-        guard let bundleVersion else { return }
+        guard let bundleVersion, bundleVersion != Self.workingBuildNumber else { return }
         let registered = service.status == .enabled || service.status == .requiresApproval
         guard registered, settings.string(forKey: Self.registeredBuildKey) != bundleVersion else { return }
         lastError = nil
