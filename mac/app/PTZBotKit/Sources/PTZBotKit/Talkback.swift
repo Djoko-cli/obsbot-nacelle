@@ -165,6 +165,10 @@ public final class TalkbackModel {
     @ObservationIgnored private var watching = false
     /// L'instant (horloge du `Scheduler`) du premier « Démarrage… » d'affilée.
     @ObservationIgnored private var startingSince: TimeInterval?
+    /// L'agent a été réinscrit par la mise à jour pendant ce lancement, et talkd n'a pas encore tourné depuis.
+    @ObservationIgnored private var reregisteredThisLaunch = false
+    /// `lastError` porte l'avis de redémarrage (`Labels.talkbackRestartAdvice`) : il disparaît quand talkd repart.
+    @ObservationIgnored private var restartAdviceShown = false
 
     /// Le numéro de compilation d'une compilation de travail (`CFBundleVersion` du projet, sans numéro de publication).
     public static let workingBuildNumber = "1"
@@ -207,6 +211,31 @@ public final class TalkbackModel {
             startingSince = nil
             status = next
         }
+        updateRestartAdvice()
+    }
+
+    /// Après une réinscription faite par la mise à jour, un talkd qui ne repart pas (`.notRunning`) reçoit l'avis du
+    /// remède trouvé au banc du 09/10 : éteindre puis rallumer Talkback. Pas de nouvelle tentative automatique, qui
+    /// risquerait une boucle. L'avis s'efface quand talkd tourne, et il ne remplace jamais une autre erreur.
+    private func updateRestartAdvice() {
+        switch status {
+        case .notRunning:
+            if reregisteredThisLaunch, lastError == nil {
+                lastError = Labels.talkbackRestartAdvice
+                restartAdviceShown = true
+            }
+        case .ready, .playing:
+            reregisteredThisLaunch = false
+            clearRestartAdvice()
+        case .disabled, .unavailable, .requiresApproval, .starting, .failed:
+            clearRestartAdvice()
+        }
+    }
+
+    private func clearRestartAdvice() {
+        guard restartAdviceShown else { return }
+        restartAdviceShown = false
+        if lastError == Labels.talkbackRestartAdvice { lastError = nil }
     }
 
     /// La dernière inscription a échoué : avec « introuvable », l'agent est alors vraiment indisponible.
@@ -238,6 +267,9 @@ public final class TalkbackModel {
 
     public func setEnabled(_ enabled: Bool) {
         lastError = nil
+        // Éteindre puis rallumer est le remède de l'avis : il n'a plus lieu d'être.
+        reregisteredThisLaunch = false
+        restartAdviceShown = false
         do {
             if enabled {
                 try service.register()
@@ -280,6 +312,7 @@ public final class TalkbackModel {
             try await service.unregisterAndWait()
             try service.register()
             settings.set(bundleVersion, forKey: Self.registeredBuildKey)
+            reregisteredThisLaunch = true
         } catch {
             lastError = Localization.text("Talkback impossible : \(error.localizedDescription)")
         }
@@ -338,6 +371,11 @@ extension Labels {
         case .failed(.other): Localization.text("Arrêté (voir le journal)")
         case .notRunning: Localization.text("talkd ne démarre pas (voir le journal)")
         }
+    }
+
+    /// L'avis quand talkd ne repart pas après une réinscription faite par la mise à jour : le remède du banc du 09/10.
+    public static var talkbackRestartAdvice: String {
+        Localization.text("Talkback n'a pas redémarré après la mise à jour : éteignez puis rallumez Talkback.")
     }
 
     /// Le bouton qui ouvre Réglages › Général › Ouverture quand macOS attend l'accord.
