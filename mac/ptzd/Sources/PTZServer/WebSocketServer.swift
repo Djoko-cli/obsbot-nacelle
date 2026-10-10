@@ -62,6 +62,8 @@ public final class WebSocketServer {
     /// Adresses écoutées comme le réseau local (TLS, seul endroit où l'on appaire) : pour les tests seulement,
     /// le vrai réseau local passant par `LocalNetworkListeners`.
     private let localHosts: Set<String>
+    /// Trames voix (spec parler § 5) ; sans destination, elles sont validées puis perdues.
+    private let voice: VoiceRelayer
     private var listeners: [String: NWListener] = [:]
     private var localListeners: LocalNetworkListeners?
     /// Échéance de l'appairage en cours.
@@ -108,6 +110,11 @@ public final class WebSocketServer {
         }
     }
 
+    /// Trames voix refusées depuis le démarrage (tests).
+    var voiceRefusals: VoiceRelayer.Refusals {
+        voice.refused
+    }
+
     /// Nombre de places occupées (tests).
     var clientCount: Int {
         clients.count
@@ -127,6 +134,7 @@ public final class WebSocketServer {
         trustLoopback: Bool = true,
         localNetwork: Bool = false,
         localHosts: Set<String> = [],
+        voiceSink: (any VoiceSink)? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.hosts = hosts.reduce(into: []) { unique, host in
@@ -144,6 +152,7 @@ public final class WebSocketServer {
         self.localNetwork = localNetwork
         self.localHosts = localHosts
         self.now = now
+        voice = VoiceRelayer(sink: voiceSink ?? DiscardingVoiceSink(), scheduler: scheduler, now: now, log: log)
         controller.onStateChange = { [weak self] snapshot in
             self?.broadcast(.state(snapshot))
         }
@@ -419,9 +428,23 @@ public final class WebSocketServer {
                 }
                 if metadata?.opcode == .text, let content, let text = String(data: content, encoding: .utf8) {
                     self.process(text, from: id)
+                } else if metadata?.opcode == .binary {
+                    // Le seul message binaire du protocole : la voix (spec parler § 4).
+                    self.processVoice(content ?? Data(), from: id)
                 }
                 self.receive(on: connection, id: id)
             }
+        }
+    }
+
+    /// Une trame voix : seul un iPhone authentifié par sa clé d'appareil est écouté, ni le client de confiance
+    /// 127.0.0.1, ni une connexion en cours d'appairage ou d'authentification.
+    private func processVoice(_ frame: Data, from id: ClientID) {
+        guard let client = clients[id] else { return }
+        if client.authenticated, !client.trusted, let device = client.device {
+            voice.receive(frame, from: id, as: .device(id: device.id, name: device.name))
+        } else {
+            voice.receive(frame, from: id, as: client.trusted ? .trusted : .unauthenticated)
         }
     }
 
@@ -858,6 +881,7 @@ public final class WebSocketServer {
         guard let client = clients.removeValue(forKey: id) else { return }
         client.cancelTimers()
         client.connection.cancel()
+        voice.clientGone(id)
         controller.clientDisconnected(id)
         if client.authenticated {
             publishAdmin()

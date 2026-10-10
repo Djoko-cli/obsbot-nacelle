@@ -42,11 +42,13 @@ struct WebSocketServerTests {
         trustLoopback: Bool = true,
         relay: any WebRTCRelay = FakeRelay { "v=0 réponse à \($0)" },
         localHosts: Set<String> = [],
+        voiceSink: (any VoiceSink)? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) async -> (WebSocketServer, [String: UInt16]) {
         let server = WebSocketServer(
             hosts: hosts, port: 0, controller: controller, authority: authority, relay: relay,
-            scheduler: scheduler, log: log, trustLoopback: trustLoopback, localHosts: localHosts, now: now
+            scheduler: scheduler, log: log, trustLoopback: trustLoopback, localHosts: localHosts,
+            voiceSink: voiceSink, now: now
         )
         let ports = await withCheckedContinuation { continuation in
             var ready: [String: UInt16] = [:]
@@ -1431,4 +1433,154 @@ final class StubStore: StateStore {
     }
 
     func save(_ state: PersistedState) throws {}
+}
+
+// MARK: - Trames voix (spec parler § 5)
+
+extension WebSocketServerTests {
+    private func voiceFrame(_ byte: UInt8) -> Data {
+        Data(repeating: byte, count: VoiceFrame.byteCount)
+    }
+
+    /// Un iPhone appairé et authentifié (127.0.0.1 sans confiance).
+    private func authenticatedDevice(_ port: UInt16) async throws -> URLSessionWebSocketTask {
+        let task = connect("127.0.0.1", port)
+        let nonce = try await challenge(task)
+        try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: task)
+        #expect(try await next(task) { _ in true } == .authenticated)
+        return task
+    }
+
+    @Test("Trame voix d'un iPhone authentifié : relayée en UDP vers talkd, telle quelle et dans l'ordre")
+    func voiceRelayed() async throws {
+        try pairTestDevice()
+        let receiver = try UDPTestReceiver()
+        let sink = UDPVoiceSink(port: receiver.port)
+        let (server, ports) = await startServer(trustLoopback: false, voiceSink: sink)
+        let task = try await authenticatedDevice(ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+
+        for byte in 1...3 {
+            try await task.send(.data(voiceFrame(UInt8(byte))))
+        }
+        for byte in 1...3 {
+            #expect(await receiver.receiveAsync() == voiceFrame(UInt8(byte)))
+        }
+        #expect(server.voiceRefusals.total == 0)
+    }
+
+    @Test("Trame voix du client de confiance 127.0.0.1 : ignorée et comptée, la connexion reste ouverte")
+    func voiceFromTrustedClient() async throws {
+        let receiver = try UDPTestReceiver()
+        let sink = UDPVoiceSink(port: receiver.port)
+        let (server, ports) = await startServer(voiceSink: sink)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        _ = try await next(task) { _ in true }
+
+        try await task.send(.data(voiceFrame(1)))
+        try await waitUntil { server.voiceRefusals.unauthorized == 1 }
+        #expect(await receiver.receiveAsync(timeout: 0.3) == nil)
+        // La connexion fonctionne toujours.
+        try await send(.move(pan: 1, tilt: 0), on: task)
+        _ = try await next(task) { if case let .state(s) = $0 { s.moving } else { false } }
+    }
+
+    @Test("Trame voix avant l'authentification : ignorée et comptée, rien ne part vers talkd")
+    func voiceBeforeAuth() async throws {
+        try pairTestDevice()
+        let receiver = try UDPTestReceiver()
+        let sink = UDPVoiceSink(port: receiver.port)
+        let (server, ports) = await startServer(trustLoopback: false, voiceSink: sink)
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        let nonce = try await challenge(task)
+
+        try await task.send(.data(voiceFrame(1)))
+        try await waitUntil { server.voiceRefusals.unauthorized == 1 }
+        // Le défi reste valable : l'authentification réussit ensuite.
+        try await send(.auth(deviceID: deviceID, signature: try signature(for: nonce)), on: task)
+        #expect(try await next(task) { _ in true } == .authenticated)
+        #expect(await receiver.receiveAsync(timeout: 0.3) == nil)
+    }
+
+    @Test("Mauvaise taille : ignorée et comptée, la connexion reste ouverte et la bonne trame suivante passe")
+    func voiceBadSize() async throws {
+        try pairTestDevice()
+        let receiver = try UDPTestReceiver()
+        let sink = UDPVoiceSink(port: receiver.port)
+        let (server, ports) = await startServer(trustLoopback: false, voiceSink: sink)
+        let task = try await authenticatedDevice(ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+
+        try await task.send(.data(Data(count: 639)))
+        try await task.send(.data(Data(count: 1280)))
+        try await task.send(.data(voiceFrame(5)))
+        #expect(await receiver.receiveAsync() == voiceFrame(5))
+        #expect(server.voiceRefusals.badSize == 2)
+        #expect(await receiver.receiveAsync(timeout: 0.3) == nil)
+    }
+
+    @Test("Au-delà de la limite par seconde : l'excédent est ignoré et compté")
+    func voiceRateLimited() async throws {
+        try pairTestDevice()
+        let receiver = try UDPTestReceiver()
+        let sink = UDPVoiceSink(port: receiver.port)
+        // Horloge figée : toutes les trames tombent dans la même seconde.
+        let (server, ports) = await startServer(scheduler: FakeScheduler(), trustLoopback: false, voiceSink: sink)
+        let task = try await authenticatedDevice(ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+
+        let allowed = VoiceFrame.maxFramesPerSecond + VoiceRelayer.burstTolerance
+        for index in 0..<(allowed + 15) {
+            try await task.send(.data(voiceFrame(UInt8(index % 200))))
+        }
+        try await waitUntil { server.voiceRefusals.tooFast == 15 }
+        #expect(await receiver.drainAsync().count == allowed)
+    }
+
+    @Test("Un message texte passe encore après des trames voix")
+    func textAfterVoice() async throws {
+        try pairTestDevice()
+        let (server, ports) = await startServer(trustLoopback: false, voiceSink: RecordingSink())
+        let task = try await authenticatedDevice(ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+
+        try await task.send(.data(voiceFrame(1)))
+        try await send(.move(pan: 1, tilt: 0), on: task)
+        _ = try await next(task) { if case let .state(s) = $0 { s.moving } else { false } }
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("Déconnexion pendant la parole : une ligne de journal pour la prise de parole, sans le son")
+    func voiceJournal() async throws {
+        try pairTestDevice()
+        let lines = LineBox()
+        let (server, ports) = await startServer(log: { lines.values.append($0) }, trustLoopback: false, voiceSink: RecordingSink())
+        let task = try await authenticatedDevice(ports["127.0.0.1"]!)
+
+        let distinctive = Data((0..<VoiceFrame.byteCount).map { UInt8(truncatingIfNeeded: 0x30 + $0) })
+        try await task.send(.data(distinctive))
+        try await task.send(.data(distinctive))
+        task.cancel(with: .goingAway, reason: nil)
+        try await waitUntil { lines.values.contains { $0.hasPrefix("Parole de l'appareil \(deviceID.prefix(8)) (iPhone de test)") } }
+        let line = lines.values.first { $0.hasPrefix("Parole") } ?? ""
+        #expect(line.contains("2 trames relayées"))
+        #expect(!lines.values.joined().contains(distinctive.base64EncodedString()))
+        withExtendedLifetime(server) {}
+    }
+
+    @Test("L'état envoyé aux clients porte le talkback du contrôleur")
+    func stateCarriesTalkback() async throws {
+        let (server, ports) = await startServer()
+        let task = connect("127.0.0.1", ports["127.0.0.1"]!)
+        defer { task.cancel(with: .goingAway, reason: nil) }
+        guard case let .state(first) = try await next(task, where: { if case .state = $0 { true } else { false } }) else { return }
+        #expect(first.talkback == .unavailable)
+
+        controller.setTalkback(.ready)
+        guard case let .state(second) = try await next(task, where: { if case let .state(s) = $0 { s.talkback == .ready } else { false } }) else { return }
+        #expect(second.talkback == .ready)
+        withExtendedLifetime(server) {}
+    }
 }

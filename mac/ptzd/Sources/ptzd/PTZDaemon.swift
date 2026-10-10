@@ -23,6 +23,14 @@ struct PTZDaemon {
         }
         return FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/obsbot-nacelle")
     }()
+    /// Dossier de talkd (réglages et état), qui est le même que celui de ptzd en service ; TALKD_SUPPORT_DIR le
+    /// remplace pour les essais, comme pour talkd (spec parler § 5).
+    static let talkSupportDirectory: URL = {
+        if let override = ProcessInfo.processInfo.environment["TALKD_SUPPORT_DIR"], !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return supportDirectory
+    }()
     static let logger = Logger(subsystem: "io.github.djoko-cli.obsbot-nacelle", category: "ptzd")
 
     /// Une ligne dans le journal système et sur la sortie standard (redirigée par launchd).
@@ -127,6 +135,9 @@ struct PTZDaemon {
         }
         // 127.0.0.1 en plus de l'adresse Tailscale : le Mac ne peut pas se joindre
         // lui-même par Tailscale, et les diagnostics locaux en ont besoin.
+        // La voix des iPhone part en UDP vers talkd, sur 127.0.0.1 ; le port est lu une fois, ici.
+        let talkPort = TalkPort.load(from: talkSupportDirectory.appending(path: "talkd.json"))
+        let voiceSink = UDPVoiceSink(port: UInt16(talkPort))
         let server = WebSocketServer(
             hosts: [config.listenAddress, "127.0.0.1"],
             port: UInt16(config.port),
@@ -135,7 +146,15 @@ struct PTZDaemon {
             relay: relay,
             scheduler: scheduler,
             log: log,
-            localNetwork: config.localNetwork
+            localNetwork: config.localNetwork,
+            voiceSink: voiceSink
+        )
+        // « Talkback prêt » : relu dans talkd-state.json toutes les 5 s, diffusé aux changements.
+        let talkStateURL = talkSupportDirectory.appending(path: "talkd-state.json")
+        let talkbackWatcher = TalkbackWatcher(
+            scheduler: scheduler,
+            read: { TalkbackProbe.availability(stateFileAt: talkStateURL) },
+            onChange: { controller.setTalkback($0) }
         )
 
         if options.parent != nil {
@@ -150,7 +169,8 @@ struct PTZDaemon {
         log("ptzd démarre.")
         camera.startWatching()
         server.start()
-        withExtendedLifetime((camera, controller, server, parentWatcher, serviceLock)) {
+        talkbackWatcher.start()
+        withExtendedLifetime((camera, controller, server, parentWatcher, serviceLock, voiceSink, talkbackWatcher)) {
             dispatchMain()
         }
     }
