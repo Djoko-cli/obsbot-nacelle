@@ -112,8 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !started else { return }
         started = true
         panel.start()
-        talkback.reregisterIfUpdated()
-        talkback.refresh()
+        // La réinscription attend la fin de la désinscription : l'état se relit une fois qu'elle est faite.
+        Task { [talkback] in
+            await talkback.reregisterIfUpdated()
+            talkback.refresh()
+        }
         network.check()
         Task { await controller.launch() }
     }

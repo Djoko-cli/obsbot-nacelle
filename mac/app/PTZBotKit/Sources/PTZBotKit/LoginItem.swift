@@ -8,6 +8,9 @@ public protocol LoginItemService: AnyObject {
     var status: SMAppService.Status { get }
     func register() throws
     func unregister() throws
+    /// Désinscrit en attendant que launchd ait fini de démonter le service : seule cette forme permet de réinscrire
+    /// aussitôt après (`SMAppService.h` : « After the completion handler has been invoked it is safe to re-register »).
+    func unregisterAndWait() async throws
     func openSystemSettings()
 }
 
@@ -26,6 +29,10 @@ public final class MainAppLoginItem: LoginItemService {
 
     public func unregister() throws {
         try SMAppService.mainApp.unregister()
+    }
+
+    public func unregisterAndWait() async throws {
+        try await SMAppService.mainApp.unregister()
     }
 
     public func openSystemSettings() {

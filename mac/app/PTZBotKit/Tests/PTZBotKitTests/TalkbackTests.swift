@@ -4,7 +4,7 @@ import Testing
 @testable import PTZBotKit
 
 @MainActor
-@Suite("Talkback", .french)
+@Suite("Talkback", .french, .timeLimit(.minutes(1)))
 struct TalkbackTests {
     let service = FakeLoginItem()
     let state = FakeTalkbackState()
@@ -120,21 +120,21 @@ struct TalkbackTests {
     }
 
     @Test("Même numéro de compilation qu'à l'inscription : rien n'est touché")
-    func sameBuild() {
+    func sameBuild() async {
         model.setEnabled(true)
         let before = (service.registerCalls, service.unregisterCalls)
-        makeModel(bundleVersion: "7").reregisterIfUpdated()
+        await makeModel(bundleVersion: "7").reregisterIfUpdated()
         #expect(service.registerCalls == before.0)
         #expect(service.unregisterCalls == before.1)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
     }
 
     @Test("Autre numéro de compilation : désinscription, réinscription, nouveau numéro retenu")
-    func newBuild() {
+    func newBuild() async {
         model.setEnabled(true)
         let before = (service.registerCalls, service.unregisterCalls)
         let updated = makeModel(bundleVersion: "8")
-        updated.reregisterIfUpdated()
+        await updated.reregisterIfUpdated()
         #expect(service.unregisterCalls == before.1 + 1)
         #expect(service.registerCalls == before.0 + 1)
         #expect(service.status == .enabled)
@@ -143,20 +143,42 @@ struct TalkbackTests {
         #expect(updated.isEnabled)
     }
 
-    @Test("Agent inscrit par une version qui ne retenait rien (la 1.0.2) : réinscription")
-    func noRememberedBuild() {
+    @Test("F2 : la réinscription attend la fin de la désinscription (launchd démonte encore l'ancien job) avant d'inscrire")
+    func registerWaitsForUnregister() async {
         service.status = .enabled
-        model.reregisterIfUpdated()
+        settings.strings[TalkbackModel.registeredBuildKey] = "6"
+        service.holdUnregister = true
+        let task = Task { await model.reregisterIfUpdated() }
+        var waited = 0
+        while !service.isUnregisterPending, waited < 500 {
+            try? await Task.sleep(for: .milliseconds(10))
+            waited += 1
+        }
+        #expect(service.isUnregisterPending)
+        #expect(service.registerCalls == 0)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "6")
+        service.finishUnregister()
+        await task.value
+        #expect(service.unregisterCalls == 1)
+        #expect(service.registerCalls == 1)
+        #expect(service.status == .enabled)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
+    }
+
+    @Test("Agent inscrit par une version qui ne retenait rien (la 1.0.2) : réinscription")
+    func noRememberedBuild() async {
+        service.status = .enabled
+        await model.reregisterIfUpdated()
         #expect(service.unregisterCalls == 1)
         #expect(service.registerCalls == 1)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
     }
 
     @Test("Agent en attente d'accord : réinscrit aussi")
-    func requiresApprovalIsRegistered() {
+    func requiresApprovalIsRegistered() async {
         service.status = .requiresApproval
         service.statusAfterRegister = .requiresApproval
-        model.reregisterIfUpdated()
+        await model.reregisterIfUpdated()
         #expect(service.unregisterCalls == 1)
         #expect(service.registerCalls == 1)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
@@ -165,8 +187,8 @@ struct TalkbackTests {
     }
 
     @Test("Agent non inscrit : rien, même sans numéro retenu")
-    func notRegistered() {
-        model.reregisterIfUpdated()
+    func notRegistered() async {
+        await model.reregisterIfUpdated()
         #expect(service.unregisterCalls == 0)
         #expect(service.registerCalls == 0)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == nil)
@@ -174,37 +196,37 @@ struct TalkbackTests {
     }
 
     @Test("Agent introuvable (jamais inscrit) : rien")
-    func notFound() {
+    func notFound() async {
         service.status = .notFound
-        model.reregisterIfUpdated()
+        await model.reregisterIfUpdated()
         #expect(service.unregisterCalls == 0)
         #expect(service.registerCalls == 0)
     }
 
     @Test("Compilation de travail (numéro 1) : rien si 1 est déjà retenu ; réinscrit en venant d'une version publiée, et inversement")
-    func workingBuild() {
+    func workingBuild() async {
         settings.strings[TalkbackModel.registeredBuildKey] = "1"
         service.status = .enabled
-        makeModel(bundleVersion: "1").reregisterIfUpdated()
+        await makeModel(bundleVersion: "1").reregisterIfUpdated()
         #expect(service.registerCalls == 0)
         #expect(service.unregisterCalls == 0)
 
         settings.strings[TalkbackModel.registeredBuildKey] = "42"
-        makeModel(bundleVersion: "1").reregisterIfUpdated()
+        await makeModel(bundleVersion: "1").reregisterIfUpdated()
         #expect(service.registerCalls == 1)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "1")
 
-        makeModel(bundleVersion: "42").reregisterIfUpdated()
+        await makeModel(bundleVersion: "42").reregisterIfUpdated()
         #expect(service.registerCalls == 2)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "42")
     }
 
     @Test("Désinscription refusée : erreur affichée, numéro inchangé, une seule tentative")
-    func unregisterFails() {
+    func unregisterFails() async {
         service.status = .enabled
         settings.strings[TalkbackModel.registeredBuildKey] = "6"
         service.failure = Refused()
-        model.reregisterIfUpdated()
+        await model.reregisterIfUpdated()
         #expect(model.lastError == "Talkback impossible : refusé")
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "6")
         #expect(service.unregisterCalls == 1)
@@ -212,11 +234,11 @@ struct TalkbackTests {
     }
 
     @Test("Réinscription refusée : erreur affichée, numéro inchangé, une seule tentative")
-    func registerFails() {
+    func registerFails() async {
         service.status = .enabled
         settings.strings[TalkbackModel.registeredBuildKey] = "6"
         service.registerFailure = Refused()
-        model.reregisterIfUpdated()
+        await model.reregisterIfUpdated()
         #expect(model.lastError == "Talkback impossible : refusé")
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "6")
         #expect(service.unregisterCalls == 1)
@@ -229,9 +251,9 @@ struct TalkbackTests {
     }
 
     @Test("Numéro de compilation inconnu : rien")
-    func unknownBuild() {
+    func unknownBuild() async {
         service.status = .enabled
-        makeModel(bundleVersion: nil).reregisterIfUpdated()
+        await makeModel(bundleVersion: nil).reregisterIfUpdated()
         #expect(service.unregisterCalls == 0)
         #expect(service.registerCalls == 0)
     }
