@@ -51,7 +51,7 @@ talkd (inchangé)
 - **Réception.** Une trame binaire n'est acceptée que d'un client **authentifié par sa clé d'appareil** (pas le client
   de confiance 127.0.0.1, pas un client en cours d'appairage). Toute autre trame binaire est ignorée et comptée.
 - **Validation.** Taille différente de 640 octets : ignorée et comptée. Au-delà de 50 trames par seconde et par client
-  (fenêtre glissante d'une seconde) : l'excédent est ignoré et compté.
+  (fenêtre glissante d'une seconde ; 50 + 10 de marge, voir § 11) : l'excédent est ignoré et compté.
 - **Relais.** Une seule socket UDP, ouverte au premier relais et gardée pour la vie du process, envoie chaque trame à
   `127.0.0.1:<port>`. Le port est lu dans `talkd.json` (`port`, 1986 par défaut) au démarrage de ptzd. Un envoi qui
   échoue (talkd absent) est ignoré sans erreur pour l'iPhone.
@@ -67,24 +67,38 @@ talkd (inchangé)
 
 - **Place.** Un grand bouton rond (icône micro) en bas au centre, entre le joystick et le zoom. Masqué en mode épuré,
   comme les autres commandes.
-- **Maintenu** : fond rouge et petite jauge de niveau du micro. **Relâché** : la parole s'arrête.
+- **Maintenu** : fond rouge dès le toucher. Pendant la préparation du micro, un anneau tourne autour du bouton et la
+  jauge reste muette ; quand les premières trames sont captées, l'anneau disparaît et la petite jauge de niveau suit le
+  micro : c'est le moment de parler (§ 11.5). **Relâché** : la parole s'arrête.
 - **Grisé** (désactivé, opacité 0,4) : hors connexion, ou Talkback indisponible sur le Mac. Dans ce cas, un appui court
   affiche « Talkback est éteint sur le Mac » ou « Pas de connexion au Mac ».
 - **Micro refusé** : atténué mais touchable ; un appui affiche « L'accès au micro est refusé : autorisez-le dans
   Réglages › PTZBot ». Info.plist : `NSMicrophoneUsageDescription` = « Pour parler par les haut-parleurs du Mac où
   la caméra est branchée. »
-- **Accessibilité** : « Maintenir pour parler » ; pendant la parole, « Parole en cours ».
+- **Accessibilité** : « Maintenir pour parler » ; pendant la préparation, « Préparation du micro » ; ensuite,
+  « Parole en cours ».
 - Textes au « vous », en français (la traduction de l'app iOS viendra plus tard).
 
 ### 6.2 Audio
 
-- **Hors parole (inchangé)** : le module de lecture (`PlayoutAudioDevice`, RemoteIO en sortie seule, catégorie
-  `.playback`, mode `.moviePlayback`, `.mixWithOthers`) n'ouvre jamais le micro.
-- **Pendant la parole** : la session passe en catégorie `.playAndRecord`, mode `.voiceChat`, options
-  `.defaultToSpeaker` et `.allowBluetoothHFP`. L'unité audio devient **Voice Processing I/O**, en entrée et en sortie,
-  pour que l'annulation d'écho connaisse le son joué. La lecture du son de la caméra continue par cette même unité.
-- **Au relâchement** : retour à l'état hors parole. Un blanc d'environ 0,2 s dans le son reçu est admis à l'appui et au
-  relâchement.
+- **Catégorie préparée à l'avance.** Au premier démarrage de la lecture (et après une réinitialisation des services
+  audio d'iOS), la session est mise **une seule fois** en catégorie `.playAndRecord`, mode `.default`, options
+  `.defaultToSpeaker`, `.mixWithOthers`, `.allowBluetoothHFP` et `.allowBluetoothA2DP`. Elle n'est plus touchée ensuite.
+  - `.defaultToSpeaker` : le son de la caméra reste au haut-parleur (`.playAndRecord` vise l'écouteur par défaut).
+  - `.allowBluetoothA2DP` : sans lui, un casque ou une enceinte Bluetooth tomberait au profil téléphone (HFP, mono) pour
+    la lecture hors parole.
+- **Hors parole** : le module de lecture (`PlayoutAudioDevice`) joue par l'unité RemoteIO **en sortie seule**, sans
+  entrée : le micro n'est jamais ouvert, pas de voyant orange. Mode `.default`, jamais `.voiceChat` hors parole.
+- **À l'appui** : seuls changent le **mode** de la session (`.voiceChat`) et l'unité, remplacée par **Voice Processing
+  I/O**, en entrée et en sortie, pour que l'annulation d'écho connaisse le son joué. La lecture du son de la caméra
+  continue par cette même unité. Plus de changement de catégorie, donc plus de reconfiguration complète du circuit audio
+  d'iOS à chaque prise de parole.
+- **Mode `.voiceChat` : à confirmer au banc.** La VPIO annule l'écho par elle-même ; le mode ajoute les réglages système
+  prévus pour la voix. Sans appareil réel, le prototype garde `.voiceChat` (comportement déjà éprouvé). Si le banc montre
+  que `.default` suffit à l'écho, il suffit de mettre `.default` dans `SystemPlayoutSession.speakingMode` : l'appui ne
+  changera plus que l'unité.
+- **Au relâchement** : retour à la RemoteIO en sortie seule et au mode `.default`, **sans changer de catégorie**. Un
+  blanc d'environ 0,2 s dans le son reçu est admis à l'appui et au relâchement.
 - **Captation** : le micro est converti en 16 kHz mono 16 bits (`AVAudioConverter`), découpé en paquets de 640 octets,
   et envoyé par le client WebSocket existant en trames binaires. Une file bornée (au plus 10 paquets, soit 200 ms)
   jette le plus ancien si l'envoi prend du retard.
@@ -100,6 +114,7 @@ talkd (inchangé)
 | Micro refusé | Rien n'est capté ; message vers Réglages |
 | Connexion coupée pendant l'appui | La parole s'arrête, le bouton se grise |
 | Talkback éteint sur le Mac | Bouton grisé (état `talkback: unavailable`) |
+| Vidéo pas connectée (caméra débranchée, connexion en cours, go2rtc en panne) | Bouton grisé ; un appui dit « La vidéo n'est pas connectée : la parole a besoin du son de la caméra. » (voir § 11) |
 | talkd tombe pendant la parole | Les paquets se perdent sans erreur ; le bouton se grise au prochain état |
 | Appel ou Siri pendant l'appui | La parole s'arrête ; la lecture reprend après |
 | Trame binaire refusée par ptzd | Ignorée et comptée dans le journal de ptzd, rien côté iPhone |
@@ -130,3 +145,103 @@ talkd (inchangé)
   la mise à jour 1.0.2 → 1.0.3.
 - **iPhone** : installation depuis Xcode, comme d'habitude.
 - Notes de version 1.0.3 : English, puis Français.
+
+## 11. Amendements (prototype)
+
+Écarts constatés ou décidés pendant le prototype (branche `proto/parler`) et sa relecture. Ce qui est écrit ici
+l'emporte sur les sections 1 à 10.
+
+### 11.1 Marge de 10 trames sur la limite de 50 par seconde
+
+- **Règle.** ptzd accepte au plus **60 trames** par seconde et par client (fenêtre glissante d'une seconde) : les
+  50 de la section 5 plus 10 de marge. La constante est `VoiceRelayer.burstTolerance` ; la mettre à 0 rend la limite
+  stricte de la spec.
+- **Raison.** Un iPhone qui envoie exactement 50 trames par seconde dépasse 50 dans une fenêtre dès que le Wi-Fi, la 4G
+  ou TCP regroupent des trames : la limite stricte jetterait de la voix légitime à chaque grappe. 60 trames par
+  seconde font 38 ko/s, ce qui est inoffensif.
+- **À savoir.** Après un blocage de la 4G, la limite jette les trames les plus récentes de la rafale, donc la voix la
+  plus fraîche. Ce n'est pas grave : talkd plafonne de toute façon son tampon de gigue à 200 ms.
+
+### 11.2 Vidéo non connectée
+
+- **Constat.** La parole passe par le périphérique audio de WebRTC (bascule RemoteIO vers Voice Processing I/O,
+  section 6.2) : elle exige que la lecture WebRTC tourne, donc que la vidéo soit en lecture. Sans cela (caméra
+  débranchée, vidéo en cours de connexion, go2rtc en panne), le démarrage échouait et l'app affichait à tort « Le micro
+  n'a pas pu démarrer. ».
+- **Règle.** Cas `noVideo` de la disponibilité de la parole : bouton atténué quand `video.phase` n'est pas `playing`,
+  avec l'avis « La vidéo n'est pas connectée : la parole a besoin du son de la caméra. » à l'appui. Ordre des causes :
+  pas de connexion à ptzd, puis Talkback éteint, puis vidéo absente. Une vidéo perdue pendant la parole l'arrête
+  (même raison que la perte de connexion).
+- **Suite possible.** Une unité Voice Processing I/O autonome, qui rendrait du silence quand WebRTC ne joue pas,
+  lèverait cette dépendance ; elle n'est pas dans le prototype.
+
+### 11.3 Autres écarts du prototype
+
+- **Nom du champ.** `talkback` de l'état est de type `TalkbackAvailability` (`ready` ou `unavailable`) et non
+  `TalkbackState`, nom déjà pris dans PTZBotKit pour le fichier d'état de talkd. Le champ est toujours écrit ; absent à
+  la lecture, il vaut `unavailable` (un ptzd plus ancien grise donc le bouton).
+- **Pas de bandeau « Parole en cours ».** Le bouton rouge et la jauge suffisent ; seuls les avis de la section 7
+  existent, plus « Le micro n'a pas pu démarrer. » quand l'unité audio échoue.
+- **Journal de ptzd.** Une seule ligne par prise de parole et par appareil, écrite à la fin (début, durée, trames
+  relayées et refusées), aussi à la déconnexion. Une prise de parole se termine après 1 s sans trame (le détecteur de
+  voix de talkd garde ses 2 s). Les refus tiennent en une ligne par minute au plus, avec les décomptes cumulés (sans
+  authentification, mauvaise taille, trop rapides).
+- **Dossier de talkd lu par ptzd.** `TALKD_SUPPORT_DIR` s'il existe, sinon le dossier de travail de ptzd (le même en
+  service).
+- **UDP.** Socket connectée et non bloquante ; un envoi qui échoue est seulement compté.
+- **Envoi côté iPhone.** Un seul envoi WebSocket à la fois : le suivant part à la fin du précédent, pour que la file
+  bornée de 10 paquets joue son rôle (elle jette le plus ancien).
+- **Premier appui.** Après la question du système sur le micro, la parole ne démarre pas toute seule (le toucher est
+  perdu) : il faut un nouvel appui. Le bouton se remet seul au repos quand le système annule le toucher.
+- **Arrêts automatiques.** La parole s'arrête aussi quand Talkback s'éteint, quand la connexion ou la vidéo est perdue,
+  quand l'app devient inactive (Centre de contrôle, alerte) ou passe en arrière-plan, et sur une interruption audio.
+- **Architecture audio.** Le micro est lu à 48 kHz mono 16 bits par Voice Processing I/O, écrit par le rappel d'entrée
+  dans un tampon circulaire sans allocation ni verrou, puis converti vers 16 kHz et découpé en paquets de 640 octets
+  sur une file à part toutes les 20 ms. Pour WebRTC, le périphérique reste « sans micro » (`isRecording` faux). Après
+  chaque bascule d'unité, WebRTC est prévenu (`notifyAudioOutputInterrupted`, puis `notifyAudioOutputParametersChange`).
+  Si la bascule échoue, la lecture est réinitialisée au prochain `initializePlayout`.
+- **Bouton.** 72 pt, jauge en barre sous l'icône, retour haptique à l'appui, double toucher prolongé sous VoiceOver.
+- **Processus.** Côté iOS, les essais du premier jet ont été écrits avec le code ; les corrections d'avant banc, elles,
+  ont suivi le cycle rouge puis vert.
+
+### 11.4 Connus et non traités dans le prototype
+
+À voir au banc, ou à reprendre au report sur `main` : démarrage de `Speaker` sans délai de repli, valeur
+inconnue du champ `talkback` (une valeur future ferait échouer tout l'état), deux iPhones qui parlent en même temps
+(talkd ne voit qu'une source : refuser les trames d'un second client tant qu'une prise de parole est ouverte), taille
+maximale des messages WebSocket de ptzd, musique des autres apps qui ne reprend pas après la parole.
+
+### 11.5 Réactivité du bouton « parler »
+
+- **Constat du banc.** L'appui n'était pas instantané : chaque prise de parole changeait la catégorie (`.playback` vers
+  `.playAndRecord`) et le mode, et remplaçait l'unité, ce qui reconfigurait tout le circuit audio d'iOS.
+- **Règle.** Catégorie `.playAndRecord` posée une fois à l'avance, sans entrée (§ 6.2) ; l'appui ne change que le mode
+  et l'unité. Retour visuel immédiat : rouge dès le toucher, anneau tournant pendant la préparation, jauge seulement
+  quand les premières trames du micro sont captées (`Speaker.isMicLive`), VoiceOver « Préparation du micro ». Ajout par
+  rapport à la demande : l'option `.allowBluetoothA2DP`, pour que la lecture hors parole reste en stéréo sur Bluetooth.
+- **À vérifier au banc.** Réactivité ressentie ; son de la caméra au haut-parleur et de même qualité hors parole, avec et
+  sans casque Bluetooth ; musique des autres apps qui continue ; la question du système sur le micro, qui pourrait
+  maintenant venir au démarrage de la lecture et non au premier appui ; mode `.voiceChat` nécessaire ou non à l'écho.
+
+### 11.6 Banc du 10/10 (avec Majid)
+
+- **Validé :** Wi-Fi et 4G (trames complètes, aucune refusée), réactivité après correction, premier mot entendu, pas
+  d'écho côté iPhone, son de la caméra au haut-parleur après correction, parole en vie privée.
+- **Appui capté par le toucher brut.** Le `DragGesture(minimumDistance: 0)` de SwiftUI n'arrivait à l'app que 0,3 à
+  0,7 s après le toucher (mesuré par des repères horodatés : l'app, elle, réagissait en moins d'une milliseconde). Le
+  bouton « parler » reçoit maintenant le doigt posé et levé par une petite vue UIKit (`PressSurface`, `touchesBegan` /
+  `touchesEnded` / `touchesCancelled`), et devient rouge dès le toucher, avant même la bascule audio (environ 0,3 s,
+  sur le fil de WebRTC). Ni la position du bouton ni ses réglages d'accessibilité n'étaient en cause.
+- **Sortie au haut-parleur.** Après la parole, `setMode` seul laissait iOS revenir à l'écouteur (son faible). La session
+  repose désormais catégorie, mode et options à chaque changement, et force le haut-parleur quand la sortie est
+  l'écouteur (`overrideOutputAudioPort(.speaker)`) ; un casque, des AirPods ou une enceinte gardent leur sortie.
+- **Talkback depuis une app de banc.** Inscrire l'agent depuis une seconde copie de l'app (même identifiant, autre
+  emplacement) a déréglé son rattachement (`BTMErrorDomain -95`, puis réparation tardive par macOS). Au banc, ne pas
+  basculer Talkback depuis une copie de travail ; l'essai « Talkback éteint, bouton grisé » se refait sur l'app publiée.
+
+### 11.7 Limite connue : écho de sa propre voix
+
+Pendant la parole, la voix jouée par le Mac est captée par le micro de la caméra et revient dans le son reçu par
+l'iPhone, avec le retard du trajet. L'annulation d'écho de l'iPhone ne la retire pas (elle ne concerne que ce que
+l'iPhone joue lui-même). Audible surtout son fort, au haut-parleur. Décision de Majid (10/10) : rien à faire pour
+l'instant. Parade possible si besoin : baisser fortement le son reçu tant que le bouton est maintenu.
