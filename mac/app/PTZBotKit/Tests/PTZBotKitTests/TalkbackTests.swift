@@ -440,6 +440,59 @@ struct TalkbackTests {
         #expect(Labels.talkbackStatus(.notRunning) == "talkd ne démarre pas (voir le journal)")
     }
 
+    @Test("F4 : réinscrit pendant ce lancement, puis talkd absent au bout de 15 s : l'avis dit d'éteindre puis rallumer Talkback")
+    func adviceWhenNotRestartedAfterReregistration() async {
+        service.status = .enabled
+        settings.strings[TalkbackModel.registeredBuildKey] = "6"
+        await model.reregisterIfUpdated()
+        #expect(model.lastError == nil)
+        model.beginWatching()
+        scheduler.advance(by: 14)
+        #expect(model.status == .starting)
+        #expect(model.lastError == nil)
+        scheduler.advance(by: 1)
+        #expect(model.status == .notRunning)
+        #expect(model.lastError == "Talkback n'a pas redémarré après la mise à jour : éteignez puis rallumez Talkback.")
+        model.endWatching()
+    }
+
+    @Test("F4 : pas de réinscription dans ce lancement : talkd absent donne « ne démarre pas », sans l'avis")
+    func noAdviceWithoutReregistration() {
+        model.setEnabled(true)
+        model.beginWatching()
+        scheduler.advance(by: 16)
+        #expect(model.status == .notRunning)
+        #expect(model.lastError == nil)
+        model.endWatching()
+    }
+
+    @Test("F4 : talkd repart après la réinscription : l'avis n'apparaît pas, ou disparaît s'il était affiché")
+    func adviceGoesAwayWhenTalkdRuns() async {
+        service.status = .enabled
+        settings.strings[TalkbackModel.registeredBuildKey] = "6"
+        await model.reregisterIfUpdated()
+        scheduler.advance(by: 16)
+        model.refresh()
+        #expect(model.status == .notRunning)
+        #expect(model.lastError != nil)
+        state.state = speaking(false)
+        process.alive = [4242]
+        model.refresh()
+        #expect(model.status == .ready)
+        #expect(model.lastError == nil)
+    }
+
+    @Test("F4 : réinscription refusée : l'erreur du refus reste, l'avis ne la remplace pas")
+    func adviceDoesNotReplaceRegisterError() async {
+        service.status = .enabled
+        settings.strings[TalkbackModel.registeredBuildKey] = "6"
+        service.registerFailure = Refused()
+        await model.reregisterIfUpdated()
+        scheduler.advance(by: 16)
+        model.refresh()
+        #expect(model.lastError == "Talkback impossible : refusé")
+    }
+
     @Test("talkd réécrit son état : retour à Prêt, et le délai de 15 s repart de zéro la fois suivante")
     func backToReady() {
         model.setEnabled(true)
@@ -533,5 +586,6 @@ struct TalkbackTests {
         #expect(Labels.talkbackStatus(.failed(.socket)) == "Stopped: network error (see the log)")
         #expect(Labels.talkbackStatus(.failed(.other)) == "Stopped (see the log)")
         #expect(Labels.talkbackStatus(.notRunning) == "talkd is not starting (see the log)")
+        #expect(Labels.talkbackRestartAdvice == "Talkback did not restart after the update: turn Talkback off and on again.")
     }
 }

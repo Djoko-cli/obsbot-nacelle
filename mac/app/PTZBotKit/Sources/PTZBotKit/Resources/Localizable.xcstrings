@@ -1820,6 +1820,23 @@
         }
       }
     },
+    "Talkback n'a pas redémarré après la mise à jour : éteignez puis rallumez Talkback.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talkback did not restart after the update: turn Talkback off and on again."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talkback n'a pas redémarré après la mise à jour : éteignez puis rallumez Talkback."
+          }
+        }
+      }
+    },
     "Une ancienne installation de ptzd tourne en arrière-plan. PTZBot va la remplacer : le service sera désormais actif seulement quand PTZBot est ouvert. Vos iPhone appairés sont conservés.": {
       "extractionState": "manual",
       "localizations": {
