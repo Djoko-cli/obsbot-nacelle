@@ -50,6 +50,30 @@ public enum AITracking: String, Codable, Sendable {
     case unknown
 }
 
+/// Disponibilité du retour audio (talkd) côté Mac, lue par ptzd dans l'état de talkd (spec parler § 5).
+public enum TalkbackAvailability: String, Codable, Sendable {
+    case ready
+    case unavailable
+}
+
+/// La trame « voix » : seul message binaire du protocole, de l'app vers ptzd (spec parler § 4).
+/// 320 échantillons PCM 16 bits little-endian, 16 kHz, mono, sans en-tête ; la fin d'une prise de parole
+/// est détectée par talkd.
+public enum VoiceFrame {
+    public static let sampleRate = 16_000
+    public static let bytesPerSample = 2
+    public static let durationMilliseconds = 20
+    public static let samplesPerFrame = sampleRate * durationMilliseconds / 1000
+    public static let byteCount = samplesPerFrame * bytesPerSample
+    /// Au-delà, ptzd ignore l'excédent (fenêtre glissante d'une seconde, par client).
+    public static let maxFramesPerSecond = 1000 / durationMilliseconds
+
+    /// Une trame n'est valide qu'à la taille exacte.
+    public static func isValid(_ data: Data) -> Bool {
+        data.count == byteCount
+    }
+}
+
 /// Avancement de la coupure du suivi IA (prise en main).
 public enum ControlState: String, Codable, Sendable {
     case idle
@@ -118,6 +142,8 @@ public struct StateSnapshot: Equatable, Sendable {
     public var zoom: Int?
     public var moving: Bool
     public var aiTracking: AITracking
+    /// Un ptzd d'avant la parole n'envoie pas ce champ : l'app le lit `unavailable`.
+    public var talkback: TalkbackAvailability
 
     public init(
         camera: CameraPresence,
@@ -127,7 +153,8 @@ public struct StateSnapshot: Equatable, Sendable {
         tilt: Double?,
         zoom: Int?,
         moving: Bool,
-        aiTracking: AITracking = .unknown
+        aiTracking: AITracking = .unknown,
+        talkback: TalkbackAvailability = .unavailable
     ) {
         self.camera = camera
         self.control = control
@@ -137,6 +164,7 @@ public struct StateSnapshot: Equatable, Sendable {
         self.zoom = zoom
         self.moving = moving
         self.aiTracking = aiTracking
+        self.talkback = talkback
     }
 }
 

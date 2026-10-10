@@ -143,7 +143,7 @@ extension ClientMessage: Codable {
 
 extension StateSnapshot: Codable {
     private enum CodingKeys: String, CodingKey {
-        case camera, control, privacy, pan, tilt, zoom, moving, aiTracking
+        case camera, control, privacy, pan, tilt, zoom, moving, aiTracking, talkback
     }
 
     public init(from decoder: any Decoder) throws {
@@ -157,7 +157,9 @@ extension StateSnapshot: Codable {
             zoom: try container.decodeIfPresent(Int.self, forKey: .zoom),
             moving: try container.decode(Bool.self, forKey: .moving),
             // Un ptzd d'avant le suivi IA n'envoie pas ce champ.
-            aiTracking: try container.decodeIfPresent(AITracking.self, forKey: .aiTracking) ?? .unknown
+            aiTracking: try container.decodeIfPresent(AITracking.self, forKey: .aiTracking) ?? .unknown,
+            // Un ptzd d'avant la parole n'envoie pas ce champ.
+            talkback: try container.decodeIfPresent(TalkbackAvailability.self, forKey: .talkback) ?? .unavailable
         )
     }
 
@@ -172,6 +174,7 @@ extension StateSnapshot: Codable {
         try container.encode(zoom, forKey: .zoom)
         try container.encode(moving, forKey: .moving)
         try container.encode(aiTracking, forKey: .aiTracking)
+        try container.encode(talkback, forKey: .talkback)
     }
 }
 

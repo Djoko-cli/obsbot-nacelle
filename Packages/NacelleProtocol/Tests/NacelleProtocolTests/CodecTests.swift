@@ -122,6 +122,7 @@ struct ServerMessageTests {
         .webrtcAnswer(id: 3, sdp: "v=0\r\n"),
         .webrtcError(id: 3, message: "go2rtc ne répond pas."),
         .state(tracking),
+        .state(StateSnapshot(camera: .connected, control: .ready, privacy: true, pan: 0, tilt: 0, zoom: 0, moving: false, talkback: .ready)),
         .error(code: .blocked, message: "Expulsé par le Mac jusqu'à 20:14."),
         .adminState(admin),
         .adminState(AdminState(devices: [], clients: [], pairing: nil)),
@@ -134,7 +135,7 @@ struct ServerMessageTests {
     @Test("Les valeurs inconnues sont écrites null")
     func unknownValuesAreNull() throws {
         let text = try NacelleCodec.encode(ServerMessage.state(Self.unknown))
-        #expect(text == #"{"aiTracking":"unknown","camera":"absent","control":"idle","moving":false,"pan":null,"privacy":true,"tilt":null,"type":"state","zoom":null}"#)
+        #expect(text == #"{"aiTracking":"unknown","camera":"absent","control":"idle","moving":false,"pan":null,"privacy":true,"talkback":"unavailable","tilt":null,"type":"state","zoom":null}"#)
     }
 
     @Test("Un état sans aiTracking (ptzd d'avant le suivi IA) se lit « inconnu »")
@@ -145,6 +146,27 @@ struct ServerMessageTests {
             return
         }
         #expect(snapshot.aiTracking == .unknown)
+    }
+
+    @Test("Un état sans talkback (ptzd d'avant la parole) se lit « indisponible »")
+    func legacyStateWithoutTalkback() throws {
+        let text = #"{"aiTracking":"off","camera":"connected","control":"ready","moving":false,"pan":0,"privacy":false,"tilt":0,"type":"state","zoom":0}"#
+        guard case let .state(snapshot) = try NacelleCodec.decodeServer(text) else {
+            Issue.record("state attendu")
+            return
+        }
+        #expect(snapshot.talkback == .unavailable)
+    }
+
+    @Test("Talkback prêt : écrit et relu, et une valeur inconnue est rejetée")
+    func talkbackReady() throws {
+        var snapshot = Self.known
+        snapshot.talkback = .ready
+        let text = try NacelleCodec.encode(ServerMessage.state(snapshot))
+        #expect(text.contains(#""talkback":"ready""#))
+        #expect(try NacelleCodec.decodeServer(text) == .state(snapshot))
+        let bad = text.replacingOccurrences(of: #""talkback":"ready""#, with: #""talkback":"bientot""#)
+        #expect(throws: (any Error).self) { try NacelleCodec.decodeServer(bad) }
     }
 
     @Test("adminState : dates en secondes depuis 1970, absences écrites null, jamais de secret")
@@ -188,5 +210,29 @@ struct AIFailureTextTests {
         #expect(AIFailureText.message(motive: "délai dépassé") == "Suivi IA non modifié (délai dépassé).")
         #expect(AIFailureText.motive(in: "La caméra a refusé la commande (x).") == nil)
         #expect(AIFailureText.motive(in: "Suivi IA non modifié (") == nil)
+    }
+}
+
+@Suite("Trame voix")
+struct VoiceFrameTests {
+    @Test("Constantes : 640 octets = 320 échantillons de 16 bits = 20 ms à 16 kHz")
+    func constants() {
+        #expect(VoiceFrame.sampleRate == 16_000)
+        #expect(VoiceFrame.bytesPerSample == 2)
+        #expect(VoiceFrame.samplesPerFrame == 320)
+        #expect(VoiceFrame.byteCount == 640)
+        #expect(VoiceFrame.durationMilliseconds == 20)
+        #expect(VoiceFrame.maxFramesPerSecond == 50)
+        // Cohérence : durée × fréquence = échantillons ; échantillons × 2 = octets.
+        #expect(VoiceFrame.sampleRate * VoiceFrame.durationMilliseconds / 1000 == VoiceFrame.samplesPerFrame)
+        #expect(VoiceFrame.samplesPerFrame * VoiceFrame.bytesPerSample == VoiceFrame.byteCount)
+    }
+
+    @Test("Seule la taille exacte est valide")
+    func validity() {
+        #expect(VoiceFrame.isValid(Data(count: 640)))
+        #expect(!VoiceFrame.isValid(Data(count: 639)))
+        #expect(!VoiceFrame.isValid(Data(count: 641)))
+        #expect(!VoiceFrame.isValid(Data()))
     }
 }
