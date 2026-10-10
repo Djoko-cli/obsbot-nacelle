@@ -92,7 +92,8 @@ talkd (inchangé)
 - **À l'appui** : seuls changent le **mode** de la session (`.voiceChat`) et l'unité, remplacée par **Voice Processing
   I/O**, en entrée et en sortie, pour que l'annulation d'écho connaisse le son joué. La lecture du son de la caméra
   continue par cette même unité. Plus de changement de catégorie, donc plus de reconfiguration complète du circuit audio
-  d'iOS à chaque prise de parole.
+  d'iOS à chaque prise de parole. *(Précisé par le § 11.6 : catégorie, mode et options sont reposés ensemble à chaque
+  changement, avec la même catégorie et les mêmes options.)*
 - **Mode `.voiceChat` : à confirmer au banc.** La VPIO annule l'écho par elle-même ; le mode ajoute les réglages système
   prévus pour la voix. Sans appareil réel, le prototype garde `.voiceChat` (comportement déjà éprouvé). Si le banc montre
   que `.default` suffit à l'écho, il suffit de mettre `.default` dans `SystemPlayoutSession.speakingMode` : l'appui ne
@@ -142,7 +143,8 @@ talkd (inchangé)
 
 - **Mac : 1.0.3**, avec le relais dans ptzd, le champ `talkback` et la réinscription automatique de l'agent Talkback
   après une mise à jour (branche `talkback-reinscription`, f4862fd). Cette réinscription sera vérifiée en vrai pendant
-  la mise à jour 1.0.2 → 1.0.3.
+  la mise à jour 1.0.2 → 1.0.3. Elle attend la fin de la désinscription, ne se fait jamais depuis une compilation de
+  travail (numéro 1), et donne un avis si talkd ne repart pas (§ 11.8).
 - **iPhone** : installation depuis Xcode, comme d'habitude.
 - Notes de version 1.0.3 : English, puis Français.
 
@@ -207,7 +209,7 @@ l'emporte sur les sections 1 à 10.
 ### 11.4 Connus et non traités dans le prototype
 
 À voir au banc, ou à reprendre au report sur `main` : démarrage de `Speaker` sans délai de repli, valeur
-inconnue du champ `talkback` (une valeur future ferait échouer tout l'état), deux iPhones qui parlent en même temps
+inconnue du champ `talkback` (reprise au § 11.8), deux iPhones qui parlent en même temps
 (talkd ne voit qu'une source : refuser les trames d'un second client tant qu'une prise de parole est ouverte), taille
 maximale des messages WebSocket de ptzd, musique des autres apps qui ne reprend pas après la parole.
 
@@ -245,3 +247,23 @@ Pendant la parole, la voix jouée par le Mac est captée par le micro de la cam�
 l'iPhone, avec le retard du trajet. L'annulation d'écho de l'iPhone ne la retire pas (elle ne concerne que ce que
 l'iPhone joue lui-même). Audible surtout son fort, au haut-parleur. Décision de Majid (10/10) : rien à faire pour
 l'instant. Parade possible si besoin : baisser fortement le son reçu tant que le bouton est maintenu.
+
+### 11.8 Report sur main (relecture finale)
+
+Quatre correctifs de la relecture finale, reportés avec la branche, chacun écrit test d'abord (rouge, puis vert) :
+
+- **F1. Appui collé (iOS).** `AppModel.pressSpeak` lance `Speaker.press()` par `Task.immediate`, qui pose le doigt et la
+  phase `.starting` avant de rendre la main. Avec une `Task` ordinaire, un relâchement traité avant le démarrage de la
+  tâche était perdu, et le micro s'ouvrait ensuite sans doigt posé (appui bref, double toucher VoiceOver). Essais :
+  appui et relâchement d'affilée, et relâchement pendant le démarrage du micro.
+- **F2. Réinscription (Mac).** `LoginItemService.unregisterAndWait()` (forme asynchrone de `SMAppService`) ;
+  `reregisterIfUpdated` est `async` et attend la fin de la désinscription avant d'inscrire. L'`AppDelegate` l'appelle
+  dans une `Task`, puis relit l'état.
+- **F3. Compilation de travail (Mac).** Pas de réinscription automatique quand `CFBundleVersion == "1"` ; l'app publiée
+  garde la règle et reprend l'agent après une bascule faite depuis une copie de travail.
+- **F4. Avis (Mac).** Après une réinscription faite pendant ce lancement, `notRunning` donne « Talkback n'a pas
+  redémarré après la mise à jour : éteignez puis rallumez Talkback. » (entrée anglaise au catalogue de PTZBotKit). Aucune
+  nouvelle tentative automatique.
+
+Petites retouches : le champ `talkback` inconnu se lit « indisponible » (§ 11.4, M5) ; commentaires d'`AudioIO.swift`
+alignés sur le § 11.6 ; `PressSurface` ignore `touchesMoved`.
