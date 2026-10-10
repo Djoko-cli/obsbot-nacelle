@@ -141,6 +141,8 @@ Requirements: Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew in
 
 Recording: the record button (between AI tracking and privacy) saves the received video and sound into Photos, as an MP4 (H.264 and AAC), until you stop it. The sound is recorded even when muted in the app. Entering privacy mode, losing the connection, sending the app to the background or running low on space stops the recording and saves it; in privacy mode the button stays greyed out. A tap on the video hides the controls for a clean picture (only the record button and its timer stay during a recording); another tap brings them back.
 
+Talking: hold the microphone button (bottom centre) to speak through the Mac's built-in speakers, at home or away. The voice goes over the connection already open with `ptzd`, which hands it to `talkd` (see Talkback); the iPhone microphone is open only while you hold the button, with echo cancellation. The button is greyed out when the Mac is not connected, the video is not playing, or Talkback is off on the Mac. Your own voice, picked up again by the camera's microphone, may come back in the iPhone's sound with a short delay.
+
 1. Set the signing team in a local setting, not versioned. Its identifier is the OU field of the "Apple Development" certificates in the keychain:
 
    ```bash
@@ -201,7 +203,7 @@ The microphone button of the camera in the Home app plays your voice on the Mac'
    "returnAudioTarget": "-f s16le -ar 16000 -ac 1 udp://<Mac address>:1986?pkt_size=640"
    ```
 
-While someone speaks, the built-in speakers are raised to at least 30 % (or unmuted), then put back. Packets from any other address are ignored. The log is `~/Library/Logs/obsbot-nacelle/talkd.log`; no sound is recorded. Design: [speaker spec](docs/superpowers/specs/2026-10-08-haut-parleur-design.md).
+After an update of PTZBot, the app re-registers the Talkback agent by itself at first launch, so that macOS accepts the new `talkd`. While someone speaks, the built-in speakers are raised to at least 30 % (or unmuted), then put back. Packets from any other address are ignored. The log is `~/Library/Logs/obsbot-nacelle/talkd.log`; no sound is recorded. Design: [speaker spec](docs/superpowers/specs/2026-10-08-haut-parleur-design.md).
 
 ### go2rtc
 
@@ -406,6 +408,8 @@ Prérequis : Xcode, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew ins
 
 Enregistrement : le bouton rec (entre le suivi IA et la vie privée) range dans Photos la vidéo et le son reçus, en MP4 (H.264 et AAC), jusqu'à ce qu'on l'arrête. Le son est enregistré même coupé dans l'app. L'entrée en vie privée, la coupure de la connexion, le passage en arrière-plan ou le manque d'espace arrêtent l'enregistrement et le sauvent ; en vie privée, le bouton reste grisé. Un tap sur la vidéo masque les commandes pour une image nette (pendant un enregistrement, seuls le bouton rec et son chrono restent) ; un autre tap les rend.
 
+Parler : maintenir le bouton micro (en bas au centre) pour parler par les haut-parleurs intégrés du Mac, à la maison ou à distance. La voix passe par la connexion déjà ouverte avec `ptzd`, qui la remet à `talkd` (voir Talkback) ; le micro de l'iPhone n'est ouvert que pendant l'appui, avec annulation d'écho. Le bouton est grisé quand le Mac n'est pas connecté, que la vidéo ne joue pas ou que Talkback est éteint sur le Mac. Votre propre voix, captée de nouveau par le micro de la caméra, peut revenir dans le son de l'iPhone avec un léger retard.
+
 1. Indiquer l'équipe de signature dans un réglage local, non versionné. Son identifiant est le champ OU des certificats « Apple Development » du trousseau :
 
    ```bash
@@ -466,7 +470,7 @@ Le bouton micro de la caméra dans l'app Maison fait sortir votre voix par les *
    "returnAudioTarget": "-f s16le -ar 16000 -ac 1 udp://<adresse du Mac>:1986?pkt_size=640"
    ```
 
-Pendant la parole, les haut-parleurs intégrés sont remontés à 30 % au moins (ou sortis de la sourdine), puis remis comme avant. Les paquets de toute autre adresse sont ignorés. Le journal est `~/Library/Logs/obsbot-nacelle/talkd.log` ; aucun son n'est enregistré. Conception : [spec haut-parleur](docs/superpowers/specs/2026-10-08-haut-parleur-design.md).
+Après une mise à jour de PTZBot, l'app réinscrit d'elle-même l'agent Talkback au premier lancement, pour que macOS accepte le nouveau `talkd`. Pendant la parole, les haut-parleurs intégrés sont remontés à 30 % au moins (ou sortis de la sourdine), puis remis comme avant. Les paquets de toute autre adresse sont ignorés. Le journal est `~/Library/Logs/obsbot-nacelle/talkd.log` ; aucun son n'est enregistré. Conception : [spec haut-parleur](docs/superpowers/specs/2026-10-08-haut-parleur-design.md).
 
 ### go2rtc
 

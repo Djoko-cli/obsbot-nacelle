@@ -6,6 +6,22 @@ release and to the update window.
 PTZBot pour Mac. Chaque section a un bloc **English**, puis un bloc **Français** ; les mêmes notes servent à la
 version GitHub et à la fenêtre de mise à jour.
 
+## 1.0.3
+
+**English**
+
+- Talk from the iPhone: with the updated PTZBot iOS app, hold the microphone button to speak through the Mac's
+  built-in speakers, at home or away. PTZBot passes the voice to Talkback, which must be on.
+- After this update, PTZBot re-registers the Talkback agent by itself at first launch: macOS no longer refuses the
+  new version of `talkd`. Nothing to do on your side.
+
+**Français**
+
+- Parler depuis l'iPhone : avec l'app PTZBot iOS à jour, maintenez le bouton micro pour parler par les haut-parleurs
+  intégrés du Mac, à la maison ou à distance. PTZBot transmet la voix à Talkback, qui doit être allumé.
+- Après cette mise à jour, PTZBot réinscrit de lui-même l'agent Talkback au premier lancement : macOS ne refuse plus
+  la nouvelle version de `talkd`. Rien à faire de votre côté.
+
 ## 1.0.2
 
 **English**
