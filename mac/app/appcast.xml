@@ -3,6 +3,21 @@
   <channel>
     <title>PTZBot</title>
     <item>
+      <title>1.0.3</title>
+      <pubDate>Sun, 11 Oct 2026 15:10:07 +0000</pubDate>
+      <sparkle:version>199</sparkle:version>
+      <sparkle:shortVersionString>1.0.3</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+<meta charset="utf-8">
+<p><strong>English</strong></p>
+<ul><li>Talk from the iPhone: with the updated PTZBot iOS app, hold the microphone button to speak through the Mac's built-in speakers, at home or away. PTZBot passes the voice to Talkback, which must be on.</li><li>After this update, PTZBot re-registers the Talkback agent by itself at first launch: macOS no longer refuses the new version of <code>talkd</code>. Nothing to do on your side.</li></ul>
+<p><strong>Français</strong></p>
+<ul><li>Parler depuis l'iPhone : avec l'app PTZBot iOS à jour, maintenez le bouton micro pour parler par les haut-parleurs intégrés du Mac, à la maison ou à distance. PTZBot transmet la voix à Talkback, qui doit être allumé.</li><li>Après cette mise à jour, PTZBot réinscrit de lui-même l'agent Talkback au premier lancement : macOS ne refuse plus la nouvelle version de <code>talkd</code>. Rien à faire de votre côté.</li></ul>
+]]></description>
+      <enclosure url="https://github.com/Djoko-cli/obsbot-nacelle/releases/download/ptzbot-v1.0.3/PTZBot-1.0.3.dmg" length="3195479" type="application/octet-stream" sparkle:edSignature="ahlLzkqvMTl5b+Ej+JSL+/4ltJJfur8Oevqa3yACUYoamrEVuNWz0ZSZP+UmlQLyC5q8lZIvJRjkGW9Y35oUAA=="/>
+    </item>
+    <item>
       <title>1.0.2</title>
       <pubDate>Fri, 09 Oct 2026 11:52:12 +0000</pubDate>
       <sparkle:version>182</sparkle:version>
