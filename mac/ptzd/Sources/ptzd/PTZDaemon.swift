@@ -149,12 +149,14 @@ struct PTZDaemon {
             localNetwork: config.localNetwork,
             voiceSink: voiceSink
         )
-        // « Talkback prêt » : relu dans talkd-state.json toutes les 5 s, diffusé aux changements.
+        // « Talkback prêt » : relu dans talkd-state.json dès que le fichier change, et toutes les 5 s en secours ;
+        // diffusé aux changements.
         let talkStateURL = talkSupportDirectory.appending(path: "talkd-state.json")
         let talkbackWatcher = TalkbackWatcher(
             scheduler: scheduler,
             read: { TalkbackProbe.availability(stateFileAt: talkStateURL) },
-            onChange: { controller.setTalkback($0) }
+            onChange: { controller.setTalkback($0) },
+            observer: DispatchFileChangeObserver(url: talkStateURL)
         )
 
         if options.parent != nil {

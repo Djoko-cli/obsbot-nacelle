@@ -151,6 +151,132 @@ struct TalkbackWatcherTests {
 }
 
 @MainActor
+@Suite("Veilleur de Talkback : surveillance du fichier", .timeLimit(.minutes(1)))
+struct TalkbackWatcherObservationTests {
+    let scheduler = FakeScheduler()
+    let observer = FakeFileObserver()
+
+    @Test("Un changement du fichier est signalé à 100 ms près, sans attendre les 5 s ; les changements rapprochés n'en font qu'une lecture")
+    func changePublishesQuickly() {
+        let source = ValueBox(TalkbackAvailability.unavailable)
+        var published: [TalkbackAvailability] = []
+        var readCount = 0
+        let watcher = TalkbackWatcher(
+            scheduler: scheduler, read: { readCount += 1; return source.value }, onChange: { published.append($0) },
+            observer: observer
+        )
+        watcher.start()
+        #expect(observer.observeCalls == 1)
+        #expect(readCount == 1)
+
+        scheduler.advance(by: 1)
+        source.value = .ready
+        observer.emit()
+        observer.emit()
+        observer.emit()
+        scheduler.advance(by: 0.09)
+        #expect(published.isEmpty)
+        scheduler.advance(by: 0.01)
+        #expect(published == [.ready])
+        #expect(readCount == 2)
+
+        // La relecture périodique garde son rythme (5 s après le départ), l'événement ne l'a pas décalée.
+        scheduler.advance(by: 3.89)
+        #expect(readCount == 2)
+        scheduler.advance(by: 0.01)
+        #expect(readCount == 3)
+        #expect(published == [.ready])
+
+        source.value = .unavailable
+        observer.emit()
+        scheduler.advance(by: 0.1)
+        #expect(published == [.ready, .unavailable])
+        watcher.stop()
+    }
+
+    @Test("Sans événement, la relecture toutes les 5 s reste le secours")
+    func pollingStillWorks() {
+        let source = ValueBox(TalkbackAvailability.unavailable)
+        var published: [TalkbackAvailability] = []
+        let watcher = TalkbackWatcher(
+            scheduler: scheduler, read: { source.value }, onChange: { published.append($0) }, observer: observer
+        )
+        watcher.start()
+        source.value = .ready
+        scheduler.advance(by: 4.9)
+        #expect(published.isEmpty)
+        scheduler.advance(by: 0.1)
+        #expect(published == [.ready])
+        watcher.stop()
+    }
+
+    @Test("stop() arrête la surveillance et la lecture en attente")
+    func stopCancelsEverything() {
+        var readCount = 0
+        let watcher = TalkbackWatcher(
+            scheduler: scheduler, read: { readCount += 1; return .unavailable }, onChange: { _ in }, observer: observer
+        )
+        watcher.start()
+        observer.emit()
+        watcher.stop()
+        #expect(observer.cancelCalls == 1)
+        #expect(!observer.isObserving)
+        #expect(scheduler.pendingCount == 0)
+        observer.emit()
+        scheduler.advance(by: 30)
+        #expect(readCount == 1)
+    }
+
+    @Test("Observateur réel : un fichier créé, remplacé de façon atomique ou supprimé est signalé (attente bornée à 5 s)")
+    func realObserver() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "talkd-obs-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "talkd-state.json")
+        let counter = ChangeCounter()
+        let observation = DispatchFileChangeObserver(url: url).observe { counter.increment() }
+        defer { observation.cancel() }
+
+        func waitFor(_ target: Int) async {
+            var waited = 0
+            while counter.value < target, waited < 500 {
+                try? await Task.sleep(for: .milliseconds(10))
+                waited += 1
+            }
+        }
+
+        try Data("un".utf8).write(to: url, options: .atomic)
+        await waitFor(1)
+        #expect(counter.value >= 1)
+        let before = counter.value
+        try Data("deux, plus long".utf8).write(to: url, options: .atomic)
+        await waitFor(before + 1)
+        #expect(counter.value > before)
+        let beforeDelete = counter.value
+        try FileManager.default.removeItem(at: url)
+        await waitFor(beforeDelete + 1)
+        #expect(counter.value > beforeDelete)
+        // Un autre fichier du même dossier n'est pas signalé.
+        let beforeOther = counter.value
+        try Data("autre".utf8).write(to: directory.appending(path: "talkd.log"))
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(counter.value == beforeOther)
+        // Annulé : plus rien.
+        observation.cancel()
+        try Data("trois".utf8).write(to: url, options: .atomic)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(counter.value == beforeOther)
+    }
+
+    @Test("Observateur réel : dossier absent, aucune surveillance et aucun plantage")
+    func realObserverMissingDirectory() {
+        let url = FileManager.default.temporaryDirectory.appending(path: "absent-\(UUID().uuidString)/talkd-state.json")
+        let observation = DispatchFileChangeObserver(url: url).observe {}
+        observation.cancel()
+    }
+}
+
+@MainActor
 @Suite("Contrôleur : talkback dans l'état", .timeLimit(.minutes(1)))
 struct ControllerTalkbackTests {
     @Test("setTalkback diffuse un nouvel état seulement quand la valeur change")
