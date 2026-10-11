@@ -355,7 +355,7 @@ public final class TalkbackModel {
     /// Une seule tentative par lancement : en cas d'échec l'erreur est montrée, le numéro reste, rien n'est retenté.
     /// La désinscription est attendue avant l'inscription : l'appelant relit l'état (`refresh`) après coup.
     public func reregisterIfUpdated() async {
-        guard let bundleVersion, bundleVersion != Self.workingBuildNumber else { return }
+        guard let bundleVersion, bundleVersion != Self.workingBuildNumber, !isBusy else { return }
         let registered = service.status == .enabled || service.status == .requiresApproval
         guard registered, settings.string(forKey: Self.registeredBuildKey) != bundleVersion else { return }
         isReregistering = true
@@ -365,7 +365,8 @@ public final class TalkbackModel {
             // On attend la fin de la désinscription : launchd démonte encore l'ancien job, et réinscrire avant risque un
             // refus, ou un agent « inscrit » mais pas chargé (`SMAppService.h`).
             try await service.unregisterAndWait()
-            try service.register()
+            // Hors du fil de l'interface, comme l'interrupteur : l'inscription peut prendre une à deux secondes.
+            try await service.registerInBackground()
             settings.set(bundleVersion, forKey: Self.registeredBuildKey)
             reregisteredThisLaunch = true
         } catch {
