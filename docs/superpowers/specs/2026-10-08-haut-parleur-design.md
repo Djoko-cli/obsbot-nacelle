@@ -224,7 +224,8 @@ Ajoutés le 2026-10-09, après les essais sur le Mac de Majid et pendant le prot
   - « Arrêté : le port UDP est déjà utilisé (voir le journal) », « Arrêté : erreur réseau (voir le journal) » ou « Arrêté (voir le journal) » dès qu'un `failure` est écrit ;
   - « talkd ne démarre pas (voir le journal) » quand l'agent est inscrit mais que talkd n'a pas tourné depuis plus de 15 s, comptées depuis le premier « Démarrage… ». Cela couvre aussi un agent refusé par launchd (plist en quarantaine, par exemple).
   - Ces deux statuts et « Autorisation requise » s'affichent en orange.
-  - L'état est relu chaque seconde pendant que le panneau est ouvert, jamais autrement.
+  - L'état est relu pendant que le panneau est ouvert, jamais autrement : chaque seconde, et aussi dès que `talkd-state.json` change (source de dispatch sur son dossier, relecture regroupée à 100 ms près). ptzd fait de même pour l'état « talkback » qu'il envoie à l'iPhone, avec la relecture toutes les 5 s en secours.
+  - **Réactivité de l'interrupteur.** L'inscription et la désinscription de l'agent (`SMAppService`, une à deux secondes) se font hors du fil de l'interface : l'interrupteur bascule aussitôt et la ligne d'état montre « Démarrage… » ou « Arrêt… » ; l'interrupteur est grisé jusqu'à la fin, et revient à l'état réel avec l'erreur en cas d'échec.
 - **Plist de l'agent.** `AssociatedBundleIdentifiers` (`io.github.djoko-cli.ptzbot`) est ajouté aux clés du § 7, pour que l'agent apparaisse sous PTZBot dans Réglages › Général › Ouverture. Le fichier source est `mac/app/LaunchAgents/io.github.djoko-cli.obsbot-nacelle.talkd.plist`.
 - **Arrêt de la lecture.** Elle s'arrête **10 s après le dernier paquet de voix**, donc 8 s après la fin de la prise de parole (qui est à 2 s). Une nouvelle prise de parole pendant ce délai le annule : la sortie reste ouverte, sans redémarrage.
 - **Sortie audio : une AUHAL en sortie pure, et non `AVAudioEngine`** (relecture du prototype, défauts C1 et I1).

@@ -65,7 +65,8 @@ struct PanelView: View {
             // développement ont pu être installés.
             network.check()
             Task { await app.panelOpened() }
-            // L'état de Talkback (« En lecture ») est relu chaque seconde tant que le panneau est ouvert.
+            // L'état de Talkback (« En lecture ») est relu dès que talkd réécrit son fichier, et chaque seconde en secours, tant
+            // que le panneau est ouvert.
             talkback.beginWatching()
         }
         .onDisappear {
@@ -132,7 +133,7 @@ struct PanelView: View {
             PanelRow(icon: "speaker.wave.2", title: AppText.text("Talkback")) {
                 Toggle(AppText.text("Talkback"), isOn: Binding(get: { talkback.isEnabled }, set: { talkback.setEnabled($0) }))
                     .labelsHidden()
-                    .disabled(talkback.isReregistering)
+                    .disabled(talkback.isReregistering || talkback.isBusy)
                     .toggleStyle(.switch)
                     .controlSize(.small)
             } notes: {

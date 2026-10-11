@@ -3,6 +3,20 @@ import ServiceManagement
 import Testing
 @testable import PTZBotKit
 
+/// Un compteur de signalements, lisible depuis n'importe quel fil.
+final class ChangeCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.withLock { count }
+    }
+
+    func increment() {
+        lock.withLock { count += 1 }
+    }
+}
+
 @MainActor
 @Suite("Talkback", .french, .timeLimit(.minutes(1)))
 struct TalkbackTests {
@@ -26,6 +40,12 @@ struct TalkbackTests {
             service: service, state: state, process: process, scheduler: scheduler,
             settings: settings, bundleVersion: bundleVersion
         )
+    }
+
+    /// Un clic sur l'interrupteur, puis l'attente de la fin de l'opération (l'inscription se fait hors du fil de l'interface).
+    private func toggle(_ enabled: Bool) async {
+        model.setEnabled(enabled)
+        await model.waitForOperation()
     }
 
     private func speaking(_ speaking: Bool, pid: Int32 = 4242) -> TalkbackState {
@@ -97,31 +117,31 @@ struct TalkbackTests {
     }
 
     @Test("Interrupteur allumé : le numéro de compilation est retenu ; éteint, il est effacé")
-    func switchRemembersBuild() {
-        model.setEnabled(true)
+    func switchRemembersBuild() async {
+        await toggle(true)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
-        model.setEnabled(false)
+        await toggle(false)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == nil)
     }
 
     @Test("Inscription refusée par l'interrupteur : aucun numéro retenu")
-    func failedSwitchKeepsNoBuild() {
+    func failedSwitchKeepsNoBuild() async {
         service.failure = Refused()
-        model.setEnabled(true)
+        await toggle(true)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == nil)
     }
 
     @Test("Désinscription refusée par l'interrupteur : le numéro retenu reste")
-    func failedUnregisterKeepsBuild() {
-        model.setEnabled(true)
+    func failedUnregisterKeepsBuild() async {
+        await toggle(true)
         service.failure = Refused()
-        model.setEnabled(false)
+        await toggle(false)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
     }
 
     @Test("Même numéro de compilation qu'à l'inscription : rien n'est touché")
     func sameBuild() async {
-        model.setEnabled(true)
+        await toggle(true)
         let before = (service.registerCalls, service.unregisterCalls)
         await makeModel(bundleVersion: "7").reregisterIfUpdated()
         #expect(service.registerCalls == before.0)
@@ -131,7 +151,7 @@ struct TalkbackTests {
 
     @Test("Autre numéro de compilation : désinscription, réinscription, nouveau numéro retenu")
     func newBuild() async {
-        model.setEnabled(true)
+        await toggle(true)
         let before = (service.registerCalls, service.unregisterCalls)
         let updated = makeModel(bundleVersion: "8")
         await updated.reregisterIfUpdated()
@@ -184,7 +204,8 @@ struct TalkbackTests {
         #expect(!model.isReregistering)
         #expect(service.status == .enabled)
         #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
-        model.setEnabled(false)
+        service.holdUnregister = false
+        await toggle(false)
         #expect(service.status == .notRegistered)
     }
 
@@ -299,16 +320,16 @@ struct TalkbackTests {
     }
 
     @Test("Interrupteur allumé : l'agent est inscrit ; talkd pas encore écrit son état : Démarrage…")
-    func registeredStarting() {
-        model.setEnabled(true)
+    func registeredStarting() async {
+        await toggle(true)
         #expect(model.isEnabled)
         #expect(model.status == .starting)
         #expect(Labels.talkbackStatus(model.status) == "Démarrage…")
     }
 
     @Test("Inscrit et talkd vivant au repos : Prêt")
-    func ready() {
-        model.setEnabled(true)
+    func ready() async {
+        await toggle(true)
         state.state = speaking(false)
         process.alive = [4242]
         model.refresh()
@@ -317,8 +338,8 @@ struct TalkbackTests {
     }
 
     @Test("Inscrit, talkd vivant et en parole : En lecture")
-    func playing() {
-        model.setEnabled(true)
+    func playing() async {
+        await toggle(true)
         state.state = speaking(true)
         process.alive = [4242]
         model.refresh()
@@ -327,8 +348,8 @@ struct TalkbackTests {
     }
 
     @Test("L'état d'un talkd qui n'existe plus est ignoré, même « en lecture » : Démarrage…")
-    func staleState() {
-        model.setEnabled(true)
+    func staleState() async {
+        await toggle(true)
         state.state = speaking(true)
         process.alive = []
         model.refresh()
@@ -336,9 +357,9 @@ struct TalkbackTests {
     }
 
     @Test("macOS demande l'accord de l'utilisateur : Autorisation requise, interrupteur allumé, Réglages ouvrables")
-    func requiresApproval() {
+    func requiresApproval() async {
         service.statusAfterRegister = .requiresApproval
-        model.setEnabled(true)
+        await toggle(true)
         #expect(model.status == .requiresApproval)
         #expect(model.isEnabled)
         #expect(Labels.talkbackStatus(.requiresApproval) == "Autorisation requise")
@@ -349,60 +370,60 @@ struct TalkbackTests {
     }
 
     @Test("« Introuvable » avant toute inscription (réponse habituelle de macOS pour un agent jamais inscrit) : Désactivé, interrupteur utilisable")
-    func notFoundBeforeRegister() {
+    func notFoundBeforeRegister() async {
         service.status = .notFound
         model.refresh()
         #expect(model.status == .disabled)
         #expect(!model.isEnabled)
         service.statusAfterRegister = .enabled
-        model.setEnabled(true)
+        await toggle(true)
         #expect(service.status == .enabled)
     }
 
     @Test("Inscription refusée alors que macOS ne trouve pas l'agent : Indisponible")
-    func unavailable() {
+    func unavailable() async {
         struct Missing: LocalizedError {
             var errorDescription: String? { "introuvable" }
         }
         service.status = .notFound
         service.failure = Missing()
-        model.setEnabled(true)
+        await toggle(true)
         #expect(model.status == .unavailable)
         #expect(!model.isEnabled)
         #expect(Labels.talkbackStatus(.unavailable) == "Indisponible")
     }
 
     @Test("Interrupteur éteint : l'agent est désinscrit")
-    func unregister() {
-        model.setEnabled(true)
-        model.setEnabled(false)
+    func unregister() async {
+        await toggle(true)
+        await toggle(false)
         #expect(service.status == .notRegistered)
         #expect(model.status == .disabled)
     }
 
     @Test("Inscription refusée : message d'erreur, interrupteur inchangé")
-    func failure() {
+    func failure() async {
         struct Refused: LocalizedError {
             var errorDescription: String? { "refusé" }
         }
         service.failure = Refused()
-        model.setEnabled(true)
+        await toggle(true)
         #expect(model.status == .disabled)
         #expect(model.lastError == "Talkback impossible : refusé")
         service.failure = nil
-        model.setEnabled(true)
+        await toggle(true)
         #expect(model.lastError == nil)
     }
 
     @Test("Refus parce que l'accord manque : pas d'erreur, l'invitation à autoriser suffit")
-    func failureWithApproval() {
+    func failureWithApproval() async {
         struct Refused: LocalizedError {
             var errorDescription: String? { "Operation not permitted" }
         }
         service.statusAfterRegister = .requiresApproval
         service.failure = Refused()
         service.status = .requiresApproval
-        model.setEnabled(true)
+        await toggle(true)
         #expect(model.status == .requiresApproval)
         #expect(model.lastError == nil)
     }
@@ -418,8 +439,8 @@ struct TalkbackTests {
     }
 
     @Test("talkd arrêté sur un échec (port occupé), processus disparu : Arrêté, avec la raison")
-    func failedPortBusy() {
-        model.setEnabled(true)
+    func failedPortBusy() async {
+        await toggle(true)
         state.state = TalkbackState(speaking: false, since: Date(timeIntervalSince1970: 1_791_000_000), pid: 4242, failure: "portBusy")
         process.alive = []
         model.refresh()
@@ -439,8 +460,8 @@ struct TalkbackTests {
     }
 
     @Test("Échec écrit par un talkd qui vit encore (il s'arrête juste après) : déjà Arrêté, jamais Prêt")
-    func failedWhileExiting() {
-        model.setEnabled(true)
+    func failedWhileExiting() async {
+        await toggle(true)
         state.state = TalkbackState(speaking: false, since: Date(timeIntervalSince1970: 1_791_000_000), pid: 4242, failure: "socket")
         process.alive = [4242]
         model.refresh()
@@ -448,8 +469,8 @@ struct TalkbackTests {
     }
 
     @Test("Inscrit mais talkd absent pendant plus de 15 s (depuis le premier Démarrage…) : talkd ne démarre pas")
-    func notRunning() {
-        model.setEnabled(true)
+    func notRunning() async {
+        await toggle(true)
         #expect(model.status == .starting)
         #expect(!model.needsAttention)
         scheduler.advance(by: 14)
@@ -480,8 +501,8 @@ struct TalkbackTests {
     }
 
     @Test("F4 : pas de réinscription dans ce lancement : talkd absent donne « ne démarre pas », sans l'avis")
-    func noAdviceWithoutReregistration() {
-        model.setEnabled(true)
+    func noAdviceWithoutReregistration() async {
+        await toggle(true)
         model.beginWatching()
         scheduler.advance(by: 16)
         #expect(model.status == .notRunning)
@@ -517,8 +538,8 @@ struct TalkbackTests {
     }
 
     @Test("talkd réécrit son état : retour à Prêt, et le délai de 15 s repart de zéro la fois suivante")
-    func backToReady() {
-        model.setEnabled(true)
+    func backToReady() async {
+        await toggle(true)
         scheduler.advance(by: 20)
         model.refresh()
         #expect(model.status == .notRunning)
@@ -537,18 +558,18 @@ struct TalkbackTests {
     }
 
     @Test("Désactivé puis réactivé : le délai de 15 s repart de zéro")
-    func notRunningResetsWhenDisabled() {
-        model.setEnabled(true)
+    func notRunningResetsWhenDisabled() async {
+        await toggle(true)
         scheduler.advance(by: 20)
-        model.setEnabled(false)
+        await toggle(false)
         #expect(model.status == .disabled)
-        model.setEnabled(true)
+        await toggle(true)
         #expect(model.status == .starting)
     }
 
     @Test("Panneau ouvert : « ne démarre pas » arrive tout seul au bout de 15 s, par le suivi chaque seconde")
-    func notRunningWhileWatching() {
-        model.setEnabled(true)
+    func notRunningWhileWatching() async {
+        await toggle(true)
         model.beginWatching()
         scheduler.advance(by: 16)
         #expect(model.status == .notRunning)
@@ -556,17 +577,17 @@ struct TalkbackTests {
     }
 
     @Test("Autorisation requise : attire l'attention (orange) ; Prêt et En lecture, non")
-    func attention() {
+    func attention() async {
         service.statusAfterRegister = .requiresApproval
-        model.setEnabled(true)
+        await toggle(true)
         #expect(model.needsAttention)
     }
 
     // MARK: - Suivi de l'état pendant que le panneau est ouvert
 
     @Test("Panneau ouvert : l'état est relu chaque seconde ; fermé, plus rien")
-    func watching() {
-        model.setEnabled(true)
+    func watching() async {
+        await toggle(true)
         process.alive = [4242]
         state.state = speaking(false)
         model.beginWatching()
@@ -594,6 +615,264 @@ struct TalkbackTests {
         #expect(scheduler.pendingCount == 0)
     }
 
+    // MARK: - Inscription hors du fil de l'interface
+
+    /// Attend (jusqu'à 5 s) qu'une condition du faux soit vraie.
+    private func waitUntil(_ condition: () -> Bool) async {
+        var waited = 0
+        while !condition(), waited < 500 {
+            try? await Task.sleep(for: .milliseconds(10))
+            waited += 1
+        }
+    }
+
+    @Test("Allumer : l'interrupteur bascule et « Démarrage… » s'affiche tout de suite, l'inscription se fait ensuite")
+    func enableReturnsImmediately() async {
+        service.holdRegister = true
+        model.setEnabled(true)
+        #expect(model.isEnabled)
+        #expect(model.isBusy)
+        #expect(model.status == .starting)
+        await waitUntil { service.isRegisterPending }
+        #expect(service.isRegisterPending)
+        #expect(model.isBusy)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == nil)
+        service.finishRegister()
+        await model.waitForOperation()
+        #expect(!model.isBusy)
+        #expect(service.registerCalls == 1)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
+        #expect(model.status == .starting)
+    }
+
+    @Test("Éteindre : l'interrupteur s'éteint et « Arrêt… » s'affiche tout de suite, la désinscription se fait ensuite")
+    func disableReturnsImmediately() async {
+        await toggle(true)
+        process.alive = [4242]
+        state.state = speaking(false)
+        model.refresh()
+        #expect(model.status == .ready)
+        service.holdUnregister = true
+        model.setEnabled(false)
+        #expect(!model.isEnabled)
+        #expect(model.isBusy)
+        #expect(model.status == .stopping)
+        #expect(!model.needsAttention)
+        #expect(Labels.talkbackStatus(model.status) == "Arrêt…")
+        await waitUntil { service.isUnregisterPending }
+        #expect(service.isUnregisterPending)
+        // Le suivi chaque seconde ne remplace pas « Arrêt… » par l'état encore inscrit.
+        model.beginWatching()
+        scheduler.advance(by: 3)
+        #expect(model.status == .stopping)
+        service.finishUnregister()
+        await model.waitForOperation()
+        #expect(model.status == .disabled)
+        #expect(!model.isBusy)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == nil)
+        model.endWatching()
+    }
+
+    @Test("Un second clic pendant l'opération est sans effet")
+    func secondClickIgnoredWhileBusy() async {
+        service.holdRegister = true
+        model.setEnabled(true)
+        await waitUntil { service.isRegisterPending }
+        model.setEnabled(false)
+        #expect(model.status == .starting)
+        service.finishRegister()
+        await model.waitForOperation()
+        #expect(service.unregisterCalls == 0)
+        #expect(service.registerCalls == 1)
+        #expect(service.status == .enabled)
+        // L'opération finie, l'interrupteur répond de nouveau.
+        await toggle(false)
+        #expect(service.unregisterCalls == 1)
+        #expect(model.status == .disabled)
+    }
+
+    @Test("Les appels à SMAppService se font hors du fil principal")
+    func registrationOffMainThread() async {
+        await toggle(true)
+        await toggle(false)
+        #expect(service.backgroundCallsOnMainThread == [false, false])
+    }
+
+    @Test("Inscription refusée : l'interrupteur revient à l'état réel, l'erreur est montrée, le bouton se libère")
+    func asyncRegisterFailure() async {
+        service.failure = Refused()
+        model.setEnabled(true)
+        #expect(model.status == .starting)
+        await model.waitForOperation()
+        #expect(model.status == .disabled)
+        #expect(!model.isEnabled)
+        #expect(!model.isBusy)
+        #expect(model.lastError == "Talkback impossible : refusé")
+    }
+
+    @Test("Désinscription refusée : l'interrupteur revient à l'état réel (toujours inscrit), l'erreur est montrée")
+    func asyncUnregisterFailure() async {
+        await toggle(true)
+        service.failure = Refused()
+        model.setEnabled(false)
+        #expect(model.status == .stopping)
+        await model.waitForOperation()
+        #expect(model.status == .starting)
+        #expect(model.isEnabled)
+        #expect(!model.isBusy)
+        #expect(model.lastError == "Talkback impossible : refusé")
+    }
+
+    @Test("L'effacement de l'erreur : un nouveau clic efface l'erreur précédente tout de suite")
+    func errorClearedAtOnce() async {
+        service.failure = Refused()
+        await toggle(true)
+        #expect(model.lastError != nil)
+        service.failure = nil
+        service.holdRegister = true
+        model.setEnabled(true)
+        #expect(model.lastError == nil)
+        await waitUntil { service.isRegisterPending }
+        service.finishRegister()
+        await model.waitForOperation()
+    }
+
+    // MARK: - Surveillance du fichier d'état
+
+    private func makeObservingModel(_ observer: FakeFileObserver) -> TalkbackModel {
+        TalkbackModel(
+            service: service, state: state, process: process, scheduler: scheduler,
+            settings: settings, bundleVersion: "7", fileObserver: observer
+        )
+    }
+
+    @Test("Panneau ouvert : le fichier d'état est surveillé ; un changement relit l'état à 100 ms près, regroupé")
+    func fileChangeRefreshes() async {
+        let observer = FakeFileObserver()
+        let observing = makeObservingModel(observer)
+        service.status = .enabled
+        process.alive = [4242]
+        state.state = speaking(false)
+        observing.beginWatching()
+        #expect(observer.observeCalls == 1)
+        #expect(observing.status == .ready)
+        let reads = state.reads
+        // Trois changements d'affilée : une seule relecture, 100 ms après le premier.
+        state.state = speaking(true)
+        observer.emit()
+        observer.emit()
+        observer.emit()
+        #expect(observing.status == .ready)
+        scheduler.advance(by: 0.09)
+        #expect(observing.status == .ready)
+        scheduler.advance(by: 0.01)
+        #expect(observing.status == .playing)
+        #expect(state.reads == reads + 1)
+        // Un nouveau changement après coup rouvre une fenêtre.
+        state.state = speaking(false)
+        observer.emit()
+        scheduler.advance(by: 0.1)
+        #expect(observing.status == .ready)
+        observing.endWatching()
+    }
+
+    @Test("La relecture chaque seconde reste le filet de sécurité, avec ou sans surveillance")
+    func pollingStaysWithObserver() {
+        let observer = FakeFileObserver()
+        let observing = makeObservingModel(observer)
+        service.status = .enabled
+        process.alive = [4242]
+        state.state = speaking(false)
+        observing.beginWatching()
+        state.state = speaking(true)
+        scheduler.advance(by: 1)
+        #expect(observing.status == .playing)
+        observing.endWatching()
+    }
+
+    @Test("Panneau fermé : la surveillance s'arrête, un changement tardif ne relit rien")
+    func endWatchingStopsObserver() {
+        let observer = FakeFileObserver()
+        let observing = makeObservingModel(observer)
+        observing.beginWatching()
+        observer.emit()
+        observing.endWatching()
+        #expect(observer.cancelCalls == 1)
+        #expect(!observer.isObserving)
+        #expect(scheduler.pendingCount == 0)
+        let reads = state.reads
+        observer.emit()
+        scheduler.advance(by: 5)
+        #expect(state.reads == reads)
+    }
+
+    @Test("Ouvrir deux fois de suite le panneau ne double pas la surveillance")
+    func observeOnce() {
+        let observer = FakeFileObserver()
+        let observing = makeObservingModel(observer)
+        observing.beginWatching()
+        observing.beginWatching()
+        #expect(observer.observeCalls == 1)
+        observing.endWatching()
+        observing.endWatching()
+        #expect(observer.cancelCalls == 1)
+        observing.beginWatching()
+        #expect(observer.observeCalls == 2)
+        observing.endWatching()
+    }
+
+    @Test("Observateur réel : un fichier remplacé de façon atomique, créé ou supprimé est signalé (attente bornée à 5 s)")
+    func realObserver() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "talkback-obs-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "talkd-state.json")
+        let counter = ChangeCounter()
+        let observer = DispatchFileChangeObserver(url: url)
+        let observation = observer.observe { counter.increment() }
+        defer { observation.cancel() }
+
+        func waitFor(_ target: Int) async {
+            var waited = 0
+            while counter.value < target, waited < 500 {
+                try? await Task.sleep(for: .milliseconds(10))
+                waited += 1
+            }
+        }
+
+        // Créé.
+        try Data("un".utf8).write(to: url, options: .atomic)
+        await waitFor(1)
+        #expect(counter.value >= 1)
+        // Remplacé de façon atomique (écriture dans un fichier temporaire, puis renommage).
+        let before = counter.value
+        try Data("deux, plus long".utf8).write(to: url, options: .atomic)
+        await waitFor(before + 1)
+        #expect(counter.value > before)
+        // Supprimé.
+        let beforeDelete = counter.value
+        try FileManager.default.removeItem(at: url)
+        await waitFor(beforeDelete + 1)
+        #expect(counter.value > beforeDelete)
+        // Un autre fichier du même dossier n'est pas signalé.
+        let beforeOther = counter.value
+        try Data("autre".utf8).write(to: directory.appending(path: "talkd.log"))
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(counter.value == beforeOther)
+        // Annulé : plus rien.
+        observation.cancel()
+        try Data("trois".utf8).write(to: url, options: .atomic)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(counter.value == beforeOther)
+    }
+
+    @Test("Observateur réel : dossier absent, aucune surveillance et aucun plantage")
+    func realObserverMissingDirectory() {
+        let url = FileManager.default.temporaryDirectory.appending(path: "absent-\(UUID().uuidString)/talkd-state.json")
+        let observation = DispatchFileChangeObserver(url: url).observe {}
+        observation.cancel()
+    }
+
     // MARK: - Textes
 
     @Test("Textes en anglais : chaque état et l'invitation à autoriser", .english)
@@ -603,6 +882,7 @@ struct TalkbackTests {
         #expect(Labels.talkbackStatus(.playing) == "Playing")
         #expect(Labels.talkbackStatus(.ready) == "Ready")
         #expect(Labels.talkbackStatus(.starting) == "Starting…")
+        #expect(Labels.talkbackStatus(.stopping) == "Stopping…")
         #expect(Labels.talkbackStatus(.unavailable) == "Unavailable")
         #expect(Labels.talkbackApproval == "Allow Talkback in System Settings › General › Login Items")
         #expect(Labels.talkbackStatus(.failed(.portBusy)) == "Stopped: the UDP port is already in use (see the log)")

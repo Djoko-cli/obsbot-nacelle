@@ -239,6 +239,23 @@
         }
       }
     },
+    "Arrêt…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopping…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arrêt…"
+          }
+        }
+      }
+    },
     "Arrêté (voir le journal)": {
       "extractionState": "manual",
       "localizations": {

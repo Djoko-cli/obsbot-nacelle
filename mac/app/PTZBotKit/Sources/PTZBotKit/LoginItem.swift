@@ -4,13 +4,17 @@ import ServiceManagement
 
 /// L'inscription de l'app à l'ouverture de session (spec app Mac § 8.5), derrière un protocole pour les tests.
 @MainActor
-public protocol LoginItemService: AnyObject {
+public protocol LoginItemService: AnyObject, Sendable {
     var status: SMAppService.Status { get }
     func register() throws
     func unregister() throws
+    /// Inscrit sans bloquer le fil de l'interface : `SMAppService.register()` peut prendre une à deux secondes. Hors du
+    /// MainActor (`nonisolated`) ; l'appelant attend le résultat sans geler l'interface.
+    nonisolated func registerInBackground() async throws
     /// Désinscrit en attendant que launchd ait fini de démonter le service : seule cette forme permet de réinscrire
     /// aussitôt après (`SMAppService.h` : « After the completion handler has been invoked it is safe to re-register »).
-    func unregisterAndWait() async throws
+    /// Hors du MainActor (`nonisolated`), comme `registerInBackground()`.
+    nonisolated func unregisterAndWait() async throws
     func openSystemSettings()
 }
 
@@ -31,7 +35,11 @@ public final class MainAppLoginItem: LoginItemService {
         try SMAppService.mainApp.unregister()
     }
 
-    public func unregisterAndWait() async throws {
+    public nonisolated func registerInBackground() async throws {
+        try await Blocking.run { try SMAppService.mainApp.register() }
+    }
+
+    public nonisolated func unregisterAndWait() async throws {
         try await SMAppService.mainApp.unregister()
     }
 
@@ -76,5 +84,21 @@ public final class LoginItemModel {
 
     public func openSystemSettings() {
         service.openSystemSettings()
+    }
+}
+
+/// Exécute un appel bloquant sur une file de fond, sans occuper un fil du pool coopératif de Swift ni le MainActor.
+enum Blocking {
+    static func run(_ work: @escaping @Sendable () throws -> Void) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    try work()
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 }

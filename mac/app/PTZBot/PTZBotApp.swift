@@ -72,7 +72,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             process: SystemProcessProbe(),
             scheduler: scheduler,
             settings: UserDefaultsSettingsStore(defaults: .standard),
-            bundleVersion: Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+            bundleVersion: Bundle.main.infoDictionary?["CFBundleVersion"] as? String,
+            fileObserver: DispatchFileChangeObserver(url: paths.talkbackState)
         )
         let installer = SDKInstaller.system(paths: paths)
         controller = AppController(

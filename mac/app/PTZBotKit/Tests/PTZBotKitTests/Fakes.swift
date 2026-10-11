@@ -111,7 +111,24 @@ final class FakeLoginItem: LoginItemService {
         heldUnregister != nil
     }
 
-    func unregisterAndWait() async throws {
+    /// Garde `registerInBackground()` en suspens jusqu'à `finishRegister()`.
+    var holdRegister = false
+    private var heldRegister: CheckedContinuation<Void, Never>?
+
+    var isRegisterPending: Bool {
+        heldRegister != nil
+    }
+
+    /// Pour chaque appel hors du MainActor (`registerInBackground`, `unregisterAndWait`) : tournait-il sur le fil principal ?
+    private(set) var backgroundCallsOnMainThread: [Bool] = []
+
+    nonisolated func unregisterAndWait() async throws {
+        let onMain = pthread_main_np() != 0
+        try await unregisterAndWaitOnMain(calledOnMainThread: onMain)
+    }
+
+    private func unregisterAndWaitOnMain(calledOnMainThread: Bool) async throws {
+        backgroundCallsOnMainThread.append(calledOnMainThread)
         unregisterCalls += 1
         if let failure {
             throw failure
@@ -125,6 +142,28 @@ final class FakeLoginItem: LoginItemService {
     func finishUnregister() {
         heldUnregister?.resume()
         heldUnregister = nil
+    }
+
+    nonisolated func registerInBackground() async throws {
+        let onMain = pthread_main_np() != 0
+        try await registerInBackgroundOnMain(calledOnMainThread: onMain)
+    }
+
+    private func registerInBackgroundOnMain(calledOnMainThread: Bool) async throws {
+        backgroundCallsOnMainThread.append(calledOnMainThread)
+        registerCalls += 1
+        if holdRegister {
+            await withCheckedContinuation { heldRegister = $0 }
+        }
+        if let error = failure ?? registerFailure {
+            throw error
+        }
+        status = statusAfterRegister
+    }
+
+    func finishRegister() {
+        heldRegister?.resume()
+        heldRegister = nil
     }
 
     func openSystemSettings() {
@@ -258,5 +297,48 @@ final class FakeProcessProbe: ProcessProbe {
 
     func isAlive(pid: Int32) -> Bool {
         alive.contains(pid)
+    }
+}
+
+/// L'observation du fichier d'état, simulée : le test déclenche les changements.
+@MainActor
+final class FakeFileObserver: FileChangeObserver {
+    private(set) var observeCalls = 0
+    private(set) var cancelCalls = 0
+    private var handlers: [@MainActor @Sendable () -> Void] = []
+    private var active = false
+
+    var isObserving: Bool {
+        active
+    }
+
+    func observe(_ onChange: @escaping @MainActor @Sendable () -> Void) -> any Cancellable {
+        observeCalls += 1
+        active = true
+        handlers.append(onChange)
+        return FakeObservation { [self] in
+            MainActor.assumeIsolated {
+                cancelCalls += 1
+                active = false
+            }
+        }
+    }
+
+    /// Le fichier a changé.
+    func emit() {
+        guard active else { return }
+        for handler in handlers { handler() }
+    }
+}
+
+final class FakeObservation: Cancellable {
+    private let onCancel: @Sendable () -> Void
+
+    init(onCancel: @escaping @Sendable () -> Void) {
+        self.onCancel = onCancel
+    }
+
+    func cancel() {
+        onCancel()
     }
 }

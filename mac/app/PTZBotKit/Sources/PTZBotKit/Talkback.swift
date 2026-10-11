@@ -21,6 +21,11 @@ public final class TalkbackAgent: LoginItemService {
         SMAppService.agent(plistName: Talkback.plistName)
     }
 
+    /// Le service, créé hors du MainActor pour les appels qui n'y passent pas.
+    private nonisolated static func makeService() -> SMAppService {
+        SMAppService.agent(plistName: Talkback.plistName)
+    }
+
     public init() {}
 
     public var status: SMAppService.Status {
@@ -35,8 +40,12 @@ public final class TalkbackAgent: LoginItemService {
         try service.unregister()
     }
 
-    public func unregisterAndWait() async throws {
-        try await service.unregister()
+    public nonisolated func registerInBackground() async throws {
+        try await Blocking.run { try Self.makeService().register() }
+    }
+
+    public nonisolated func unregisterAndWait() async throws {
+        try await Self.makeService().unregister()
     }
 
     public func openSystemSettings() {
@@ -143,12 +152,17 @@ public final class TalkbackModel {
         case playing
         /// talkd s'est arrêté sur un échec au démarrage (port occupé…) ; launchd le relance.
         case failed(TalkbackFailure)
+        /// L'interrupteur vient d'être éteint : la désinscription est en cours (transitoire, symétrique de `.starting`).
+        case stopping
         /// Inscrit, mais talkd n'a pas tourné depuis plus de 15 s (agent refusé par launchd, plantage…).
         case notRunning
     }
 
     /// Pendant que le panneau est ouvert, l'état est relu à cet intervalle (secondes).
     public static let pollInterval: TimeInterval = 1
+    /// Un changement du fichier d'état déclenche une relecture après ce délai (secondes) : les changements rapprochés
+    /// (état puis réécriture de talkd) n'en font qu'une.
+    public static let changeDebounce: TimeInterval = 0.1
     /// Au-delà de ce délai en « Démarrage… » (secondes), talkd est dit « ne démarre pas ».
     public static let startupGrace: TimeInterval = 15
 
@@ -162,6 +176,13 @@ public final class TalkbackModel {
     /// Le numéro de compilation de l'app qui tourne (`CFBundleVersion`) ; nil s'il est inconnu.
     @ObservationIgnored private let bundleVersion: String?
     @ObservationIgnored private var poll: (any Cancellable)?
+    /// Surveille `talkd-state.json` pendant que le panneau est ouvert (nil : relecture périodique seule).
+    @ObservationIgnored private let fileObserver: (any FileChangeObserver)?
+    @ObservationIgnored private var observation: (any Cancellable)?
+    /// La relecture regroupée qui attend son délai, si un changement du fichier vient d'arriver.
+    @ObservationIgnored private var pendingRefresh: (any Cancellable)?
+    /// L'opération d'inscription ou de désinscription en cours, pour `waitForOperation()`.
+    @ObservationIgnored private var operation: Task<Void, Never>?
     @ObservationIgnored private var watching = false
     /// L'instant (horloge du `Scheduler`) du premier « Démarrage… » d'affilée.
     @ObservationIgnored private var startingSince: TimeInterval?
@@ -171,6 +192,9 @@ public final class TalkbackModel {
     /// grisé et `setEnabled` sans effet, pour qu'un clic ne la contrarie pas (éteindre puis être rallumé d'office, ou
     /// une erreur « déjà inscrit »).
     public private(set) var isReregistering = false
+    /// Inscription ou désinscription lancée par l'interrupteur, en cours hors du fil de l'interface : l'interrupteur est
+    /// grisé, `setEnabled` sans effet, et `refresh` laisse l'état transitoire (« Démarrage… », « Arrêt… ») à l'écran.
+    public private(set) var isBusy = false
     /// `lastError` porte l'avis de redémarrage (`Labels.talkbackRestartAdvice`) : il disparaît quand talkd repart.
     @ObservationIgnored private var restartAdviceShown = false
 
@@ -181,7 +205,7 @@ public final class TalkbackModel {
 
     public init(
         service: any LoginItemService, state: any TalkbackStateSource, process: any ProcessProbe, scheduler: any Scheduler,
-        settings: any SettingsStore, bundleVersion: String?
+        settings: any SettingsStore, bundleVersion: String?, fileObserver: (any FileChangeObserver)? = nil
     ) {
         self.service = service
         self.state = state
@@ -189,23 +213,27 @@ public final class TalkbackModel {
         self.scheduler = scheduler
         self.settings = settings
         self.bundleVersion = bundleVersion
+        self.fileObserver = fileObserver
         refresh()
     }
 
-    /// L'interrupteur est allumé : l'agent est inscrit (même s'il attend l'accord de l'utilisateur).
+    /// L'interrupteur est allumé : l'agent est inscrit (même s'il attend l'accord de l'utilisateur). Pendant « Arrêt… »,
+    /// il est déjà éteint.
     public var isEnabled: Bool {
-        status != .disabled && status != .unavailable
+        status != .disabled && status != .unavailable && status != .stopping
     }
 
     /// La ligne d'état demande l'attention (orange) : une action ou un coup d'œil au journal.
     public var needsAttention: Bool {
         switch status {
         case .requiresApproval, .failed, .notRunning: true
-        case .disabled, .unavailable, .starting, .ready, .playing: false
+        case .disabled, .unavailable, .starting, .stopping, .ready, .playing: false
         }
     }
 
     public func refresh() {
+        // Une opération en cours montre son état transitoire ; elle relit l'état réel en finissant.
+        guard !isBusy else { return }
         let next = currentStatus()
         if next == .starting {
             let since = startingSince ?? scheduler.now
@@ -231,7 +259,7 @@ public final class TalkbackModel {
         case .ready, .playing:
             reregisteredThisLaunch = false
             clearRestartAdvice()
-        case .disabled, .unavailable, .requiresApproval, .starting, .failed:
+        case .disabled, .unavailable, .requiresApproval, .starting, .stopping, .failed:
             clearRestartAdvice()
         }
     }
@@ -269,25 +297,45 @@ public final class TalkbackModel {
         }
     }
 
+    /// Allume ou éteint l'interrupteur. L'inscription auprès de `SMAppService` peut durer une à deux secondes : elle se
+    /// fait hors du fil de l'interface, l'interrupteur bascule et « Démarrage… » ou « Arrêt… » s'affiche tout de suite.
+    /// En cas d'échec, l'état réel est relu et l'erreur montrée. Sans effet pendant une réinscription ou une opération.
+
     public func setEnabled(_ enabled: Bool) {
-        guard !isReregistering else { return }
+        guard !isReregistering, !isBusy else { return }
         lastError = nil
         // Éteindre puis rallumer est le remède de l'avis : il n'a plus lieu d'être.
         reregisteredThisLaunch = false
         restartAdviceShown = false
+        isBusy = true
+        startingSince = nil
+        status = enabled ? .starting : .stopping
+        operation = Task { [weak self] in
+            await self?.apply(enabled)
+        }
+    }
+
+    /// Attend la fin de l'opération lancée par `setEnabled` (tests ; l'interface n'attend rien).
+    public func waitForOperation() async {
+        await operation?.value
+    }
+
+    private func apply(_ enabled: Bool) async {
         do {
             if enabled {
-                try service.register()
+                try await service.registerInBackground()
                 registerFailed = false
                 settings.set(bundleVersion, forKey: Self.registeredBuildKey)
             } else {
-                try service.unregister()
+                try await service.unregisterAndWait()
                 settings.set(nil as String?, forKey: Self.registeredBuildKey)
             }
         } catch {
             if enabled { registerFailed = true }
             lastError = Localization.text("Talkback impossible : \(error.localizedDescription)")
         }
+        isBusy = false
+        operation = nil
         refresh()
         clearErrorIfApprovalNeeded()
     }
@@ -338,19 +386,38 @@ public final class TalkbackModel {
         service.openSystemSettings()
     }
 
-    /// Panneau ouvert : l'état est relu chaque seconde (« En lecture »).
+    /// Panneau ouvert : l'état est relu dès que talkd réécrit son fichier, et chaque seconde en filet de sécurité
+    /// (« En lecture »).
     public func beginWatching() {
         refresh()
         guard !watching else { return }
         watching = true
         scheduleNextPoll()
+        observation = fileObserver?.observe { [weak self] in
+            self?.stateFileChanged()
+        }
     }
 
-    /// Panneau fermé : plus rien n'est relu.
+    /// Panneau fermé : plus rien n'est relu ni surveillé.
     public func endWatching() {
         watching = false
         poll?.cancel()
         poll = nil
+        observation?.cancel()
+        observation = nil
+        pendingRefresh?.cancel()
+        pendingRefresh = nil
+    }
+
+    /// Le fichier d'état a changé : une relecture dans `changeDebounce`, les changements rapprochés n'en font qu'une.
+    private func stateFileChanged() {
+        guard watching, pendingRefresh == nil else { return }
+        pendingRefresh = scheduler.schedule(after: Self.changeDebounce) { [weak self] in
+            guard let self else { return }
+            pendingRefresh = nil
+            guard watching else { return }
+            refresh()
+        }
     }
 
     private func scheduleNextPoll() {
@@ -371,6 +438,7 @@ extension Labels {
         case .unavailable: Localization.text("Indisponible")
         case .requiresApproval: Localization.text("Autorisation requise")
         case .starting: Localization.text("Démarrage…")
+        case .stopping: Localization.text("Arrêt…")
         case .ready: Localization.text("Prêt")
         case .playing: Localization.text("En lecture")
         case .failed(.portBusy): Localization.text("Arrêté : le port UDP est déjà utilisé (voir le journal)")
