@@ -3,6 +3,21 @@
   <channel>
     <title>PTZBot</title>
     <item>
+      <title>1.0.6</title>
+      <pubDate>Mon, 12 Oct 2026 10:29:06 +0000</pubDate>
+      <sparkle:version>220</sparkle:version>
+      <sparkle:shortVersionString>1.0.6</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+<meta charset="utf-8">
+<p><strong>English</strong></p>
+<ul><li>Fixes an error that could appear in red under Talkback at each launch after updating from 1.0.4 ("Requestor lacks required entitlement"). Talkback itself kept working; the message no longer appears.</li></ul>
+<p><strong>Français</strong></p>
+<ul><li>Corrige une erreur qui pouvait s'afficher en rouge sous Talkback à chaque lancement après une mise à jour depuis la 1.0.4 (« Requestor lacks required entitlement »). Talkback fonctionnait malgré tout ; le message n'apparaît plus.</li></ul>
+]]></description>
+      <enclosure url="https://github.com/Djoko-cli/obsbot-nacelle/releases/download/ptzbot-v1.0.6/PTZBot-1.0.6.dmg" length="3223861" type="application/octet-stream" sparkle:edSignature="k/lngcsxb8GbHu9BmwGZAAbw9XlPoxPFDhMwWSJiVyAe6z9VCUMuUKA+mhZlHZC/bGWbQxrIeGtysa16zO2FCA=="/>
+    </item>
+    <item>
       <title>1.0.5</title>
       <pubDate>Mon, 12 Oct 2026 09:08:05 +0000</pubDate>
       <sparkle:version>216</sparkle:version>
