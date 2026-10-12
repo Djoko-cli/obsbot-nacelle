@@ -6,6 +6,18 @@ release and to the update window.
 PTZBot pour Mac. Chaque section a un bloc **English**, puis un bloc **Français** ; les mêmes notes servent à la
 version GitHub et à la fenêtre de mise à jour.
 
+## 1.0.6
+
+**English**
+
+- Fixes an error that could appear in red under Talkback at each launch after updating from 1.0.4 ("Requestor lacks
+  required entitlement"). Talkback itself kept working; the message no longer appears.
+
+**Français**
+
+- Corrige une erreur qui pouvait s'afficher en rouge sous Talkback à chaque lancement après une mise à jour depuis
+  la 1.0.4 (« Requestor lacks required entitlement »). Talkback fonctionnait malgré tout ; le message n'apparaît plus.
+
 ## 1.0.5
 
 **English**
