@@ -243,6 +243,21 @@ struct TalkbackTests {
         #expect(model.lastError == nil)
     }
 
+    @Test("Emplacement temporaire au lancement : rien du tout (ni migration, ni mise à jour, ni numéro retenu, ni erreur)")
+    func launchTransient() async {
+        service.installBlocker = ClassicAgentError.transientLocation
+        service.hasLegacyRegistration = true
+        service.agentState = .installed
+        settings.strings[TalkbackModel.agentBuildKey] = "6"
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
+        await model.prepareAtLaunch()
+        #expect(service.calls == [])
+        #expect(settings.strings[TalkbackModel.agentBuildKey] == "6")
+        #expect(settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] == "6")
+        #expect(model.lastError == nil)
+        #expect(!model.isPreparing)
+    }
+
     @Test("Compilation de travail (numéro 1) : ni migration ni mise à jour, même avec un ancien agent et une plist")
     func workingBuild() async {
         service.hasLegacyRegistration = true
@@ -388,6 +403,46 @@ struct TalkbackTests {
         await toggle(true)
         #expect(model.lastError == nil)
         #expect(model.isEnabled)
+    }
+
+    @Test("Emplacement temporaire : allumer est refusé avec le message, sans rien appeler ni changer l'interrupteur")
+    func enableBlocked() async {
+        service.installBlocker = ClassicAgentError.transientLocation
+        await toggle(true)
+        #expect(service.calls == [])
+        #expect(model.status == .disabled)
+        #expect(!model.isEnabled)
+        #expect(!model.isBusy)
+        #expect(settings.strings[TalkbackModel.agentBuildKey] == nil)
+        #expect(
+            model.lastError
+                == "Talkback impossible : PTZBot est lancé depuis un emplacement temporaire (Téléchargements ou image disque). Déplacez PTZBot dans le dossier Applications, puis rouvrez-le avant d'allumer Talkback.")
+        // Plus tard, à sa place : le même clic allume.
+        service.installBlocker = nil
+        await toggle(true)
+        #expect(service.calls == ["enable"])
+        #expect(model.lastError == nil)
+        #expect(model.isEnabled)
+    }
+
+    @Test("Emplacement temporaire : éteindre reste permis")
+    func disableAllowedWhenBlocked() async {
+        service.agentState = .installed
+        service.installBlocker = ClassicAgentError.transientLocation
+        model.refresh()
+        await toggle(false)
+        #expect(service.calls == ["disable"])
+        #expect(model.status == .disabled)
+        #expect(model.lastError == nil)
+    }
+
+    @Test("Emplacement temporaire, en anglais : le message du refus", .english)
+    func enableBlockedEnglish() async {
+        service.installBlocker = ClassicAgentError.transientLocation
+        await toggle(true)
+        #expect(
+            model.lastError
+                == "Talkback failed: PTZBot is running from a temporary location (Downloads or a disk image). Move PTZBot to the Applications folder, then reopen it before turning Talkback on.")
     }
 
     @Test("Refus parce que l'accord manque : pas d'erreur, l'invitation à autoriser suffit")

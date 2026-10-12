@@ -110,6 +110,24 @@ struct ClassicTalkbackServiceTests {
         #expect(service.agentState == .absent)
     }
 
+    @Test("Emplacement temporaire : l'allumage est bloqué (installBlocker), rien n'est écrit ; sinon aucun blocage")
+    func transientBlocker() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(service.installBlocker == nil)
+        let transient = ClassicAgent(
+            label: Talkback.label,
+            launchAgentsDirectory: root.appending(path: "LaunchAgents"),
+            program: URL(fileURLWithPath: "/private/var/folders/ab/xyz/T/AppTranslocation/ABCD/d/PTZBot.app/Contents/Helpers/talkd"),
+            launchctl: launchctl,
+            sleep: { _ in }
+        )
+        let blocked = ClassicTalkbackService(agent: transient, registry: registry)
+        #expect(blocked.installBlocker as? ClassicAgentError == .transientLocation)
+        await #expect(throws: ClassicAgentError.transientLocation) { try await blocked.enable() }
+        #expect(!FileManager.default.fileExists(atPath: plistURL.path))
+        #expect(calls() == [])
+    }
+
     @Test("Désinscrire l'ancien agent passe par ServiceManagement ; un refus remonte")
     func unregisterLegacy() async throws {
         defer { try? FileManager.default.removeItem(at: root) }

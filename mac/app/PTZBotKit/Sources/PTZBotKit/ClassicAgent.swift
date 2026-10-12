@@ -5,11 +5,16 @@ public enum ClassicAgentError: LocalizedError, Equatable, Sendable {
     case bootoutFailed(String)
     /// L'agent est encore chargé 10 s après le `bootout`.
     case stillLoaded
+    /// PTZBot tourne depuis un emplacement qui disparaîtra (app translocalisée par Gatekeeper, image disque) : la plist
+    /// pointerait vers un chemin mort.
+    case transientLocation
 
     public var errorDescription: String? {
         switch self {
         case let .bootoutFailed(reason): Localization.text("talkd n'a pas pu être arrêté : \(reason)")
         case .stillLoaded: Localization.text("talkd ne s'est pas arrêté à temps.")
+        // Le texte reste sur une seule ligne : le test du catalogue lit les clés directement dans les sources.
+        case .transientLocation: Localization.text("PTZBot est lancé depuis un emplacement temporaire (Téléchargements ou image disque). Déplacez PTZBot dans le dossier Applications, puis rouvrez-le avant d'allumer Talkback.")
         }
     }
 }
@@ -60,6 +65,22 @@ public struct ClassicAgent: Sendable {
             sleep: { Thread.sleep(forTimeInterval: $0) }
         )
     }
+
+    /// Le talkd de l'app est-il à un emplacement qui disparaîtra (app translocalisée par Gatekeeper, image disque) ?
+    /// La plist y garderait un chemin mort, et un `talkd` lancé depuis là casserait une installation qui marche.
+    public static func isTransientLocation(_ program: URL) -> Bool {
+        isTransientLocation(program) { (try? $0.resourceValues(forKeys: [.volumeIsReadOnlyKey]))?.volumeIsReadOnly == true }
+    }
+
+    /// `isReadOnlyVolume` dit si le volume du fichier est en lecture seule (injectable pour les tests).
+    static func isTransientLocation(_ program: URL, isReadOnlyVolume: (URL) -> Bool) -> Bool {
+        let url = program.resolvingSymlinksInPath()
+        if url.path.contains("/AppTranslocation/") { return true }
+        // Image disque montée : en lecture seule, et le chemin disparaît à l'éjection.
+        return isReadOnlyVolume(url)
+    }
+
+    public var isTransient: Bool { Self.isTransientLocation(program) }
 
     public var plistURL: URL {
         launchAgentsDirectory.appending(path: "\(label).plist")
@@ -127,7 +148,10 @@ public struct ClassicAgent: Sendable {
     /// Allume : écrit la plist, décharge un agent déjà chargé (un `bootstrap` échoue sur un agent chargé), puis le
     /// charge. Si le `bootstrap` échoue, la plist est retirée : l'interrupteur revient à « Désactivé » avec l'erreur,
     /// et non à un agent « installé » qui ne tourne pas.
+    ///
+    /// Refusé depuis un emplacement temporaire (`isTransient`), avant d'écrire quoi que ce soit.
     public func install() throws {
+        guard !isTransient else { throw ClassicAgentError.transientLocation }
         try writePlist()
         try unload()
         do {
@@ -153,9 +177,10 @@ public struct ClassicAgent: Sendable {
     /// - sinon, si `restart` (le numéro de compilation de l'app a changé) : `kickstart -k`, pour que le nouveau talkd
     ///   remplace l'ancien encore en mémoire. Un binaire remplacé sur place ne demande rien d'autre.
     ///
-    /// Sans plist, rien : Talkback est éteint.
+    /// Sans plist, rien : Talkback est éteint. Rien non plus depuis un emplacement temporaire.
     public func reconcile(restart: Bool) throws {
-        guard plistExists else { return }
+        // Depuis un emplacement temporaire, la plist saine (vers l'app à sa place) ne doit pas être touchée.
+        guard !isTransient, plistExists else { return }
         if !plistMatches() {
             try writePlist()
             try unload()

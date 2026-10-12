@@ -292,6 +292,56 @@ struct ClassicAgentTests {
         #expect(calls() == ["bootstrap"])
     }
 
+    // MARK: - Emplacement temporaire (app translocalisée ou lancée depuis une image disque)
+
+    private let transient = URL(
+        fileURLWithPath: "/private/var/folders/ab/xyz/T/AppTranslocation/ABCD-1234/d/PTZBot.app/Contents/Helpers/talkd")
+
+    @Test("Emplacement temporaire : AppTranslocation, ou volume en lecture seule ; une app à sa place ne l'est pas")
+    func transientLocation() {
+        #expect(ClassicAgent.isTransientLocation(transient))
+        #expect(agent(program: transient).isTransient)
+        #expect(!ClassicAgent.isTransientLocation(program))
+        #expect(!agent().isTransient)
+        // Un fichier réel sur un volume modifiable (le dossier temporaire du test) n'est pas temporaire.
+        #expect(!ClassicAgent.isTransientLocation(root.appending(path: "PTZBot.app/Contents/Helpers/talkd")))
+        defer { try? FileManager.default.removeItem(at: root) }
+        // Image disque : volume en lecture seule (la lecture réelle est faite par `resourceValues`).
+        #expect(ClassicAgent.isTransientLocation(program) { _ in true })
+        #expect(!ClassicAgent.isTransientLocation(program) { _ in false })
+    }
+
+    @Test("Allumer depuis un emplacement temporaire : refusé, ni dossier, ni plist, ni launchctl")
+    func installTransient() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let agent = agent(program: transient)
+        #expect(throws: ClassicAgentError.transientLocation) { try agent.install() }
+        #expect(!exists(agent.plistURL))
+        #expect(!exists(agents))
+        #expect(calls() == [])
+    }
+
+    @Test("Au lancement, depuis un emplacement temporaire : rien du tout, plist saine intacte, même avec un nouveau numéro")
+    func reconcileTransient() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let healthy = try installed()
+        let before = try Data(contentsOf: healthy.plistURL)
+        let moved = agent(program: transient)
+        try moved.reconcile(restart: true)
+        try moved.reconcile(restart: false)
+        #expect(calls() == [])
+        #expect(try Data(contentsOf: healthy.plistURL) == before)
+    }
+
+    @Test("Éteindre reste permis depuis un emplacement temporaire")
+    func uninstallTransient() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let healthy = try installed()
+        try agent(program: transient).uninstall()
+        #expect(calls() == ["bootout"])
+        #expect(!exists(healthy.plistURL))
+    }
+
     // MARK: - launchctl réel : les arguments (sans l'exécuter)
 
     @Test("Les arguments de launchctl : bootstrap gui/<uid> <plist>, kickstart -k gui/<uid>/<label>, bootout gui/<uid>/<label>")
@@ -308,6 +358,9 @@ struct ClassicAgentTests {
     func errorMessages() {
         #expect(ClassicAgentError.stillLoaded.errorDescription == "talkd ne s'est pas arrêté à temps.")
         #expect(ClassicAgentError.bootoutFailed("code 5").errorDescription == "talkd n'a pas pu être arrêté : code 5")
+        #expect(
+            ClassicAgentError.transientLocation.errorDescription
+                == "PTZBot est lancé depuis un emplacement temporaire (Téléchargements ou image disque). Déplacez PTZBot dans le dossier Applications, puis rouvrez-le avant d'allumer Talkback.")
     }
 
     @Test("Messages d'erreur de l'agent, en anglais", .english)
@@ -315,5 +368,8 @@ struct ClassicAgentTests {
         #expect(ClassicAgentError.stillLoaded.errorDescription == "talkd did not stop in time.")
         #expect(ClassicAgentError.bootoutFailed("code 5").errorDescription == "talkd could not be stopped: code 5")
         #expect(SystemLaunchctl.Failure(command: "kickstart", status: 3).errorDescription == "launchctl kickstart failed (code 3).")
+        #expect(
+            ClassicAgentError.transientLocation.errorDescription
+                == "PTZBot is running from a temporary location (Downloads or a disk image). Move PTZBot to the Applications folder, then reopen it before turning Talkback on.")
     }
 }

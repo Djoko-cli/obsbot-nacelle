@@ -198,6 +198,8 @@ final class Gate {
 final class FakeTalkbackService: TalkbackService {
     var agentState: TalkbackAgentState = .absent
     var hasLegacyRegistration = false
+    /// Ce qui empêche d'allumer (app translocalisée…) ; nil : rien.
+    var installBlocker: (any Error)?
     /// L'état de l'agent après un `enable()` réussi.
     var stateAfterEnable: TalkbackAgentState = .installed
     var enableFailure: (any Error)?

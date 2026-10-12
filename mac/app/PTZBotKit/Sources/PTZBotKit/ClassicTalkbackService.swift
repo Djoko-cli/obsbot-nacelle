@@ -55,6 +55,10 @@ public final class ClassicTalkbackService: TalkbackService {
         return registry.plistStatus(at: agent.plistURL) == .requiresApproval ? .requiresApproval : .installed
     }
 
+    public var installBlocker: (any Error)? {
+        agent.isTransient ? ClassicAgentError.transientLocation : nil
+    }
+
     public var hasLegacyRegistration: Bool {
         let status = registry.registeredStatus()
         return status == .enabled || status == .requiresApproval

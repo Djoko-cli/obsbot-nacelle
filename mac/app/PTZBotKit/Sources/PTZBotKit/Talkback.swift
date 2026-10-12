@@ -30,6 +30,8 @@ public enum TalkbackAgentState: Equatable, Sendable {
 public protocol TalkbackService: AnyObject, Sendable {
     /// Lecture rapide : la plist existe-t-elle, et l'utilisateur a-t-il coupé l'élément ?
     var agentState: TalkbackAgentState { get }
+    /// Ce qui empêche d'allumer Talkback (PTZBot lancé depuis un emplacement temporaire) ; nil : rien. Lecture rapide.
+    var installBlocker: (any Error)? { get }
     /// L'ancien agent de la 1.0.4, inscrit par `SMAppService.agent(plistName:)`, existe encore (`.enabled` ou `.requiresApproval`).
     var hasLegacyRegistration: Bool { get }
     /// Écrit la plist et charge l'agent.
@@ -267,6 +269,11 @@ public final class TalkbackModel {
     public func setEnabled(_ enabled: Bool) {
         guard !isPreparing, !isBusy else { return }
         lastError = nil
+        // Éteindre reste permis ; allumer depuis un emplacement temporaire est refusé, sans rien changer.
+        if enabled, let blocker = service.installBlocker {
+            lastError = Localization.text("Talkback impossible : \(blocker.localizedDescription)")
+            return
+        }
         isBusy = true
         startingSince = nil
         status = enabled ? .starting : .stopping
@@ -309,12 +316,17 @@ public final class TalkbackModel {
     /// attendu (l'app a changé de chemin), sinon talkd est redémarré (`kickstart -k`) quand le numéro de compilation
     /// de l'app n'est pas celui du dernier passage : le nouveau talkd remplace l'ancien encore en mémoire.
     ///
+    /// Depuis un emplacement temporaire (`installBlocker`), rien du tout.
+    ///
     /// Une compilation de travail (numéro 1) ne fait ni l'un ni l'autre : l'agent de l'app installée pointerait vers
     /// la copie de travail. Une seule tentative : en cas d'échec l'erreur est montrée, le numéro reste, rien n'est
     /// retenté.
     public func prepareAtLaunch() async {
         guard let bundleVersion, bundleVersion != Self.workingBuildNumber, !isBusy, !prepared else { return }
         prepared = true
+        // PTZBot lancé depuis un emplacement temporaire (app translocalisée, image disque) : rien du tout, ni migration, ni
+        // réécriture de la plist, ni redémarrage, ni numéro retenu. L'installation en place reste telle qu'elle est.
+        guard service.installBlocker == nil else { return }
         settings.set(nil as String?, forKey: Self.obsoleteRegisteredBuildKey)
         let migrating = service.hasLegacyRegistration
         guard migrating || service.agentState != .absent else { return }
