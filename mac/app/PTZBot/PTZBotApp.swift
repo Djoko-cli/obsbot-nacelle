@@ -42,7 +42,7 @@ struct PTZBotApp: App {
         .defaultLaunchBehavior(.suppressed)
 
         Window("Réglages", id: WindowID.settings) {
-            SettingsView(model: delegate.settings, language: delegate.language)
+            SettingsView(model: delegate.settings, language: delegate.language, camera: delegate.cameraSettings)
                 .followsLanguage(delegate.language, title: "Réglages")
         }
         .windowResizability(.contentSize)
@@ -62,9 +62,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let controller: AppController
     let sdkWindow: SDKWindowModel
     let network: LocalNetworkState
-    /// go2rtc, processus enfant de l'app (spec B3), et sa surveillance.
+    /// go2rtc, processus enfant de l'app (spec B3), sa surveillance et l'onglet « Caméra » des Réglages.
     let go2rtc: Go2RTCSupervisor
     let go2rtcMonitor: Go2RTCMonitor
+    let cameraSettings: Go2RTCSettingsModel
     private var started = false
 
     override init() {
@@ -83,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let preparer = Go2RTCPreparer.system(paths: paths)
         go2rtc = .system(paths: paths, preparer: preparer, scheduler: scheduler)
         go2rtcMonitor = .system(supervisor: go2rtc, paths: paths, scheduler: scheduler)
+        cameraSettings = .system(supervisor: go2rtc, preparer: preparer)
         controller = AppController(
             supervisor: .system(paths: paths.service, scheduler: scheduler),
             go2rtc: go2rtc,

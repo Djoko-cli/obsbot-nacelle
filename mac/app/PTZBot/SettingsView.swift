@@ -1,8 +1,25 @@
 import PTZBotKit
 import SwiftUI
 
-/// La fenêtre « Réglages » (spec distribution § 8) : les mises à jour, l'ouverture à la connexion et la version.
+/// La fenêtre « Réglages » (spec distribution § 8, spec B3 § 6.2) : deux onglets, « Général » et « Caméra ».
 struct SettingsView: View {
+    let model: SettingsModel
+    let language: AppLanguageModel
+    let camera: Go2RTCSettingsModel
+
+    var body: some View {
+        TabView {
+            GeneralSettingsView(model: model, language: language)
+                .tabItem { Label(AppText.text("Général"), systemImage: "gearshape") }
+            CameraSettingsView(model: camera)
+                .tabItem { Label(AppText.text("Caméra"), systemImage: "video") }
+        }
+        .frame(width: 460)
+    }
+}
+
+/// L'onglet « Général » : les mises à jour, l'ouverture à la connexion, la langue et la version.
+private struct GeneralSettingsView: View {
     let model: SettingsModel
     let language: AppLanguageModel
 
@@ -49,7 +66,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             loginItem.refresh()
