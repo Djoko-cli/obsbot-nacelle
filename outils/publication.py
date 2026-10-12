@@ -48,13 +48,18 @@ Dans l'ordre :
      (le bac a sable, les seuls services de Sparkle en mach-lookup, ou, avec --sans-bac-a-sable, ni l'un ni les
      autres ; jamais get-task-allow, la levee de la validation des bibliotheques si et seulement si l'identite est un
      certificat auto-signe non notarise) ; le certificat feuille de la signature est relu ; l'exigence de signature
-     (codesign -d -r-) est ecrite dans exigence.txt, et, pour un Developer ID, doit etre « anchor apple generic » avec
-     l'identifiant d'equipe de l'identite ;
+     (codesign -d -r-) est ecrite dans exigence.txt (fichier local du dossier des produits), et, pour un Developer ID,
+     doit etre « anchor apple generic » avec l'identifiant d'equipe de l'identite ; codesign --verify --strict -R
+     verifie en plus la chaine d'un Developer ID (EXIGENCE_DEVELOPER_ID : ancre d'Apple, intermediaire et feuille
+     Developer ID) ; l'exigence affichee et les erreurs ne montrent ni le nom ni l'equipe (masquer_identite) ;
   4. le .dmg (hdiutil) : l'app, un raccourci vers Applications et la licence de Sparkle. Avant hdiutil, tout le
      contenu est refuse s'il porte un chemin personnel ($HOME, /Users/, le nom du compte), un element interdit (le SDK
      OBSBOT, un binaire obsbot-ai, les en-tetes du SDK) ou si le controle de fuite y trouve une donnee locale ; la
      liste des noms du contenu (chemins relatifs, cibles des liens), ecrite dans contenu-dmg.txt, passe aussi par ce
-     controle. Avec la notarisation (par defaut pour un Developer ID, NOTARISER=0 la coupe ; NOTARISER=1 l'impose a un
+     controle. Ces gardes lisent une copie du contenu dont chaque code a perdu sa signature (codesign
+     --remove-signature, sur la copie ; un retrait rate est un refus) : la signature d'un Developer ID porte le nom
+     legal, qui ne doit etre nulle part ailleurs ; tout le reste est controle, nom de l'identite, de la personne et
+     equipe compris. Les droits de l'app, dans sa signature, sont controles a part, sur l'original. Avec la notarisation (par defaut pour un Developer ID, NOTARISER=0 la coupe ; NOTARISER=1 l'impose a un
      certificat auto-signe), le .dmg signe, soumis a Apple (notarytool, profil PROFIL_NOTARISATION du trousseau ; sa
      reponse va dans notarisation.log), agrafe (stapler staple), l'agrafe relue (stapler validate) et evalue (spctl) ;
   5. la signature Ed25519 du .dmg (sign_update de Sparkle, cle du trousseau), puis le flux : le fichier CHEMIN du
@@ -93,8 +98,9 @@ dossier personnel et le nom du compte cherches dans le .dmg, par
 HOME, USER et LOGNAME. Aucun identifiant Apple, Team ID, nom de personne, empreinte ni mot de passe n'est ecrit ici :
 l'identite et son empreinte sont lues dans le trousseau au moment de publier, et la notarisation lit le profil que
 notarytool store-credentials a range dans le trousseau. NOTARISER (0 ou 1, sinon refus) decide de la notarisation.
-Le certificat d'un Developer ID porte le nom de la personne, public par nature dans la signature de l'app : pour le
-controle des chemins personnels du .dmg (le nom du compte), ce certificat est masque dans le contenu.
+Le certificat d'un Developer ID porte le nom de la personne : il figure dans la signature des versions publiees et
+nulle part ailleurs (ni depot, ni commits, ni notes, ni flux, ni journaux affiches : masquer_identite). Les gardes du
+.dmg lisent donc une copie sans signatures, et cherchent le nom partout ailleurs.
 """
 import argparse
 import datetime
@@ -146,6 +152,12 @@ PREFIXE_DEVELOPER_ID = 'Developer ID Application: '
 DEVELOPER_ID = re.compile(r'^Developer ID Application: (?P<nom>.+) \((?P<equipe>[A-Z0-9]{10})\)$')
 # L'emetteur d'un Developer ID : l'autorite de certification d'Apple (son OU, G2 ou autre, et son pays, sont libres).
 EMETTEUR_DEVELOPER_ID = 'Developer ID Certification Authority'
+# La chaine d'un Developer ID Application, verifiee par codesign sur l'app signee (-R) : ancree chez Apple, un
+# intermediaire Developer ID, une feuille Developer ID Application. Les OID d'Apple sont ecrits en morceaux (ils ont la
+# forme d'une adresse pour le controle de fuite).
+OID_APPLE_DEVID = '1.2.840.' '113635.100.6.'
+EXIGENCE_DEVELOPER_ID = ('=anchor apple generic and certificate 1[field.%s2.6] exists and '
+                         'certificate leaf[field.%s1.13] exists' % (OID_APPLE_DEVID, OID_APPLE_DEVID))
 ORGANISATION_APPLE = 'Apple Inc.'
 # OID de userId, que certaines versions d'openssl impriment au lieu de UID.
 OID_UID = '.'.join(['0', '9', '2342', '19200300', '100', '1', '1'])  # en morceaux : pas une adresse pour le controle de fuite
@@ -406,12 +418,10 @@ def motifs_personnels(env=None):
     return motifs
 
 
-def chemins_personnels(dossier, motifs, masques=()):
-    """Ce qui, dans le dossier (le contenu du .dmg), porte un motif personnel : le contenu de chaque fichier
-    ordinaire (binaires compris), la cible de chaque lien et chaque nom. Rend [(chemin relatif, motif)] ; le chemin
-    relatif est tu s'il porte lui-meme le motif. `masques` : des textes retires du contenu des fichiers avant la
-    recherche, les plus longs d'abord. Une app signee Developer ID porte, dans sa signature, le certificat de la
-    personne (son nom, comme nom du compte), public par nature : sans masque, le nom du compte y serait trouve."""
+def chemins_personnels(dossier, motifs):
+    """Ce qui, dans le dossier (la copie sans signatures du contenu du .dmg, copie_sans_signatures), porte un motif
+    personnel : le contenu de chaque fichier ordinaire (binaires compris), la cible de chaque lien et chaque nom.
+    Rend [(chemin relatif, motif)] ; le chemin relatif est tu s'il porte lui-meme le motif."""
     trouves = []
     for racine, dossiers, fichiers in os.walk(dossier):
         for nom in sorted(dossiers + fichiers):
@@ -422,8 +432,6 @@ def chemins_personnels(dossier, motifs, masques=()):
             elif os.path.isfile(p):
                 with open(p, 'rb') as f:
                     contenu = f.read()
-                for masque in masques:
-                    contenu = contenu.replace(masque, b'')
             else:
                 contenu = b''
             for motif, quoi in motifs:
@@ -534,6 +542,17 @@ def equipe_developer_id(nom):
     n'a pas cette forme."""
     m = DEVELOPER_ID.match(nom)
     return m.group('equipe') if m else None
+
+
+def masquer_identite(texte):
+    """Le nom legal et l'equipe d'un Developer ID, masques dans tout ce que l'outil affiche (exigence de signature,
+    erreurs de codesign, de spctl ou de notarytool, refus) : ils ne vont que dans la signature des versions publiees.
+    `<titulaire>` et `<equipe>` les remplacent."""
+    texte = re.sub(r'(%s)[^\n"]*?( \()[A-Z0-9]{10}(\))' % re.escape(PREFIXE_DEVELOPER_ID),
+                   r'\1<titulaire>\2<equipe>\3', texte)
+    texte = re.sub(r'(subject\.OU\] ?= ?)"?[A-Z0-9]{10}"?', r'\1<equipe>', texte)
+    return re.sub(r'(\b(?:[Tt]eam ?[Ii](?:[Dd]|dentifier)|TeamIdentifier)"?\s*[=:]\s*)"?[A-Z0-9]{10}"?',
+                  r'\1<equipe>', texte)
 
 
 def identites_developer_id(sortie):
@@ -919,6 +938,38 @@ def verifier_utilitaires(o, app):
             raise Refus('utilitaire signe Contents/Helpers/%s : le runtime renforce manque' % nom)
 
 
+def copie_sans_signatures(o, scene, dossier):
+    """Une copie du contenu du .dmg pour la garde des chemins personnels et le controle de fuite, chaque code signe
+    sans sa signature (codesign --remove-signature, sur la copie seulement) : la signature d'un Developer ID
+    individuel porte le nom legal du titulaire, qui ne figure que la (le nom du compte macOS peut etre un prenom). Le
+    reste du code, les textes et les noms restent controles. Un code dont codesign ne sait pas retirer la signature est
+    refuse (Refus) : la copie est alors supprimee. Rend le dossier de la copie."""
+    shutil.rmtree(dossier, ignore_errors=True)
+    lancer([o.ditto, scene, dossier])
+    for nom in sorted(os.listdir(dossier)):
+        chemin = os.path.join(dossier, nom)
+        if nom.endswith('.app') and os.path.isdir(chemin) and not os.path.islink(chemin):
+            for code in code_imbrique(chemin) + utilitaires(chemin) + [chemin]:
+                if subprocess.run([o.codesign, '--remove-signature', code], capture_output=True).returncode != 0:
+                    shutil.rmtree(dossier, ignore_errors=True)
+                    raise Refus("la signature de %s ne se retire pas de la copie controlee : rien n'est publie"
+                                % os.path.relpath(code, dossier))
+    return dossier
+
+
+def fichiers_avec_termes(fichiers, termes):
+    """Ceux des fichiers dont le contenu (octets) porte l'un des termes (str, en UTF-8 ; formes NFC et NFD a donner).
+    Rend les fichiers, jamais le terme trouve."""
+    cherches = [t.encode('utf-8') for t in termes]
+    trouves = []
+    for f in fichiers:
+        with open(f, 'rb') as e:
+            contenu = e.read()
+        if any(t in contenu for t in cherches):
+            trouves.append(f)
+    return trouves
+
+
 def signer(a, o, empreinte, chemin, droits=True, fichier_droits=None):
     """Signe un code avec l'identite de la publication, par son empreinte (un nom seul prendrait aussi une identite
     dont le nom le contient) : runtime renforce, droits gardes (ou ceux de fichier_droits), horodatage si notarise
@@ -1178,10 +1229,14 @@ def publier(a, o=None, maintenant=None):
     exigence = subprocess.run([o.codesign, '-d', '-r-', app], check=True, capture_output=True,
                               text=True).stdout.strip()
     ecrire(os.path.join(sortie, 'exigence.txt'), exigence + '\n')
-    dire('exigence de signature : ' + exigence)
+    dire('exigence de signature : ' + masquer_identite(exigence))
     if not exigence_conforme(exigence, a.identite):
         raise Refus("l'exigence de signature de l'app (exigence.txt) n'est pas celle d'un Developer ID : "
                     "« anchor apple generic » et l'identifiant d'equipe de l'identite sont attendus")
+    if developer_id(a.identite):
+        # La chaine elle-meme, verifiee par codesign : ancree chez Apple, un intermediaire Developer ID, une feuille
+        # Developer ID Application.
+        lancer([o.codesign, '--verify', '--strict', '-R' + EXIGENCE_DEVELOPER_ID, app])
 
     # 4. le .dmg : l'app, le raccourci vers Applications et la licence de Sparkle, controles avant hdiutil
     nom_dmg = '%s-%s.dmg' % (a.fichier, version)
@@ -1192,23 +1247,36 @@ def publier(a, o=None, maintenant=None):
     lancer([o.ditto, app, os.path.join(scene, a.nom_app + '.app')])
     os.symlink('/Applications', os.path.join(scene, 'Applications'))
     shutil.copyfile(a.licence, os.path.join(scene, os.path.basename(a.licence)))
-    masques = [t.encode('utf-8') for t in etat.termes]
-    trouves = chemins_personnels(scene, motifs_personnels(), masques)
-    if trouves:
-        raise Refus('le contenu du .dmg porte un chemin personnel (%d) : %s ; rien n\'est publie'
-                    % (len(trouves), ' ; '.join('%s (%s)' % t for t in trouves[:5])))
-    dire('contenu du .dmg : aucun chemin personnel')
-    interdits = contenu_interdit(scene) + ['%s (depend de libdev)' % p for p in dependances_au_sdk(o, scene)]
-    if interdits:
-        raise Refus('le contenu du .dmg porte le SDK OBSBOT, ses en-tetes ou un binaire obsbot-ai (%d) : %s ; rien '
-                    "n'est publie" % (len(interdits), ' ; '.join(interdits[:5])))
-    liste = os.path.join(sortie, 'contenu-dmg.txt')
-    ecrire(liste, liste_du_contenu(scene))
-    trouvees = fuites(fichiers_ordinaires(scene) + [liste], dmg=True)
-    if trouvees:
-        raise Refus("le controle de fuite a trouve des donnees locales dans le contenu du .dmg (%d) : %s ; rien n'est "
-                    'publie' % (len(trouvees), ' ; '.join('%s:%d' % (os.path.relpath(f, sortie), n)
-                                                         for f, n in trouvees[:5])))
+    # Les gardes lisent une copie dont chaque code a perdu sa signature (copie_sans_signatures) : celle d'un Developer
+    # ID porte le nom legal du titulaire. Tout le reste est controle, nom compris (avec un Developer ID : le nom de
+    # l'identite, celui de la personne, l'identifiant d'equipe). Les droits de l'app sont dans sa signature, que la
+    # copie n'a plus : controles a part, sur l'original (verifier_droits), et leur fichier passe par les gardes.
+    copie = copie_sans_signatures(o, scene, os.path.join(sortie, 'controle-dmg'))
+    try:
+        trouves = chemins_personnels(copie, motifs_personnels())
+        if trouves:
+            raise Refus('le contenu du .dmg porte un chemin personnel (%d) : %s ; rien n\'est publie'
+                        % (len(trouves), ' ; '.join('%s (%s)' % t for t in trouves[:5])))
+        dire('contenu du .dmg : aucun chemin personnel')
+        interdits = contenu_interdit(scene) + ['%s (depend de libdev)' % p for p in dependances_au_sdk(o, scene)]
+        if interdits:
+            raise Refus('le contenu du .dmg porte le SDK OBSBOT, ses en-tetes ou un binaire obsbot-ai (%d) : %s ; rien '
+                        "n'est publie" % (len(interdits), ' ; '.join(interdits[:5])))
+        liste = os.path.join(sortie, 'contenu-dmg.txt')
+        ecrire(liste, liste_du_contenu(scene))
+        controles = fichiers_ordinaires(copie) + [liste, fichier_droits]
+        trouvees = fuites(controles, dmg=True)
+        if trouvees:
+            raise Refus("le controle de fuite a trouve des donnees locales dans le contenu du .dmg (%d) : %s ; rien "
+                        "n'est publie" % (len(trouvees), ' ; '.join('%s:%d' % (os.path.relpath(f, sortie), n)
+                                                                   for f, n in trouvees[:5])))
+        nommes = fichiers_avec_termes(controles, etat.termes)
+        if nommes:
+            raise Refus("le contenu du .dmg porte le nom de l'identite de signature, celui de la personne ou "
+                        "l'identifiant d'equipe (%d fichier(s)) : %s ; rien n'est publie"
+                        % (len(nommes), ' ; '.join(os.path.relpath(f, sortie) for f in nommes[:5])))
+    finally:
+        shutil.rmtree(copie, ignore_errors=True)
     if os.path.exists(dmg):
         os.remove(dmg)
     lancer([o.hdiutil, 'create', '-quiet', '-volname', '%s %s' % (a.nom_app, version), '-srcfolder', scene,
@@ -1345,14 +1413,15 @@ def main(argv=None):
     try:
         publier(a)
     except Refus as e:
-        print('refus : %s' % e, file=sys.stderr)
+        print(masquer_identite('refus : %s' % e), file=sys.stderr)
         return 1
     except subprocess.CalledProcessError as e:
-        print('echec : %s (code %d)\n%s' % (' '.join(map(shlex.quote, e.cmd)), e.returncode, (e.stderr or '')[-2000:]),
-              file=sys.stderr)
+        # Masquer avant de couper : une coupure au milieu d'un nom le laisserait en clair.
+        print(masquer_identite('echec : %s (code %d)\n' % (' '.join(map(shlex.quote, e.cmd)), e.returncode))
+              + masquer_identite(e.stderr or '')[-2000:], file=sys.stderr)
         return 1
     except OSError as e:
-        print('echec : %s' % e, file=sys.stderr)
+        print(masquer_identite('echec : %s' % e), file=sys.stderr)
         return 1
     return 0
 

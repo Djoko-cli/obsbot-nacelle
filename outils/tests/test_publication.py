@@ -61,9 +61,18 @@ TEMPORAIRE = '/private' + '/tmp/'
 AUTRE_COMPTE = '/Us' + 'ers/autre'
 OID_RSA = '.'.join(['1', '2', '840', '113549', '1', '1', '11'])
 OID_APPLE = 'field.' + '.'.join(['1', '2', '840', '113635', '100', '6', '2', '6'])
-# publier.sh exporte NOTARISER et PROFIL_NOTARISATION avant de lancer ces tests (étape « tests » de la publication) :
-# ils sont retirés de l'environnement copié, sinon les refus « sans profil » échoueraient pendant une publication.
-GIT_ENV = dict({k: v for k, v in os.environ.items() if k not in ('NOTARISER', 'PROFIL_NOTARISATION')}, PATH=PATH_ISOLE, GIT_ALLOW_PROTOCOL='file',
+# Les variables que publier.sh exporte (NOTARISER, PROFIL_NOTARISATION, DD, SPARKLE_BIN) ou qu'un shell de publication
+# aurait : jamais dans le monde des tests (étape « tests » de la publication), sinon les refus « sans profil » ou
+# les cas auto-signés échoueraient pendant une vraie publication.
+VARIABLES_DE_PUBLICATION = ('NOTARISER', 'PROFIL_NOTARISATION', 'IDENTITE_SIGNATURE', 'SPARKLE_BIN', 'DD')
+
+
+def environnement_neutre():
+    return {k: v for k, v in os.environ.items()
+            if k not in VARIABLES_DE_PUBLICATION and not k.startswith(('FAUX_', 'FAUSSE_'))}
+
+
+GIT_ENV = dict(environnement_neutre(), PATH=PATH_ISOLE, GIT_ALLOW_PROTOCOL='file',
                GIT_CONFIG_GLOBAL='/dev/null', GIT_CONFIG_SYSTEM='/dev/null',
                GIT_AUTHOR_NAME='Essai', GIT_AUTHOR_EMAIL='essai@example.invalid',
                GIT_COMMITTER_NAME='Essai', GIT_COMMITTER_EMAIL='essai@example.invalid')
@@ -134,6 +143,20 @@ FAUX = {
             drapeaux = "0x0(none)" if os.environ.get("FAUX_UTILITAIRE") == "sans-runtime" else "0x10000(runtime)"
             sys.stderr.write("Executable=" + a[-1] + "\\nCodeDirectory v=20500 size=1 flags=" + drapeaux + " hashes=1+0\\n")
             sys.exit(0)
+        # --remove-signature (sur la copie des gardes) : la signature de l'app, qui porte FAUX_SIGNATURE_PORTE, s'en va ;
+        # FAUX_RETRAIT_IMPOSSIBLE : codesign echoue.
+        if a[:1] == ["--remove-signature"]:
+            if os.environ.get("FAUX_RETRAIT_IMPOSSIBLE"):
+                sys.exit(1)
+            binaire = os.path.join(a[-1], "Contents", "MacOS", "Essai Inventee")
+            if os.environ.get("FAUX_SIGNATURE_PORTE") and os.path.exists(binaire):
+                marque = b"\\0" + os.environ["FAUX_SIGNATURE_PORTE"].encode() + b"\\0"
+                contenu = open(binaire, "rb").read()
+                open(binaire, "wb").write(contenu.replace(marque, b""))
+        # La chaine du Developer ID refusee (codesign --verify --strict -R...) : l'erreur nomme l'identite, comme codesign.
+        if a[:2] == ["--verify", "--strict"] and os.environ.get("FAUX_CHAINE_REFUSEE"):
+            sys.stderr.write("failed requirement of " + os.environ["FAUSSE_IDENTITE"] + "\\n")
+            sys.exit(3)
         if a[:2] == ["-d", "-r-"]:
             print(os.environ.get("FAUX_EXIGENCE", 'designated => identifier "fr.exemple.essai" and certificate leaf = H"0123abcd"'))
         # La signature de l'app porte un texte (FAUX_SIGNATURE_PORTE) : le certificat de la personne, dans le binaire.
@@ -240,7 +263,12 @@ FAUX = {
         if b"libdev" in open(p, "rb").read():
             print("\\t@rpath/libdev.dylib (compatibility version 1.0.0)")
         '''),
-    'spctl': 'import sys\n',
+    # spctl : FAUX_SPCTL_REFUS=1 le refuse en nommant l'identite (origin=), comme le vrai.
+    'spctl': textwrap.dedent('''\
+        if os.environ.get("FAUX_SPCTL_REFUS"):
+            sys.stderr.write("rejected\\nsource=Notarized Developer ID\\norigin=%s\\n" % os.environ["FAUSSE_IDENTITE"])
+            sys.exit(3)
+        '''),
     'ditto': 'import shutil\nshutil.copytree(sys.argv[1], sys.argv[2], symlinks=True)\n',
     'xcodebuild': textwrap.dedent('''\
         import plistlib, re
@@ -301,7 +329,7 @@ FAUX = {
                 os.remove(autre)
             os.symlink(cible_lien, autre)
         # Une donnee locale (FAUX_FUITE = texte:ou), pour le controle de fuite.
-        fuite, _, ou_fuite = os.environ.get('FAUX_FUITE', ':').partition(':')
+        fuite, _, ou_fuite = os.environ.get('FAUX_FUITE', ':').rpartition(':')
         if fuite:
             cible = {'app': os.path.join('MacOS', 'Essai Inventee'), 'sparkle': os.path.join(b, 'Sparkle'),
                      'ressource': os.path.join('Resources', 'fr.lproj', 'Localizable.strings')}[ou_fuite]
@@ -791,17 +819,38 @@ class DeveloperIdTests(unittest.TestCase):
                     self.assertEqual(P.notariser(identite), notarise)
                     self.assertEqual(P.validation_levee(identite), levee)
 
-    def test_masques_du_contenu(self):
-        """Le nom du compte n'est pas trouve dans le certificat de la personne (public, dans la signature), mais l'est
-        ailleurs dans le contenu."""
+    def test_masquer_identite(self):
+        """Le nom de l'identite et l'equipe, masques dans ce qui s'affiche ; le reste est intact."""
+        for brut, attendu in (
+                (DEVID, 'Developer ID Application: <titulaire> (<equipe>)'),
+                ('origin=%s\n' % DEVID, 'origin=Developer ID Application: <titulaire> (<equipe>)\n'),
+                ("'%s'" % DEVID, "'Developer ID Application: <titulaire> (<equipe>)'"),
+                ('certificate leaf[subject.OU] = ' + EQUIPE, 'certificate leaf[subject.OU] = <equipe>'),
+                ('certificate leaf[subject.OU] = "%s"' % EQUIPE, 'certificate leaf[subject.OU] = <equipe>'),
+                ('leaf[subject.OU]=' + EQUIPE, 'leaf[subject.OU]=<equipe>'),
+                ('TeamIdentifier=' + EQUIPE, 'TeamIdentifier=<equipe>'),
+                ('"teamId": "%s"' % EQUIPE, '"teamId": <equipe>'),
+                (IDENTITE, IDENTITE),
+                ('aucune identite « Developer ID Application » valide', 'aucune identite « Developer ID Application » valide')):
+            with self.subTest(brut=brut):
+                self.assertEqual(P.masquer_identite(brut), attendu)
+
+    def test_chemins_personnels_sans_masque(self):
+        """Plus de masque global du nom : le nom du compte est trouve partout dans la copie sans signatures, y compris
+        a cote d'un nom d'identite."""
         with tempfile.TemporaryDirectory() as d:
             ecrire(os.path.join(d, 'a'), 'x\0%s\0y' % DEVID)
-            motifs = [(b'Jean', 'le nom du compte')]
-            self.assertEqual(P.chemins_personnels(d, motifs), [('a', 'le nom du compte')])
-            self.assertEqual(P.chemins_personnels(d, motifs, [t.encode() for t in P.termes_sensibles(SUJET_DEVID, DEVID)]), [])
-            ecrire(os.path.join(d, 'a'), 'x\0%s\0Jean' % DEVID)
-            self.assertEqual(P.chemins_personnels(d, motifs, [t.encode() for t in P.termes_sensibles(SUJET_DEVID, DEVID)]),
-                             [('a', 'le nom du compte')])
+            self.assertEqual(P.chemins_personnels(d, [(b'Jean', 'le nom du compte')]), [('a', 'le nom du compte')])
+
+    def test_fichiers_avec_termes(self):
+        with tempfile.TemporaryDirectory() as d:
+            ecrire(os.path.join(d, 'a'), 'propre')
+            ecrire(os.path.join(d, 'b'), 'x\0%s\0y' % PERSONNE)
+            ecrire(os.path.join(d, 'c'), EQUIPE)
+            fichiers = [os.path.join(d, n) for n in 'abc']
+            termes = P.termes_sensibles(SUJET_DEVID, DEVID)
+            self.assertEqual(P.fichiers_avec_termes(fichiers, termes), fichiers[1:])
+            self.assertEqual(P.fichiers_avec_termes(fichiers, []), [])
 
 
 class PublicationTests(unittest.TestCase):
@@ -1584,6 +1633,64 @@ class PublicationTests(unittest.TestCase):
             for terme in (DEVID, PERSONNE, EQUIPE):
                 self.assertNotIn(terme, texte)
 
+    def test_developer_id_chaine_et_affichage_masque(self):
+        """Apres la signature, codesign --verify --strict -R verifie la chaine d'un Developer ID (en plus de --verify
+        --deep --strict) ; l'exigence affichee n'a ni le nom ni l'equipe (exigence.txt, local, garde l'equipe) ; un
+        certificat auto-signe n'a pas cette verification."""
+        self.m.publier(env=self.devid())
+        appels = self.m.appels()
+        sortie = os.path.join(self.m.depot, 'build', 'publication', '1.2.3')
+        app = [a for a in appels if a.startswith('codesign --verify --deep --strict ')][0].split(' ', 4)[4]
+        verification = 'codesign --verify --strict -R%s %s' % (P.EXIGENCE_DEVELOPER_ID, app)
+        self.assertIn(verification, appels)
+        self.assertEqual(P.EXIGENCE_DEVELOPER_ID,
+                         '=anchor apple generic and certificate 1[%s.2.6] exists and certificate leaf[%s.1.13] exists'
+                         % (OID_DEVID, OID_DEVID))
+        signatures = [i for i, a in enumerate(appels) if a.startswith('codesign --force')]
+        self.assertGreater(appels.index(verification), signatures[len(signatures) - 2], 'apres la signature de l\'app')
+        self.assertLess(appels.index(verification), [i for i, a in enumerate(appels) if a.startswith('hdiutil')][0])
+        self.assertIn(EQUIPE, lire(os.path.join(sortie, 'exigence.txt')))
+        self.assertIn('leaf[subject.OU] = <equipe>', self.m.dit)
+        for terme in (EQUIPE, PERSONNE, DEVID):
+            self.assertNotIn(terme, self.m.dit)
+
+    def test_auto_signe_sans_verification_de_chaine(self):
+        self.m.publier()
+        self.assertFalse([a for a in self.m.appels() if a.startswith('codesign --verify --strict')])
+
+    def test_erreurs_masquees(self):
+        """Un refus de spctl (qui ecrit origin=<identite>) ou de la verification de la chaine : main le dit sans le
+        nom, ni l'equipe, ni dans la commande, ni dans l'erreur."""
+        for env, commande in ((dict(FAUX_SPCTL_REFUS='1'), 'spctl'), (dict(FAUX_CHAINE_REFUSEE='1'), 'codesign')):
+            with self.subTest(commande=commande):
+                self.m.oublier()
+                self.m.identite = DEVID
+                code, erreurs = self.m.main(env=dict(ENV_DEVID, **env))
+                self.assertEqual(code, 1)
+                self.assertIn(commande, erreurs)
+                self.assertIn('Developer ID Application: <titulaire> (<equipe>)', erreurs)
+                self.assertNotIn(EQUIPE, erreurs)
+                self.assertNotIn(PERSONNE, erreurs)
+
+    def test_refus_masques(self):
+        """Un refus qui reprend le nom de l'identite (introuvable dans le trousseau) est masque aussi (main)."""
+        self.m.identite = DEVID
+        autre = 'Developer ID Application: Autre Exemple (ZZZZZ99999)'
+        code, erreurs = self.m.main(env=dict(ENV_DEVID, FAUSSES_IDENTITES=json.dumps([[EMPREINTE, autre]])))
+        self.assertEqual(code, 1)
+        self.assertIn('introuvable dans le trousseau : Developer ID Application: <titulaire> (<equipe>)', erreurs)
+        for terme in (EQUIPE, PERSONNE):
+            self.assertNotIn(terme, erreurs)
+
+    def test_variables_de_publication_du_shell_ignorees(self):
+        """publier.sh exporte NOTARISER et PROFIL_NOTARISATION et lance ces tests : le monde des tests ne les voit pas
+        (sinon chaque cas auto-signe, sans profil, tomberait sur un refus)."""
+        with mock.patch.dict(os.environ, {'NOTARISER': '1', 'PROFIL_NOTARISATION': 'profil-du-shell',
+                                          'IDENTITE_SIGNATURE': DEVID}):
+            self.assertFalse(set(environnement_neutre()) & set(VARIABLES_DE_PUBLICATION))
+            self.m.publier()
+        self.assertFalse([a for a in self.m.appels() if a.startswith('xcrun')])
+
     def test_developer_id_choisi_dans_le_trousseau(self):
         """Sans --identite : l'unique Developer ID valide du trousseau (security find-identity -v), et la suite est
         celle d'une identite donnee."""
@@ -1707,6 +1814,12 @@ class PublicationTests(unittest.TestCase):
         """Le certificat de Developer ID, dans la signature de l'app, porte le nom de la personne : si c'est aussi le nom
         du compte, ce n'est pas un chemin personnel. Un chemin personnel (/Users/<compte>) ailleurs dans l'app en reste un."""
         compte = {'USER': 'Jean', 'LOGNAME': 'Jean'}
+        # Si la signature ne peut pas etre retiree de la copie des gardes : refus, rien de fait ensuite.
+        appels = self.refuse(env=self.devid(FAUX_SIGNATURE_PORTE=SUJET_DEVID, FAUX_RETRAIT_IMPOSSIBLE='1', **compte),
+                             motif='ne se retire pas de la copie controlee')
+        self.assertFalse([a for a in appels if a.startswith(('hdiutil', 'sign_update'))], 'aucun .dmg')
+        self.assertFalse(os.path.exists(os.path.join(self.m.depot, 'build', 'publication', '1.2.3', 'controle-dmg')))
+        self.m.oublier()
         self.m.publier(env=self.devid(FAUX_SIGNATURE_PORTE=SUJET_DEVID, **compte))
         self.assertIn('contenu du .dmg : aucun chemin personnel', self.m.dit)
         self.m.oublier()
@@ -1716,6 +1829,48 @@ class PublicationTests(unittest.TestCase):
         self._commits_origine = '3'
         self.refuse(env=self.devid(FAUX_SIGNATURE_PORTE=SUJET_DEVID, FAUX_CHEMIN='compte:app', **compte),
                     motif='chemin personnel')
+
+    def test_gardes_sur_une_copie_sans_signatures(self):
+        """Les gardes lisent une copie du contenu du .dmg dont chaque code signe (cadres, ce qu'ils contiennent,
+        utilitaires, app) a perdu sa signature, apres la signature et avant les gardes ; la copie est retiree ensuite ;
+        le .dmg garde les signatures (sa scene est celle d'avant la copie)."""
+        self.m.publier(env=self.devid())
+        appels = self.m.appels()
+        sortie = os.path.join(self.m.depot, 'build', 'publication', '1.2.3')
+        retraits = [a for a in appels if a.startswith('codesign --remove-signature')]
+        signes_app = [a.split('/Release/', 1)[1] for a in appels if a.startswith('codesign --force') and '/Release/' in a]
+        self.assertEqual(sorted(r.split('/controle-dmg/', 1)[1] for r in retraits), sorted(signes_app))
+        self.assertIn('Essai Inventee.app', signes_app)
+        self.assertIn('Essai Inventee.app/Contents/Helpers/ptzd', signes_app)
+        self.assertIn('Essai Inventee.app/Contents/Frameworks/Sparkle.framework', signes_app)
+        derniere = max(i for i, a in enumerate(appels) if a.startswith('codesign --force') and '/Release/' in a)
+        for r in retraits:
+            self.assertGreater(appels.index(r), derniere)
+            self.assertLess(appels.index(r), [i for i, a in enumerate(appels) if a.startswith('hdiutil')][0])
+        self.assertFalse(os.path.exists(os.path.join(sortie, 'controle-dmg')), 'copie retiree')
+        self.assertTrue([a for a in appels if a.startswith('hdiutil create')])
+
+    def test_refus_nom_dans_le_contenu_du_dmg(self):
+        """Hors de la signature, le nom de l'identite, celui de la personne ou l'equipe dans le contenu du .dmg (une
+        ressource, un binaire) : refus, qui ne recopie pas ce qui est trouve ; la copie est retiree."""
+        for terme in (PERSONNE, DEVID, EQUIPE):
+            with self.subTest(terme=terme):
+                self.m.oublier()
+                appels = self.refuse(env=self.devid(FAUX_FUITE=terme + ':ressource'), motif='porte le nom de l\'identite')
+                self.assertFalse([a for a in appels if a.startswith(('hdiutil', 'sign_update'))], 'aucun .dmg')
+                self.assertFalse(os.path.exists(os.path.join(self.m.depot, 'build', 'publication', '1.2.3',
+                                                             'controle-dmg')))
+        with self.assertRaises(P.Refus) as r:
+            self.m.oublier()
+            self.m.publier(env=self.devid(FAUX_FUITE=PERSONNE + ':sparkle'))
+        for terme in (PERSONNE, EQUIPE):
+            self.assertNotIn(terme, str(r.exception))
+
+    def test_nom_du_compte_hors_signature_toujours_refuse(self):
+        """Le nom du compte (un prenom) dans un fichier, hors signature : un chemin personnel, meme avec un Developer ID
+        (plus de masque global du nom)."""
+        compte = {'USER': 'Jean', 'LOGNAME': 'Jean'}
+        self.refuse(env=self.devid(FAUX_CHEMIN='compte:sparkle', **compte), motif='chemin personnel')
 
     def test_refus_nom_de_l_identite_dans_les_notes(self):
         """Avec un Developer ID, le nom de la personne, celui de l'identite ou l'equipe dans un texte publie : refus."""
