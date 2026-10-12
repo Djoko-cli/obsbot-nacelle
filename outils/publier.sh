@@ -12,20 +12,39 @@
 #                           [--trousseau TROUSSEAU] [--sans-tests]
 # SPARKLE_BIN : le dossier bin de l'archive de Sparkle 2.10.0 (sign_update, generate_keys) ; par defaut, celui que
 # le gestionnaire de paquets de Xcode a resolu dans DD (SourcePackages/artifacts/sparkle/Sparkle/bin).
-# IDENTITE_SIGNATURE : le nom du certificat de signature ; sans lui, l'unique identite valide « Developer ID
-# Application » du trousseau (zero ou plusieurs : refus). Son nom complet porte le nom de la personne et son
-# identifiant d'equipe : il n'est ecrit nulle part dans le depot, ni dans une sortie publiee.
-# Notarisation du .dmg (soumission a Apple, agrafe, evaluation de Gatekeeper) : par defaut avec un Developer ID,
-# NOTARISER=0 la coupe ; NOTARISER=1 l'impose. PROFIL_NOTARISATION : le profil que notarytool store-credentials a
-# range dans le trousseau (par defaut ptzbot-notarisation).
+# Depuis la 1.0.7 (decision de Djoko du 12/10/2026), une version publiee est signee par son Developer ID et notarisee :
+# IDENTITE_SIGNATURE vaut « Developer ID Application » (l'unique identite de ce nom dans le trousseau, trouvee par
+# son prefixe ; zero ou plusieurs : refus) et NOTARISER vaut 1, par defaut. Le nom complet de l'identite porte le nom
+# legal de la personne et son identifiant d'equipe : il figure dans la signature des versions publiees et nulle part
+# ailleurs (ni depot, ni commits, ni notes, ni flux, ni journaux affiches).
+# Le cliquet : hors --repetition, toute autre identite et tout NOTARISER different de 1 sont refuses ici ; la
+# repetition seule peut signer autrement (IDENTITE_SIGNATURE, NOTARISER=0). PROFIL_NOTARISATION : le profil que
+# notarytool store-credentials a range dans le trousseau (par defaut djoko-notarisation, le profil commun a toutes
+# les apps de Djoko).
 # Produits : mac/app/build/publication/X.Y.Z/ ; compilation dans DD (par defaut DerivedData/ptzbot-publication).
 set -eu
 cd "$(dirname "$0")/../mac/app"
-# L'identite de signature de la version publiee : IDENTITE_SIGNATURE si elle est donnee (le certificat auto-signe
-# « Djoko-cli Code Signing » marche encore, sans notarisation), sinon publication.py prend l'unique Developer ID du
-# trousseau. Les compilations de travail et les tests restent ad hoc.
-PROFIL_NOTARISATION=${PROFIL_NOTARISATION:-ptzbot-notarisation}
-export PROFIL_NOTARISATION
+# L'identite de signature de la version publiee, a ce seul endroit : le Developer ID, generique ; publication.py
+# prend l'unique Developer ID du trousseau (son nom complet n'est ecrit nulle part ici). Les compilations de travail
+# et les tests restent ad hoc.
+IDENTITE_SIGNATURE=${IDENTITE_SIGNATURE:-Developer ID Application}
+NOTARISER=${NOTARISER:-1}
+PROFIL_NOTARISATION=${PROFIL_NOTARISATION:-djoko-notarisation}
+export NOTARISER PROFIL_NOTARISATION
+# Le cliquet : hors repetition, jamais d'autre signature (un retour au certificat auto-signe ramenerait l'alerte
+# « l'app differe » de macOS et le blocage de Gatekeeper).
+repetition=0
+for x in "$@"; do
+  case $x in --repetition|--repetition=*) repetition=1;; esac
+done
+if [ $repetition = 0 ] && { [ "$IDENTITE_SIGNATURE" != "Developer ID Application" ] || [ "$NOTARISER" != 1 ]; }; then
+  echo "publier.sh : une version publiee est signee par le Developer ID et notarisee (IDENTITE_SIGNATURE, NOTARISER)" >&2
+  exit 1
+fi
+# publication.py cherche lui-meme l'identite generique par son prefixe ; un nom donne (repetition) lui est passe.
+if [ "$IDENTITE_SIGNATURE" != "Developer ID Application" ]; then
+  set -- "$@" --identite "$IDENTITE_SIGNATURE"
+fi
 DD=${DD:-$HOME/Library/Developer/Xcode/DerivedData/ptzbot-publication}
 export DD
 if [ -z "${SPARKLE_BIN:-}" ]; then
@@ -36,7 +55,7 @@ if [ -z "${SPARKLE_BIN:-}" ]; then
   SPARKLE_BIN="$DD/SourcePackages/artifacts/sparkle/Sparkle/bin"
 fi
 export SPARKLE_BIN
-exec /usr/bin/python3 ../../outils/publication.py publier "$@" ${IDENTITE_SIGNATURE:+--identite "$IDENTITE_SIGNATURE"} \
+exec /usr/bin/python3 ../../outils/publication.py publier "$@" \
   --auteur Djoko-cli --etiquette ptzbot-v --flux appcast.xml --licence ../../outils/Sparkle-LICENSE.txt \
   --notes ../../NOTES-VERSIONS.md --sans-bac-a-sable \
   --nom-app PTZBot --fichier PTZBot --depot-github Djoko-cli/obsbot-nacelle \
