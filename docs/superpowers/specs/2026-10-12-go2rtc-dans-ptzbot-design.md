@@ -282,6 +282,10 @@ Le [plan](../plans/2026-10-12-go2rtc-dans-ptzbot.md) précise la spec sur ces po
 - **Délais d'arrêt (§ 3.3).** Le gardien reçoit `--arret 10` : il laisse 10 s à go2rtc entre SIGTERM et SIGKILL. Le
   superviseur n'envoie SIGKILL au gardien lui-même qu'à 15 s, et « Quitter » attend 16 s au plus (6 s sans go2rtc).
   Le gardien rend la fin de go2rtc : son code de sortie, ou le même signal.
+- **Ffmpeg à la sortie de go2rtc (§ 3.2, § 3.3).** Rien ne garantit que go2rtc arrête ses ffmpeg en sortant : le gardien lance
+  go2rtc dans son propre groupe de processus ; une fois go2rtc sorti, le groupe et les enfants que go2rtc avait juste avant
+  son premier signal d'arrêt (relevés par libproc, reconnus par leur heure de démarrage) reçoivent SIGTERM, jamais SIGKILL,
+  et le gardien les attend 5 s au plus avant de rendre le code de go2rtc.
 - **Noms des appareils (§ 3.6).** go2rtc découpe la commande d'ffmpeg sans échappement (`shell.QuoteSplit`) et coupe
   la source au premier `#`. Un nom est donc écrit entre guillemets doubles, ou simples s'il contient un guillemet
   double ; un nom avec les deux sortes de guillemets, un `#` ou un caractère de contrôle est refusé, avec un message.
@@ -293,7 +297,10 @@ Le [plan](../plans/2026-10-12-go2rtc-dans-ptzbot.md) précise la spec sur ces po
   vide est refusé (le flux serait ouvert à tout le réseau local). Les ports vont de 1024 à 65535, tous différents.
 - **Modèle (§ 4).** `#timeout=30s` est gardé tel quel, comme dans le pipeline en service, bien que go2rtc 1.9.14 lise
   `starttimeout` (30 s par défaut) : aucun changement de comportement.
-- **Pannes (§ 5).** Les ports vérifiés : RTSP en TCP, WebRTC en TCP et en UDP, l'API sur 127.0.0.1:1984. Le refus
+- **Pannes (§ 5).** Les ports vérifiés : RTSP en TCP, WebRTC en TCP et en UDP, l'API sur 127.0.0.1:1984. La sonde ouvre ses
+  sockets avec `SO_REUSEADDR` (comme go2rtc : les connexions en TIME_WAIT, 30 s après sa sortie, ne comptent pas) et essaie
+  aussi 127.0.0.1 ; un port vu pris au lancement est réessayé toutes les secondes pendant 5 s avant l'échec « port déjà
+  utilisé ». Le refus
   d'accès est repéré dans `go2rtc.log` (lignes d'erreur de go2rtc qui citent avfoundation ou exec avec « not
   authorized », « denied » ou « Failed to create AV capture input device ») ; l'essai de la tâche 0 n'a produit aucun
   refus réel (§ 12), donc aucune ligne réelle : elle se relève au banc, et sans ligne reconnaissable l'état retombe sur
