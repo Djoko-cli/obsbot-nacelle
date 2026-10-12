@@ -180,6 +180,55 @@ struct TalkbackTests {
         #expect(model.status == .disabled)
     }
 
+    // Banc du 12/10 : l'agent classique garde le label de l'ancien ; BTM le fond dans la fiche de l'ancien agent
+    // SMAppService, qui se dit alors encore inscrit (« Autorisation requise » après une extinction). La migration ne
+    // doit jamais repartir une fois l'agent classique apparu.
+
+    @Test("Agent classique déjà en place : jamais de migration, même si SMAppService dit l'ancien agent inscrit ; la migration est retenue faite")
+    func noMigrationOnceClassicAgentExists() async {
+        service.agentState = .installed
+        service.hasLegacyRegistration = true
+        service.legacyRequiresApproval = true
+        settings.strings[TalkbackModel.agentBuildKey] = "7"
+        await model.prepareAtLaunch()
+        #expect(!service.calls.contains("unregisterLegacy"))
+        #expect(service.calls == ["reconcile(restart: false)"])
+        #expect(settings.values[TalkbackModel.migrationDoneKey] == true)
+        #expect(model.lastError == nil)
+    }
+
+    @Test("Migration faite puis Talkback éteint (plus de plist) : toujours pas de migration au lancement suivant")
+    func noMigrationAfterDisableOnceDone() async {
+        settings.values[TalkbackModel.migrationDoneKey] = true
+        service.hasLegacyRegistration = true
+        service.legacyRequiresApproval = true
+        await model.prepareAtLaunch()
+        #expect(service.calls == [])
+        #expect(model.lastError == nil)
+        #expect(model.status == .disabled)
+    }
+
+    @Test("Migration réussie : retenue faite ; refusée : pas retenue, elle repart au lancement suivant")
+    func migrationDoneRemembered() async {
+        service.hasLegacyRegistration = true
+        await model.prepareAtLaunch()
+        #expect(service.calls == ["unregisterLegacy", "enable"])
+        #expect(settings.values[TalkbackModel.migrationDoneKey] == true)
+        let other = FakeSettings()
+        let refused = FakeTalkbackService()
+        refused.hasLegacyRegistration = true
+        refused.unregisterLegacyFailure = Refused()
+        let second = TalkbackModel(service: refused, state: state, process: process, scheduler: scheduler, settings: other, bundleVersion: "7")
+        await second.prepareAtLaunch()
+        #expect(other.values[TalkbackModel.migrationDoneKey] == nil)
+    }
+
+    @Test("Allumer par l'interrupteur retient la migration faite (l'agent classique existe désormais)")
+    func enableRemembersMigrationDone() async {
+        await toggle(true)
+        #expect(settings.values[TalkbackModel.migrationDoneKey] == true)
+    }
+
     @Test("Migration, installation refusée après la désinscription : erreur affichée, numéro non retenu")
     func migrationInstallRefused() async {
         service.hasLegacyRegistration = true
@@ -242,7 +291,7 @@ struct TalkbackTests {
     func migrationKeptPlist() async {
         service.hasLegacyRegistration = true
         service.enableFailure = Refused()
-        service.agentState = .installed
+        service.stateAfterFailedEnable = .installed
         await model.prepareAtLaunch()
         #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
         #expect(model.lastError == "Talkback impossible : refusé")

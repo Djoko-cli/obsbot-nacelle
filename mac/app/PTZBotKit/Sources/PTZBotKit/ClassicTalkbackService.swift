@@ -79,8 +79,16 @@ public final class ClassicTalkbackService: TalkbackService {
     }
 
     public nonisolated func unregisterLegacy() async throws {
-        try await registry.unregisterAndWait()
+        do {
+            try await registry.unregisterAndWait()
+        } catch let error as NSError where error.code == Self.foreignJobErrorCode {
+            // Le job de ce label a été chargé par `launchctl` (l'agent classique), pas par SMAppService : il n'y a plus
+            // d'ancien agent à désinscrire (banc du 12/10).
+        }
     }
+
+    /// launchd refuse à SMAppService de retirer un job qu'il n'a pas créé : « Requestor lacks required entitlement ».
+    nonisolated static let foreignJobErrorCode = 144
 
     public nonisolated func reconcile(restart: Bool) async throws {
         let agent = agent

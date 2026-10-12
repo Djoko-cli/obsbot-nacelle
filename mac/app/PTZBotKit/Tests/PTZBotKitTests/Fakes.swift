@@ -205,6 +205,8 @@ final class FakeTalkbackService: TalkbackService {
     /// L'état de l'agent après un `enable()` réussi.
     var stateAfterEnable: TalkbackAgentState = .installed
     var enableFailure: (any Error)?
+    /// L'état de la plist après un `enable` qui échoue (nil : inchangé).
+    var stateAfterFailedEnable: TalkbackAgentState?
     var disableFailure: (any Error)?
     var unregisterLegacyFailure: (any Error)?
     var reconcileFailure: (any Error)?
@@ -236,7 +238,11 @@ final class FakeTalkbackService: TalkbackService {
     private func enableOnMain(calledOnMainThread: Bool) async throws {
         record("enable", onMain: calledOnMainThread)
         await enableGate.wait()
-        if let enableFailure { throw enableFailure }
+        if let enableFailure {
+            // Un échec qui laisse malgré tout une plist en place.
+            if let stateAfterFailedEnable { agentState = stateAfterFailedEnable }
+            throw enableFailure
+        }
         agentState = stateAfterEnable
     }
 

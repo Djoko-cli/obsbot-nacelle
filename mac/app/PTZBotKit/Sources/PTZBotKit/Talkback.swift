@@ -202,6 +202,11 @@ public final class TalkbackModel {
     /// L'installation à retenter au lancement suivant : la migration a désinscrit l'ancien agent mais l'installation du
     /// nouveau a échoué, il ne reste ni l'un ni l'autre. Une seule intention : « enable » (Talkback était allumé).
     public static let pendingInstallKey = "talkbackPendingInstall"
+    /// La migration depuis la 1.0.4 est faite, ou n'a plus lieu d'être : l'agent classique a existé au moins une fois.
+    /// Retenu pour de bon (banc du 12/10) : l'agent classique garde le label de l'ancien, et BTM le fond dans la fiche de
+    /// l'ancien agent SMAppService, qui se dit alors encore inscrit. Sans ce réglage, chaque lancement relancerait la
+    /// migration, et macOS refuserait la désinscription d'un job chargé par `launchctl` (erreur 144).
+    public static let migrationDoneKey = "talkbackClassicAgentMigrated"
     private static let pendingEnable = "enable"
 
     public init(
@@ -300,6 +305,7 @@ public final class TalkbackModel {
             if enabled {
                 try await service.enable()
                 settings.set(bundleVersion, forKey: Self.agentBuildKey)
+                settings.set(true, forKey: Self.migrationDoneKey)
             } else {
                 try await service.disable()
                 settings.set(nil as String?, forKey: Self.agentBuildKey)
@@ -344,7 +350,11 @@ public final class TalkbackModel {
         // réécriture de la plist, ni redémarrage, ni numéro retenu. L'installation en place reste telle qu'elle est.
         guard service.installBlocker == nil else { return }
         settings.set(nil as String?, forKey: Self.obsoleteRegisteredBuildKey)
-        let migrating = service.hasLegacyRegistration
+        // Une plist classique en place : la migration est faite, quoi que dise SMAppService de l'ancien agent.
+        if service.agentState != .absent {
+            settings.set(true, forKey: Self.migrationDoneKey)
+        }
+        let migrating = settings.bool(forKey: Self.migrationDoneKey) != true && service.hasLegacyRegistration
         let pending = settings.string(forKey: Self.pendingInstallKey)
         // Une installation retenue ne se retente que si rien n'est installé ; sinon la plist en place passe d'abord.
         let retrying = !migrating && pending != nil && service.agentState == .absent
@@ -366,6 +376,7 @@ public final class TalkbackModel {
                     try await service.enable()
                     settings.set(bundleVersion, forKey: Self.agentBuildKey)
                 }
+                settings.set(true, forKey: Self.migrationDoneKey)
             } else if retrying {
                 try await service.enable()
                 settings.set(bundleVersion, forKey: Self.agentBuildKey)

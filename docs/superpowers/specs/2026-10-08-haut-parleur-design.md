@@ -362,3 +362,25 @@ Relecture du prototype (12/10), défaut B1. Une app **translocalisée** par Gate
 ### 15.9 Agent à jour mais pas chargé
 
 Relecture du prototype (12/10), défaut I1. Si la plist est à jour mais que l'agent n'est pas chargé (un lancement précédent a échoué au `bootstrap`, ou `launchctl bootout` à la main), `reconcile` fait un `bootstrap` ; le `kickstart -k` (nouveau numéro de compilation) n'est fait que si l'agent est chargé. Auparavant, le `kickstart` échouait à chaque lancement sur un service absent. Si l'élément est coupé par l'utilisateur, le `bootstrap` échoue sans dommage et l'erreur est effacée parce que l'état est « Autorisation requise ».
+
+### Banc du 12/10 (première installation, 1.0.5) : migration relancée à tort
+
+- **Banc de première installation réussi** :
+  - app téléchargée par Safari (en quarantaine) puis installée dans Applications : Talkback s'allume, et talkd tourne
+    malgré la quarantaine ;
+  - app lancée depuis le DMG monté ou depuis Téléchargements : macOS la translocalise. Allumer est refusé avec le
+    message prévu, et ni la plist ni talkd ne sont touchés.
+- **Défaut trouvé** :
+  - l'agent classique garde le label de l'ancien agent `SMAppService`. À la migration, BTM l'a fondu dans la fiche de
+    l'ancien (`sfltool dumpbtm` : une seule fiche « agent », rattachée à PTZBot, d'où son nom dans Réglages ›
+    Ouverture) ;
+  - après une extinction, cette fiche passe à « désactivée », et `SMAppService.agent(plistName:)` répond
+    `.requiresApproval` ;
+  - chaque lancement relançait alors la migration, et la désinscription échouait (launchd refuse à `SMAppService` de
+    retirer un job chargé par `launchctl` : erreur 144, « Requestor lacks required entitlement »). Le panneau affichait
+    l'erreur à chaque ouverture, alors que talkd tournait normalement.
+- **Correctif (1.0.6), sans changer de label** :
+  - le réglage `talkbackClassicAgentMigrated` retient pour de bon que la migration est faite. Il est posé dès que la
+    plist classique existe au lancement, après une migration réussie, ou quand on allume par l'interrupteur ;
+  - une fois posé, `SMAppService` n'est plus jamais consulté ;
+  - l'erreur 144 d'une désinscription est ignorée : il n'y a alors plus d'ancien agent à retirer.

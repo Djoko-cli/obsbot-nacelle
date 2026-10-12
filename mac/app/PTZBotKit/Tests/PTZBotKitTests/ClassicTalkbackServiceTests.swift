@@ -14,6 +14,8 @@ final class FakeSMRegistry: SMAgentRegistry {
         var registered: SMAppService.Status = .notFound
         var plistStatus: SMAppService.Status = .notRegistered
         var unregisterFails = false
+        /// Une erreur précise à lever à la désinscription (code de launchd).
+        var unregisterError: NSError?
         var unregisters = 0
     }
 
@@ -27,6 +29,7 @@ final class FakeSMRegistry: SMAgentRegistry {
         try state.withLock { state in
             state.unregisters += 1
             if state.unregisterFails { throw Failure() }
+            if let error = state.unregisterError { throw error }
             state.registered = .notRegistered
         }
     }
@@ -126,6 +129,15 @@ struct ClassicTalkbackServiceTests {
         await #expect(throws: ClassicAgentError.transientLocation) { try await blocked.enable() }
         #expect(!FileManager.default.fileExists(atPath: plistURL.path))
         #expect(calls() == [])
+    }
+
+    @Test("Désinscrire l'ancien agent : l'erreur 144 de launchd (job chargé par launchctl, pas par SMAppService) est ignorée")
+    func unregisterLegacyIgnoresForeignJob() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        registry.state.withLock { $0.registered = .requiresApproval; $0.unregisterError = NSError(domain: "SMAppServiceErrorDomain", code: 144) }
+        try await service.unregisterLegacy()
+        registry.state.withLock { $0.unregisterError = NSError(domain: "SMAppServiceErrorDomain", code: 1) }
+        await #expect(throws: NSError.self) { try await service.unregisterLegacy() }
     }
 
     @Test("Désinscrire l'ancien agent passe par ServiceManagement ; un refus remonte")
