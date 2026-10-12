@@ -6,6 +6,22 @@ release and to the update window.
 PTZBot pour Mac. Chaque section a un bloc **English**, puis un bloc **Français** ; les mêmes notes servent à la
 version GitHub et à la fenêtre de mise à jour.
 
+## 1.0.7
+
+**English**
+
+- PTZBot is now signed with an Apple Developer ID and notarized by Apple: macOS no longer warns about an unidentified
+  developer when you first open it. After this update, macOS may ask again for access to the local network, and you may
+  need to turn "Open at login" on again.
+- Talkback: an update no longer turns Talkback on by itself when you had turned it off.
+
+**Français**
+
+- PTZBot est désormais signé avec un Developer ID d'Apple et notarisé par Apple : macOS ne signale plus de développeur
+  non identifié à la première ouverture. Après cette mise à jour, macOS peut redemander l'accès au réseau local, et il
+  faudra peut-être réactiver « Ouvrir à la connexion ».
+- Talkback : une mise à jour ne rallume plus Talkback de lui-même quand vous l'aviez éteint.
+
 ## 1.0.6
 
 **English**
