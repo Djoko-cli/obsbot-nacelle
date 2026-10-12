@@ -731,6 +731,40 @@
           }
         }
       }
+    },
+    "Copier la commande de réparation": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy the repair command"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copier la commande de réparation"
+          }
+        }
+      }
+    },
+    "Ouvrir le journal de go2rtc": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the go2rtc log"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir le journal de go2rtc"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

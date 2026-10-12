@@ -2,13 +2,15 @@ import NacelleProtocol
 import PTZBotKit
 import SwiftUI
 
-/// Le panneau sous l'icône (spec app Mac § 8.1, maquette B).
+/// Le panneau sous l'icône (spec app Mac § 8.1, maquette B ; spec B3 § 6.1 : go2rtc et les pastilles).
 struct PanelView: View {
     let model: PanelModel
     let talkback: TalkbackModel
     let settings: SettingsModel
     let app: AppController
     let network: LocalNetworkState
+    let go2rtc: Go2RTCSupervisor
+    let go2rtcMonitor: Go2RTCMonitor
     @Environment(\.openWindow) private var openWindow
 
     private var supervisor: ServiceSupervisor {
@@ -68,9 +70,12 @@ struct PanelView: View {
             // L'état de Talkback (« En lecture ») est relu dès que talkd réécrit son fichier, et chaque seconde en secours, tant
             // que le panneau est ouvert.
             talkback.beginWatching()
+            // Les clients de go2rtc et ses alertes, toutes les 2 s, seulement panneau ouvert (spec B3 § 5).
+            go2rtcMonitor.beginWatching()
         }
         .onDisappear {
             talkback.endWatching()
+            go2rtcMonitor.endWatching()
         }
     }
 
@@ -93,15 +98,19 @@ struct PanelView: View {
 
     private var serviceSection: some View {
         PanelSection(Labels.serviceSection) {
+            let ptzd = Labels.ptzdIndicator(supervisor.state, connection: model.service, legacy: legacy)
             PanelRow(icon: "server.rack", title: AppText.text("Service ptzd")) {
-                Toggle(AppText.text("Service ptzd"), isOn: Binding(get: { supervisor.isEnabled }, set: { supervisor.setEnabled($0) }))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .disabled(app.legacy != .none)
+                HStack(spacing: 8) {
+                    StatusDot(tone: ptzd.tone)
+                    Toggle(AppText.text("Service ptzd"), isOn: Binding(get: { supervisor.isEnabled }, set: { supervisor.setEnabled($0) }))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .disabled(app.legacy != .none)
+                }
             } notes: {
-                if case let .failed(reason) = supervisor.state {
-                    PanelNote(reason, color: .red)
+                if let line = ptzd.line {
+                    PanelNote(line, color: ptzd.tone.color)
                 }
                 if Labels.showsLog(supervisor.state, connection: model.service) {
                     Button(AppText.text("Ouvrir le journal de ptzd")) {
@@ -128,16 +137,24 @@ struct PanelView: View {
                 }
             }
             Divider()
+            go2rtcRow
+            Divider()
             // Talkback : le retour audio de la caméra vers les haut-parleurs du Mac. Indépendant de ptzd : l'agent
             // tourne aussi quand PTZBot est fermé, d'où ni grisé avec le service ni arrêté par « Quitter ».
+            let talkbackIndicator = Labels.talkbackIndicator(talkback.status)
             PanelRow(icon: "speaker.wave.2", title: AppText.text("Talkback")) {
-                Toggle(AppText.text("Talkback"), isOn: Binding(get: { talkback.isEnabled }, set: { talkback.setEnabled($0) }))
-                    .labelsHidden()
-                    .disabled(talkback.isPreparing || talkback.isBusy)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
+                HStack(spacing: 8) {
+                    StatusDot(tone: talkbackIndicator.tone)
+                    Toggle(AppText.text("Talkback"), isOn: Binding(get: { talkback.isEnabled }, set: { talkback.setEnabled($0) }))
+                        .labelsHidden()
+                        .disabled(talkback.isPreparing || talkback.isBusy)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                }
             } notes: {
-                PanelNote(Labels.talkbackStatus(talkback.status), color: talkback.needsAttention ? .orange : nil)
+                if let line = talkbackIndicator.line {
+                    PanelNote(line, color: talkbackIndicator.tone.color)
+                }
                 if talkback.status == .requiresApproval {
                     Button(Labels.talkbackApproval) {
                         talkback.openSystemSettings()
@@ -152,11 +169,17 @@ struct PanelView: View {
             Divider()
             // À droite, l'état court seulement ; l'explication et le bouton vont dessous, sur toute la largeur
             // (banc du 08/10 : un état long débordait sur six lignes et tronquait le bouton).
+            let sdk = Labels.sdkIndicator(app.sdkStatus)
             PanelRow(icon: "shippingbox", title: AppText.text("SDK OBSBOT")) {
-                Text(Labels.sdk(app.sdkStatus))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .fixedSize()
+                HStack(spacing: 8) {
+                    if let line = sdk.line {
+                        Text(line)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                    StatusDot(tone: sdk.tone)
+                }
             } notes: {
                 let tools = app.toolsAvailable ?? true
                 if let detail = Labels.sdkDetail(app.sdkStatus, toolsAvailable: tools) {
@@ -175,6 +198,52 @@ struct PanelView: View {
                 }
             }
         }
+    }
+
+    // MARK: - go2rtc
+
+    /// go2rtc, juste après ptzd (spec B3 § 6.1) : interrupteur, pastille, ligne d'état hors état normal, et le détail
+    /// des clients au survol.
+    private var go2rtcRow: some View {
+        let indicator = Labels.go2rtcIndicator(go2rtc.state, isEnabled: go2rtc.isEnabled, usesCustomFile: go2rtc.usesCustomFile,
+                                               health: go2rtcMonitor.health)
+        return PanelRow(icon: "video", title: "go2rtc") {
+            HStack(spacing: 8) {
+                StatusDot(tone: indicator.tone)
+                Toggle(isOn: Binding(get: { go2rtc.isEnabled }, set: { go2rtc.setEnabled($0) })) {
+                    Text(verbatim: "go2rtc")
+                }
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            }
+        } notes: {
+            if let line = indicator.line {
+                PanelNote(line, color: indicator.tone.color)
+            }
+            if go2rtcMonitor.health.coreAudioStuck {
+                Button(AppText.text("Copier la commande de réparation")) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(CoreAudioDetector.repairCommand, forType: .string)
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            } else if go2rtcMonitor.health.accessDenied {
+                Button(AppText.text("Ouvrir les réglages de confidentialité")) {
+                    PrivacySettings.openCamera()
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            }
+            if case .failed = go2rtc.state {
+                Button(AppText.text("Ouvrir le journal de go2rtc")) {
+                    LogOpener.openGo2RTCLog()
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            }
+        }
+        .help(Labels.go2rtcHelp(go2rtcMonitor.stream) ?? "")
     }
 
     // MARK: - Caméra
@@ -270,8 +339,10 @@ struct PanelView: View {
                 }
                 Spacer()
                 Button(Labels.quit) {
+                    // go2rtc allumé : quitter arrête aussi la caméra HomeKit, ce que la confirmation dit (spec B3 § 3.3).
+                    guard !app.quitStopsCamera || QuitConfirmation.ask() else { return }
                     // Un appairage ouvert est fermé avant de partir ; l'envoi est asynchrone, d'où le court délai.
-                    // La fin de l'app attend ensuite l'arrêt de ptzd, 6 s au plus (AppDelegate).
+                    // La fin de l'app attend ensuite l'arrêt de ptzd et de go2rtc, 16 s au plus (AppDelegate).
                     // Par la boucle d'exécution, jamais depuis un bloc de la file principale : voir
                     // AppDelegate.applicationShouldTerminate.
                     model.closePairing()
@@ -360,6 +431,30 @@ private struct PanelRow<Trailing: View, Notes: View>: View {
     }
 }
 
+/// La pastille d'un service : verte à l'état normal, grise, orange ou rouge sinon (spec B3 § 6.1).
+private struct StatusDot: View {
+    let tone: ServiceIndicator.Tone
+
+    var body: some View {
+        Circle()
+            .fill(tone.color ?? .secondary)
+            .frame(width: 8, height: 8)
+            .accessibilityHidden(true)
+    }
+}
+
+extension ServiceIndicator.Tone {
+    /// La couleur de la pastille et de la ligne d'état ; nil : le gris discret des notes.
+    var color: Color? {
+        switch self {
+        case .normal: .green
+        case .neutral: nil
+        case .attention: .orange
+        case .failure: .red
+        }
+    }
+}
+
 /// Un petit message sous une ligne ou une section, déjà traduit.
 private struct PanelNote: View {
     let text: String
@@ -378,13 +473,33 @@ private struct PanelNote: View {
     }
 }
 
-/// Ouvre le journal de ptzd dans Console.
+/// Ouvre le journal de ptzd ou de go2rtc dans Console.
 enum LogOpener {
     static let logURL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/obsbot-nacelle/ptzd.log")
 
     @MainActor
     static func openPTZDLog() {
+        open(logURL)
+    }
+
+    @MainActor
+    static func openGo2RTCLog() {
+        open(AppPaths.system().go2rtcLog)
+    }
+
+    @MainActor
+    private static func open(_ url: URL) {
         let console = URL(fileURLWithPath: "/System/Applications/Utilities/Console.app")
-        NSWorkspace.shared.open([logURL], withApplicationAt: console, configuration: NSWorkspace.OpenConfiguration())
+        NSWorkspace.shared.open([url], withApplicationAt: console, configuration: NSWorkspace.OpenConfiguration())
+    }
+}
+
+/// Réglages › Confidentialité et sécurité › Caméra : un refus d'accès s'y corrige (spec B3 § 5).
+enum PrivacySettings {
+    @MainActor
+    static func openCamera() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera") {
+            NSWorkspace.shared.open(url)
+        }
     }
 }

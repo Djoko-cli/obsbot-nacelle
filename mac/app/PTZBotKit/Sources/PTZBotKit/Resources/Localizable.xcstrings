@@ -2584,6 +2584,312 @@
           }
         }
       }
+    },
+    "ffmpeg introuvable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ffmpeg not found"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ffmpeg introuvable"
+          }
+        }
+      }
+    },
+    "Caméra OBSBOT absente": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OBSBOT camera not found"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caméra OBSBOT absente"
+          }
+        }
+      }
+    },
+    "Micro OBSBOT absent": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OBSBOT microphone not found"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Micro OBSBOT absent"
+          }
+        }
+      }
+    },
+    "Port %@ déjà utilisé : un autre go2rtc tourne-t-il ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port %@ already in use: is another go2rtc running?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port %@ déjà utilisé : un autre go2rtc tourne-t-il ?"
+          }
+        }
+      }
+    },
+    "Fichier de configuration personnalisé introuvable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom configuration file not found"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fichier de configuration personnalisé introuvable"
+          }
+        }
+      }
+    },
+    "go2rtc.yaml n'a pas pu être écrit : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc.yaml could not be written: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc.yaml n'a pas pu être écrit : %@"
+          }
+        }
+      }
+    },
+    "go2rtc s'arrête sans cesse : ouvrez le journal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc keeps stopping: open the log"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc s'arrête sans cesse : ouvrez le journal"
+          }
+        }
+      }
+    },
+    "go2rtc n'a pas pu être lancé : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc could not be started: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc n'a pas pu être lancé : %@"
+          }
+        }
+      }
+    },
+    "go2rtc manque dans PTZBot : réinstallez PTZBot": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc is missing from PTZBot: reinstall PTZBot"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc manque dans PTZBot : réinstallez PTZBot"
+          }
+        }
+      }
+    },
+    "go2rtc ne s'arrête pas : ouvrez le journal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc does not stop: open the log"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc ne s'arrête pas : ouvrez le journal"
+          }
+        }
+      }
+    },
+    "Aucun client": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No clients"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun client"
+          }
+        }
+      }
+    },
+    "1 client · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 client · %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 client · %@"
+          }
+        }
+      }
+    },
+    "%lld clients · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld clients · %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld clients · %@"
+          }
+        }
+      }
+    },
+    "autre": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "other"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "autre"
+          }
+        }
+      }
+    },
+    "coreaudiod ne répond pas : la caméra est bloquée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "coreaudiod is not responding: the camera is stuck"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "coreaudiod ne répond pas : la caméra est bloquée"
+          }
+        }
+      }
+    },
+    "Accès à la caméra refusé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera access denied"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accès à la caméra refusé"
+          }
+        }
+      }
+    },
+    "Fichier de configuration personnalisé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom configuration file"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fichier de configuration personnalisé"
+          }
+        }
+      }
+    },
+    "Quitter PTZBot arrête aussi la caméra HomeKit.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitting PTZBot also stops the HomeKit camera."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitter PTZBot arrête aussi la caméra HomeKit."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

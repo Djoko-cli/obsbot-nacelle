@@ -1,16 +1,17 @@
 import PTZBotKit
 import SwiftUI
 
-/// PTZBot pour Mac (spec app Mac, spec ptzd dans l'app, spec distribution) : une icône dans la barre des menus,
-/// un panneau, quatre fenêtres, ptzd lancé comme processus enfant, Talkback (l'agent talkd, indépendant de l'app) et les
-/// mises à jour par Sparkle.
+/// PTZBot pour Mac (spec app Mac, spec ptzd dans l'app, spec distribution, spec B3) : une icône dans la barre des menus,
+/// un panneau, quatre fenêtres, ptzd et go2rtc lancés comme processus enfants, Talkback (l'agent talkd, indépendant de
+/// l'app) et les mises à jour par Sparkle.
 @main
 struct PTZBotApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
         MenuBarExtra {
-            PanelView(model: delegate.panel, talkback: delegate.talkback, settings: delegate.settings, app: delegate.controller, network: delegate.network)
+            PanelView(model: delegate.panel, talkback: delegate.talkback, settings: delegate.settings, app: delegate.controller,
+                      network: delegate.network, go2rtc: delegate.go2rtc, go2rtcMonitor: delegate.go2rtcMonitor)
                 .followsLanguage(delegate.language)
         } label: {
             Image(nsImage: MenuBarIcon.image())
@@ -49,7 +50,7 @@ struct PTZBotApp: App {
     }
 }
 
-/// Les modèles de l'app, créés une fois ; « Quitter » (et toute fin de l'app) attend l'arrêt de ptzd.
+/// Les modèles de l'app, créés une fois ; « Quitter » (et toute fin de l'app) attend l'arrêt de ptzd et de go2rtc.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// La langue choisie dans les Réglages, appliquée avant tout autre texte.
@@ -61,6 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let controller: AppController
     let sdkWindow: SDKWindowModel
     let network: LocalNetworkState
+    /// go2rtc, processus enfant de l'app (spec B3), et sa surveillance.
+    let go2rtc: Go2RTCSupervisor
+    let go2rtcMonitor: Go2RTCMonitor
     private var started = false
 
     override init() {
@@ -76,8 +80,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fileObserver: DispatchFileChangeObserver(url: paths.talkbackState)
         )
         let installer = SDKInstaller.system(paths: paths)
+        let preparer = Go2RTCPreparer.system(paths: paths)
+        go2rtc = .system(paths: paths, preparer: preparer, scheduler: scheduler)
+        go2rtcMonitor = .system(supervisor: go2rtc, paths: paths, scheduler: scheduler)
         controller = AppController(
             supervisor: .system(paths: paths.service, scheduler: scheduler),
+            go2rtc: go2rtc,
             legacyAgent: .system(supportDirectory: paths.support),
             configURL: paths.config,
             interfaces: SystemInterfaceAddresses(),
@@ -120,10 +128,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             talkback.refresh()
         }
         network.check()
+        go2rtcMonitor.start()
         Task { await controller.launch() }
     }
 
-    /// Attend l'arrêt de ptzd (6 s au plus), puis répond. C'est aussi le chemin d'une mise à jour : Sparkle demande
+    /// Attend l'arrêt de ptzd et de go2rtc (6 s au plus, 16 s avec go2rtc), puis répond. C'est aussi le chemin d'une mise à jour : Sparkle demande
     /// à l'app de quitter (événement Apple « quitter ») avant de la remplacer (voir `SparkleUpdater`).
     ///
     /// Ne jamais appeler `NSApp.terminate` depuis un bloc de la file principale (`DispatchQueue.main.async`,
@@ -177,6 +186,19 @@ enum MigrationAlert {
         alert.messageText = Labels.migrationMessage
         alert.addButton(withTitle: Labels.migrationReplace)
         alert.addButton(withTitle: Labels.migrationLater)
+        NSApp.activate()
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+}
+
+/// La confirmation de « Quitter » quand go2rtc est allumé (spec B3 § 3.3).
+enum QuitConfirmation {
+    @MainActor
+    static func ask() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = Labels.quitStopsCamera
+        alert.addButton(withTitle: Labels.quit)
+        alert.addButton(withTitle: AppText.text("Annuler"))
         NSApp.activate()
         return alert.runModal() == .alertFirstButtonReturn
     }
