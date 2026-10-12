@@ -468,11 +468,19 @@ struct TalkbackTests {
         #expect(model.status == .failed(.socket))
     }
 
-    @Test("Inscrit mais talkd absent pendant plus de 15 s (depuis le premier Démarrage…) : talkd ne démarre pas")
+    /// Laisse passer la relance automatique (talkd absent au bout de 4 s) jusqu'à sa fin.
+    private func passRetry() async {
+        scheduler.advance(by: TalkbackModel.launchCheckDelay)
+        await model.waitForOperation()
+    }
+
+    @Test("Inscrit mais talkd absent pendant plus de 15 s (depuis la relance automatique) : talkd ne démarre pas")
     func notRunning() async {
         await toggle(true)
         #expect(model.status == .starting)
         #expect(!model.needsAttention)
+        await passRetry()
+        #expect(model.status == .starting)
         scheduler.advance(by: 14)
         model.refresh()
         #expect(model.status == .starting)
@@ -490,6 +498,7 @@ struct TalkbackTests {
         settings.strings[TalkbackModel.registeredBuildKey] = "6"
         await model.reregisterIfUpdated()
         #expect(model.lastError == nil)
+        await passRetry()
         model.beginWatching()
         scheduler.advance(by: 14)
         #expect(model.status == .starting)
@@ -503,6 +512,7 @@ struct TalkbackTests {
     @Test("F4 : pas de réinscription dans ce lancement : talkd absent donne « ne démarre pas », sans l'avis")
     func noAdviceWithoutReregistration() async {
         await toggle(true)
+        await passRetry()
         model.beginWatching()
         scheduler.advance(by: 16)
         #expect(model.status == .notRunning)
@@ -515,6 +525,7 @@ struct TalkbackTests {
         service.status = .enabled
         settings.strings[TalkbackModel.registeredBuildKey] = "6"
         await model.reregisterIfUpdated()
+        await passRetry()
         scheduler.advance(by: 16)
         model.refresh()
         #expect(model.status == .notRunning)
@@ -540,6 +551,7 @@ struct TalkbackTests {
     @Test("talkd réécrit son état : retour à Prêt, et le délai de 15 s repart de zéro la fois suivante")
     func backToReady() async {
         await toggle(true)
+        await passRetry()
         scheduler.advance(by: 20)
         model.refresh()
         #expect(model.status == .notRunning)
@@ -572,6 +584,7 @@ struct TalkbackTests {
     @Test("Panneau ouvert : « ne démarre pas » arrive tout seul au bout de 15 s, par le suivi chaque seconde")
     func notRunningWhileWatching() async {
         await toggle(true)
+        await passRetry()
         model.beginWatching()
         scheduler.advance(by: 16)
         #expect(model.status == .notRunning)
@@ -935,6 +948,24 @@ struct TalkbackTests {
         await model.waitForOperation()
         #expect(service.registerCalls == 2)
         #expect(service.status == .enabled)
+    }
+
+    @Test("Relance lente : « Démarrage… » reste affiché au-delà de 15 s, sans « ne démarre pas » ni avis")
+    func slowRetryStaysStarting() async {
+        service.status = .enabled
+        settings.strings[TalkbackModel.registeredBuildKey] = "6"
+        await model.reregisterIfUpdated()
+        service.holdUnregister = true
+        scheduler.advance(by: TalkbackModel.launchCheckDelay)
+        await waitUntil { service.isUnregisterPending }
+        scheduler.advance(by: 20)
+        model.refresh()
+        #expect(model.isReregistering)
+        #expect(model.status == .starting)
+        #expect(model.lastError == nil)
+        service.finishUnregister()
+        await model.waitForOperation()
+        #expect(!model.isReregistering)
     }
 
     @Test("Éteint avant 4 s : aucune relance")

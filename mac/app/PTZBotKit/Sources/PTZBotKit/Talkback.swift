@@ -247,7 +247,8 @@ public final class TalkbackModel {
         if next == .starting {
             let since = startingSince ?? scheduler.now
             startingSince = since
-            status = scheduler.now - since >= Self.startupGrace ? .notRunning : .starting
+            // Pendant une réinscription, toujours « Démarrage… » : l'interrupteur grisé dit déjà qu'on agit.
+            status = !isReregistering && scheduler.now - since >= Self.startupGrace ? .notRunning : .starting
         } else {
             startingSince = nil
             status = next
@@ -428,6 +429,8 @@ public final class TalkbackModel {
         }
         isReregistering = false
         operation = nil
+        // Le délai de 15 s repart de la relance : talkd a besoin d'un instant pour démarrer.
+        startingSince = nil
         refresh()
         clearErrorIfApprovalNeeded()
     }

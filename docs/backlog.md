@@ -42,3 +42,7 @@ Pendant un enregistrement (bouton rec de l'app iOS), ajouter à la vidéo la voi
 ## Pincer pour zoomer sur la vidéo (app iOS)
 
 Un geste de pincement à deux doigts sur la vidéo pour zoomer **l'affichage seul**, sur l'iPhone (décision de Majid le 09/10) : un zoom numérique de la vue, sans ordre à la caméra, donc sans effet sur HomeKit ni sur les enregistrements. Avec un glissement à deux doigts pour se déplacer dans l'image zoomée, et un double tap pour revenir à l'image entière. Sans conflit avec le joystick ni avec le tap du mode épuré.
+
+## Échec périmé dans l'état de talkd (relecture finale du 12/10, M1)
+
+Un `failure` écrit par un ancien talkd (port occupé, puis Talkback éteint) reste dans `talkd-state.json` : aucun talkd ne réécrit le fichier tant que l'agent est désinscrit. Au rallumage, le panneau affiche « Arrêté : le port UDP est déjà utilisé » avant que le nouveau talkd ait démarré, et la relance automatique des 4 s ne se fait pas (elle ne vise que « Démarrage… »). Correction possible : ignorer un état dont `since` précède la dernière inscription, ou effacer le fichier à l'extinction. Cas rare : il faut un port occupé juste avant.
