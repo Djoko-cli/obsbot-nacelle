@@ -111,7 +111,7 @@ Tous sont repris au § 12 de la spec par la tâche 10.
 
 **Prudence :** par défaut, le micro n'est pas essayé (`MICRO` vide). Ouvrir le micro OBSBOT ajoute un client CoreAudio pendant que le go2rtc en service tourne, et coreaudiod se bloque parfois sous macOS 27. Pour l'essayer : `MICRO="OBSBOT Tiny2 Microphone"` (ou un autre micro), au choix de Majid. La caméra est ouverte au même format que le go2rtc en service (1920 × 1080, 30 i/s, nv12) pour ne pas changer le mode de la caméra.
 
-- [ ] **Étape 1 : Enregistrer le script hors du dépôt**
+- [x] **Étape 1 : Enregistrer le script hors du dépôt**
 
 Dans un dossier jetable (par exemple `~/Desktop/essai-b3.sh`), avec ce contenu :
 
@@ -351,7 +351,7 @@ echo "Résultat dans $DOSSIER/resultat.txt :"
 cat "$DOSSIER/resultat.txt"
 ````
 
-- [ ] **Étape 2 : Le lancer (Majid, dans le Terminal)**
+- [x] **Étape 2 : Le lancer (Majid, dans le Terminal)**
 
 ```bash
 chmod +x ~/Desktop/essai-b3.sh && ~/Desktop/essai-b3.sh
@@ -359,7 +359,7 @@ chmod +x ~/Desktop/essai-b3.sh && ~/Desktop/essai-b3.sh
 
 Attendu, phase A : la demande « “Essai B3” souhaite accéder à la caméra » (pas « Terminal », « go2rtc » ni « ffmpeg ») ; après « Autoriser », `phase A : producteur actif = oui`. Phase B : la même demande ; après « Ne pas autoriser », `phase B : producteur actif = non`, et des lignes du journal qui disent le refus. À la fin : `processus restants de l'essai : aucun`.
 
-- [ ] **Étape 3 : Décider**
+- [x] **Étape 3 : Décider**
 
 - **Les deux phases comme attendu :** la suite du plan s'applique. Garder `resultat.txt` : la tâche 6 reprend la ligne réelle du refus, et la tâche 9 compare l'empreinte du binaire.
 - **Demande au nom d'un autre programme, ou aucune demande et caméra refusée :** arrêter. Le gardien et le superviseur ne suffisent pas ; il faut revoir la conception avec Majid (par exemple un service launchd de l'app) avant d'aller plus loin.
@@ -400,7 +400,7 @@ Attendu, phase A : la demande « “Essai B3” souhaite accéder à la caméra 
   - `Gardien.run(_ options: GardienOptions, log: (String) -> Void) -> ChildEnd`, `Gardien.isGone(_ pid: pid_t) -> Bool`.
   - Contrat pour la tâche 5 : le superviseur lance `gardien --parent <pid de PTZBot> --arret 10 -- <go2rtc> -config <yaml>` ; le gardien sort avec 127 si go2rtc ne peut pas être lancé ; un go2rtc arrêté par SIGTERM fait sortir le gardien par SIGTERM.
 
-- [ ] **Étape 1 : Écrire le paquet et les tests**
+- [x] **Étape 1 : Écrire le paquet et les tests**
 
 Créer `mac/gardien/Package.swift` :
 
@@ -669,12 +669,12 @@ struct GardienProcessTests {
 }
 ````
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 Run : `(cd mac/gardien && swift test)`
 Attendu : échec. Les cibles `GardienCore` et `gardien` n'ont pas encore de sources (« Source files for target GardienCore should be located under 'Sources/GardienCore' »).
 
-- [ ] **Étape 3 : Écrire le gardien**
+- [x] **Étape 3 : Écrire le gardien**
 
 Créer `mac/gardien/Sources/GardienCore/GardienOptions.swift` :
 
@@ -965,12 +965,12 @@ case let .signaled(number):
 }
 ````
 
-- [ ] **Étape 4 : Lancer les tests, constater la réussite**
+- [x] **Étape 4 : Lancer les tests, constater la réussite**
 
 Run : `(cd mac/gardien && swift build --build-tests 2>&1 | grep -E "warning|error" ; swift test)`
 Attendu : aucune ligne d'avertissement ni d'erreur, puis `Test run with 12 tests in 3 suites passed` (environ 3 s ; `swift test` construit aussi l'exécutable `.build/debug/gardien` que les tests lancent).
 
-- [ ] **Étape 5 : Commit**
+- [x] **Étape 5 : Commit**
 
 ```bash
 rm -rf mac/gardien/.build
@@ -1003,7 +1003,7 @@ MSG
   - `Go2RTCConfigFile.write(_ text: String, to url: URL) throws -> Bool` (true : le fichier a changé).
   - Pour les tests des tâches suivantes : `Go2RTCFixtures` (`ffmpeg`, `camera`, `microphone`, `password`, `settings()`, `directory()`, `permissions(_:)`), `quoteSplit(_:)`, `foldedEntries(_:)`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `mac/app/PTZBotKit/Tests/PTZBotKitTests/Go2RTCTestSupport.swift` :
 
@@ -1297,12 +1297,12 @@ struct Go2RTCConfigTests {
 }
 ````
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 Run : `(cd mac/app/PTZBotKit && swift test)`
 Attendu : échec de compilation, « cannot find 'Go2RTCSettings' in scope ».
 
-- [ ] **Étape 3 : Écrire les réglages et le générateur**
+- [x] **Étape 3 : Écrire les réglages et le générateur**
 
 Créer `mac/app/PTZBotKit/Sources/PTZBotKit/Go2RTCSettings.swift` :
 
@@ -1597,12 +1597,12 @@ open(chemin, 'w', encoding='utf-8').write(json.dumps(d, ensure_ascii=False, inde
 PY
 ````
 
-- [ ] **Étape 4 : Lancer les tests, constater la réussite**
+- [x] **Étape 4 : Lancer les tests, constater la réussite**
 
 Run : `(cd mac/app/PTZBotKit && swift build --build-tests 2>&1 | grep -E "warning|error" ; swift test)`
 Attendu : aucun avertissement ; `Test run with 306 tests in 22 suites passed` (les tests des catalogues compris).
 
-- [ ] **Étape 5 : Commit**
+- [x] **Étape 5 : Commit**
 
 ```bash
 git add mac/app/PTZBotKit/Sources/PTZBotKit/Go2RTCSettings.swift mac/app/PTZBotKit/Sources/PTZBotKit/Go2RTCConfig.swift \
@@ -1635,7 +1635,7 @@ MSG
   - `@MainActor Go2RTCSettings.restore(from: any SettingsStore, config: URL) -> Go2RTCSettings` ;
   - pour les tests suivants : `Go2RTCImportTests.handWritten` (une configuration écrite à la main, identifiants fictifs).
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `mac/app/PTZBotKit/Tests/PTZBotKitTests/Go2RTCImportTests.swift` :
 
@@ -1794,12 +1794,12 @@ struct Go2RTCImportTests {
 }
 ````
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 Run : `(cd mac/app/PTZBotKit && swift test)`
 Attendu : échec de compilation, « cannot find 'Go2RTCConfigReader' in scope ».
 
-- [ ] **Étape 3 : Écrire le lecteur**
+- [x] **Étape 3 : Écrire le lecteur**
 
 Créer `mac/app/PTZBotKit/Sources/PTZBotKit/Go2RTCImport.swift` :
 
@@ -2061,12 +2061,12 @@ open(chemin, 'w', encoding='utf-8').write(json.dumps(d, ensure_ascii=False, inde
 PY
 ````
 
-- [ ] **Étape 4 : Lancer les tests, constater la réussite**
+- [x] **Étape 4 : Lancer les tests, constater la réussite**
 
 Run : `(cd mac/app/PTZBotKit && swift build --build-tests 2>&1 | grep -E "warning|error" ; swift test)`
 Attendu : aucun avertissement ; `Test run with 315 tests in 23 suites passed`.
 
-- [ ] **Étape 5 : Commit**
+- [x] **Étape 5 : Commit**
 
 ```bash
 git add mac/app/PTZBotKit/Sources/PTZBotKit/Go2RTCImport.swift mac/app/PTZBotKit/Sources/PTZBotKit/Resources/Localizable.xcstrings \
@@ -2096,7 +2096,7 @@ MSG
   - `CaptureDeviceInfo(name:isVirtual:)` ; protocole `CaptureDeviceCatalog: Sendable` (`cameras()`, `microphones()`) ; `AVFoundationDeviceCatalog()` ;
   - `CaptureDeviceChoice.preferred(in:) -> String?`, `CaptureDeviceChoice.resolve(configured:in:) -> String?`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `mac/app/PTZBotKit/Tests/PTZBotKitTests/FFmpegAndDevicesTests.swift` :
 
@@ -2169,12 +2169,12 @@ struct FFmpegAndDevicesTests {
 }
 ````
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 Run : `(cd mac/app/PTZBotKit && swift test)`
 Attendu : échec de compilation, « cannot find 'FFmpegLocator' in scope ».
 
-- [ ] **Étape 3 : Écrire la recherche et le catalogue**
+- [x] **Étape 3 : Écrire la recherche et le catalogue**
 
 Créer `mac/app/PTZBotKit/Sources/PTZBotKit/FFmpegLocator.swift` :
 
@@ -2295,12 +2295,12 @@ public enum CaptureDeviceChoice {
 }
 ````
 
-- [ ] **Étape 4 : Lancer les tests, constater la réussite**
+- [x] **Étape 4 : Lancer les tests, constater la réussite**
 
 Run : `(cd mac/app/PTZBotKit && swift build --build-tests 2>&1 | grep -E "warning|error" ; swift test)`
 Attendu : aucun avertissement ; `Test run with 321 tests in 24 suites passed`. Le catalogue réel se lit sans demande d'autorisation (lister les appareils n'en demande pas).
 
-- [ ] **Étape 5 : Commit**
+- [x] **Étape 5 : Commit**
 
 ```bash
 git add mac/app/PTZBotKit/Sources/PTZBotKit/FFmpegLocator.swift mac/app/PTZBotKit/Sources/PTZBotKit/CaptureDevices.swift \
@@ -2341,7 +2341,7 @@ MSG
   - `AppController(supervisor:go2rtc:…)` (`go2rtc` facultatif), `AppController.go2rtc`, `quitStopsCamera`, `quitDelay`, `go2rtcQuitTimeout` (16) ;
   - pour les tests suivants : `FakePreparer` (`result`, `writeResult`, `holds`, `prepared`, `written`, `onMainThread`, `isHeld`, `release()`), `FakePorts` (`busy(_:)`, `probed`), `FakeCatalog`, `FFmpegLocator.homebrew`, `FFmpegLocator.missing`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Dans `Fakes.swift`, `FakeLauncher` prend le nouveau paramètre et le retient (appliquer depuis la racine du dépôt) :
 
@@ -3063,12 +3063,12 @@ index db47565..9a5c064 100644
 PATCH
 ````
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 Run : `(cd mac/app/PTZBotKit && swift test)`
 Attendu : échec de compilation : « type 'FakeLauncher' does not conform to protocol 'ProcessLauncher' », « cannot find 'Go2RTCSupervisor' in scope ».
 
-- [ ] **Étape 3 : Écrire le lanceur, les ports, la préparation, le superviseur, les chemins et « Quitter »**
+- [x] **Étape 3 : Écrire le lanceur, les ports, la préparation, le superviseur, les chemins et « Quitter »**
 
 Le lanceur passe des variables d'environnement :
 
@@ -3830,12 +3830,12 @@ index 34330a0..9a6c1f9 100644
 PATCH
 ````
 
-- [ ] **Étape 4 : Lancer les tests, constater la réussite**
+- [x] **Étape 4 : Lancer les tests, constater la réussite**
 
 Run : `(cd mac/app/PTZBotKit && swift build --build-tests 2>&1 | grep -E "warning|error" ; swift test)`
 Attendu : aucun avertissement ; `Test run with 347 tests in 27 suites passed`. Les tests existants de ptzd et de « Quitter » sans go2rtc passent sans changement (`quitTimeout` reste 6 s).
 
-- [ ] **Étape 5 : Commit**
+- [x] **Étape 5 : Commit**
 
 ```bash
 git add mac/app/PTZBotKit/Sources/PTZBotKit/ProcessLauncher.swift mac/app/PTZBotKit/Sources/PTZBotKit/PortProbe.swift \
@@ -3876,7 +3876,7 @@ MSG
   - `Go2RTCHealth(accessDenied:coreAudioStuck:cameraMissing:)` ;
   - `Go2RTCMonitor` (`@MainActor @Observable`) : `pollInterval` (2), `logScanInterval` (10), `stream`, `health`, `init(supervisor:api:processes:logURL:scheduler:)`, `system(supervisor:paths:scheduler:)`, `start()`, `beginWatching()`, `endWatching()`, `scanLog()`, `refresh() async`, `waitForPoll() async`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `mac/app/PTZBotKit/Tests/PTZBotKitTests/Go2RTCMonitorTests.swift` :
 
@@ -4144,12 +4144,12 @@ struct Go2RTCMonitorTests {
 }
 ````
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 Run : `(cd mac/app/PTZBotKit && swift test)`
 Attendu : échec de compilation, « cannot find type 'Go2RTCAPI' in scope ».
 
-- [ ] **Étape 3 : Écrire la lecture de l'API, les détecteurs et la surveillance**
+- [x] **Étape 3 : Écrire la lecture de l'API, les détecteurs et la surveillance**
 
 Créer `mac/app/PTZBotKit/Sources/PTZBotKit/Go2RTCStreams.swift` :
 
@@ -4524,12 +4524,12 @@ public final class Go2RTCMonitor {
 }
 ````
 
-- [ ] **Étape 4 : Lancer les tests, constater la réussite**
+- [x] **Étape 4 : Lancer les tests, constater la réussite**
 
 Run : `(cd mac/app/PTZBotKit && swift build --build-tests 2>&1 | grep -E "warning|error" ; swift test)`
 Attendu : aucun avertissement ; `Test run with 358 tests in 29 suites passed`.
 
-- [ ] **Étape 5 : Commit**
+- [x] **Étape 5 : Commit**
 
 ```bash
 git add mac/app/PTZBotKit/Sources/PTZBotKit/Go2RTCStreams.swift mac/app/PTZBotKit/Sources/PTZBotKit/Go2RTCHealth.swift \
@@ -4562,7 +4562,7 @@ MSG
   - `Labels.ptzdIndicator(_:connection:legacy:)`, `talkbackIndicator(_:)`, `sdkIndicator(_:)`, `go2rtcIndicator(_:isEnabled:usesCustomFile:health:)`, `go2rtcBlock(_:)`, `go2rtcFailure(_:)`, `go2rtcHelp(_:)`, `go2rtcClientsDetail(_:)`, `coreAudioStuck`, `cameraAccessDenied`, `customConfigFile`, `quitStopsCamera` ;
   - dans l'app : `AppDelegate.go2rtc`, `AppDelegate.go2rtcMonitor`, `QuitConfirmation.ask()`, `LogOpener.openGo2RTCLog()`, `PrivacySettings.openCamera()`, `ServiceIndicator.Tone.color`.
 
-- [ ] **Étape 1 : Écrire les tests des pastilles**
+- [x] **Étape 1 : Écrire les tests des pastilles**
 
 Créer `mac/app/PTZBotKit/Tests/PTZBotKitTests/ServiceIndicatorTests.swift` :
 
@@ -4652,12 +4652,12 @@ struct ServiceIndicatorTests {
 }
 ````
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 Run : `(cd mac/app/PTZBotKit && swift test)`
 Attendu : échec de compilation, « type 'Labels' has no member 'ptzdIndicator' ».
 
-- [ ] **Étape 3 : Écrire les pastilles, puis le panneau**
+- [x] **Étape 3 : Écrire les pastilles, puis le panneau**
 
 Créer `mac/app/PTZBotKit/Sources/PTZBotKit/ServiceIndicator.swift` :
 
@@ -5235,7 +5235,7 @@ open(chemin, 'w', encoding='utf-8').write(json.dumps(d, ensure_ascii=False, inde
 PY
 ````
 
-- [ ] **Étape 4 : Lancer les tests et compiler l'app**
+- [x] **Étape 4 : Lancer les tests et compiler l'app**
 
 Run : `(cd mac/app/PTZBotKit && swift build --build-tests 2>&1 | grep -E "warning|error" ; swift test)`
 Attendu : aucun avertissement ; `Test run with 365 tests in 30 suites passed` (`AppCatalogTests` compris : chaque texte des vues est dans le catalogue de l'app).
@@ -5243,7 +5243,7 @@ Attendu : aucun avertissement ; `Test run with 365 tests in 30 suites passed` (`
 Run : `(cd mac/app && xcodegen -q && xcodebuild build -project PTZBot.xcodeproj -scheme PTZBot -configuration Release -destination 'platform=macOS,arch=arm64' -derivedDataPath .build 2>&1 | grep -E "error:|warning:|BUILD" | grep -v appintents ; ./check-bundle.sh)`
 Attendu : `** BUILD SUCCEEDED **`, aucun avertissement de compilation (la ligne d'`appintentsmetadataprocessor` est ancienne), `check-bundle.sh` sort à 0. Ne pas lancer l'app.
 
-- [ ] **Étape 5 : Commit**
+- [x] **Étape 5 : Commit**
 
 ```bash
 rm -rf mac/app/.build/Build mac/app/.build/Logs
@@ -5279,7 +5279,7 @@ MSG
   - `Labels.go2rtcImportSummary(_:) -> [String]`, `Labels.go2rtcApplyWarning` ;
   - dans l'app : `SettingsView(model:language:camera:)`, `CameraSettingsView(model:)`, `AppDelegate.cameraSettings`.
 
-- [ ] **Étape 1 : Écrire les tests du modèle**
+- [x] **Étape 1 : Écrire les tests du modèle**
 
 Créer `mac/app/PTZBotKit/Tests/PTZBotKitTests/Go2RTCSettingsModelTests.swift` :
 
@@ -5412,12 +5412,12 @@ struct Go2RTCSettingsModelTests {
 }
 ````
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 Run : `(cd mac/app/PTZBotKit && swift test)`
 Attendu : échec de compilation, « cannot find 'Go2RTCSettingsModel' in scope ».
 
-- [ ] **Étape 3 : Écrire le modèle, puis les vues**
+- [x] **Étape 3 : Écrire le modèle, puis les vues**
 
 Créer `mac/app/PTZBotKit/Sources/PTZBotKit/Go2RTCSettingsModel.swift` :
 
@@ -5960,7 +5960,7 @@ open(chemin, 'w', encoding='utf-8').write(json.dumps(d, ensure_ascii=False, inde
 PY
 ````
 
-- [ ] **Étape 4 : Lancer les tests et compiler l'app**
+- [x] **Étape 4 : Lancer les tests et compiler l'app**
 
 Run : `(cd mac/app/PTZBotKit && swift build --build-tests 2>&1 | grep -E "warning|error" ; swift test)`
 Attendu : aucun avertissement ; `Test run with 372 tests in 31 suites passed`.
@@ -5968,7 +5968,7 @@ Attendu : aucun avertissement ; `Test run with 372 tests in 31 suites passed`.
 Run : `(cd mac/app && xcodegen -q && xcodebuild build -project PTZBot.xcodeproj -scheme PTZBot -configuration Release -destination 'platform=macOS,arch=arm64' -derivedDataPath .build 2>&1 | grep -E "error:|warning:|BUILD" | grep -v appintents ; ./check-bundle.sh)`
 Attendu : `** BUILD SUCCEEDED **`, aucun avertissement, `check-bundle.sh` à 0. Ne pas lancer l'app : l'onglet « Caméra » se regarde au banc avec Majid.
 
-- [ ] **Étape 5 : Commit**
+- [x] **Étape 5 : Commit**
 
 ```bash
 rm -rf mac/app/.build/Build mac/app/.build/Logs
@@ -6005,7 +6005,7 @@ MSG
   - `mac/app/go2rtc.sha256` : deux lignes au format de `shasum`, `<empreinte>  go2rtc_mac_arm64.zip` et `<empreinte>  go2rtc` ;
   - la variable `GO2RTC_CACHE` de `build-helpers.sh` (par défaut `mac/app/.build/go2rtc`).
 
-- [ ] **Étape 1 : Écrire les tests de la publication**
+- [x] **Étape 1 : Écrire les tests de la publication**
 
 ````bash
 git apply <<'PATCH'
@@ -6140,12 +6140,12 @@ index c4af4d8..bbea202 100644
 PATCH
 ````
 
-- [ ] **Étape 2 : Lancer les nouveaux tests, constater l'échec**
+- [x] **Étape 2 : Lancer les nouveaux tests, constater l'échec**
 
 Run : `(cd outils/tests && NOTARISER=1 PROFIL_NOTARISATION=djoko-notarisation /usr/bin/python3 -m unittest -k go2rtc -k droit -k fuites -k empreinte test_publication)`
 Attendu : échecs et erreurs : `unrecognized arguments: --droit-requis`, `module 'publication' has no attribute 'empreinte_attendue'`, `fuites() got an unexpected keyword argument 'adresses_libres'`.
 
-- [ ] **Étape 3 : Écrire les contrôles de la publication**
+- [x] **Étape 3 : Écrire les contrôles de la publication**
 
 ````bash
 git apply <<'PATCH'
@@ -6343,7 +6343,7 @@ index 7e26fe4..3220eb3 100755
 PATCH
 ````
 
-- [ ] **Étape 4 : Lancer les tests de la publication, constater la réussite**
+- [x] **Étape 4 : Lancer les tests de la publication, constater la réussite**
 
 Run : `(cd outils/tests && NOTARISER=1 PROFIL_NOTARISATION=djoko-notarisation /usr/bin/python3 -m unittest -k go2rtc -k droit -k fuites -k empreinte -k utilitaire -k signature test_publication)`
 Attendu : `Ran 24 tests` puis `OK` (environ 1 min 30).
@@ -6351,7 +6351,7 @@ Attendu : `Ran 24 tests` puis `OK` (environ 1 min 30).
 Run : `(cd outils/tests && NOTARISER=1 PROFIL_NOTARISATION=djoko-notarisation /usr/bin/python3 -m unittest test_publication)`
 Attendu : `Ran 156 tests` puis `OK` (5 à 7 min).
 
-- [ ] **Étape 5 : L'archive de go2rtc, ses empreintes et sa licence (une seule fois)**
+- [x] **Étape 5 : L'archive de go2rtc, ses empreintes et sa licence (une seule fois)**
 
 Les empreintes ne se devinent pas : elles se calculent sur l'archive officielle. Dans un dossier neuf et vide, hors du dépôt (`DEPOT` est la racine du dépôt) :
 
@@ -6406,7 +6406,7 @@ cat mac/app/go2rtc.sha256
 
 Attendu : la licence a l'empreinte `b0dcf4855af5a72b4dfbd9117c207b330f4cc35658576a0b5351d6e2becac546` et commence par « MIT License » ; `go2rtc.sha256` a deux lignes de 64 chiffres hexadécimaux. La ligne de copyright de la licence nomme son auteur : elle reste telle quelle (comme `outils/Sparkle-LICENSE.txt`), c'est la seule exception à « aucun nom réel ».
 
-- [ ] **Étape 6 : go2rtc et le gardien dans le paquet ; droits et textes caméra et micro**
+- [x] **Étape 6 : go2rtc et le gardien dans le paquet ; droits et textes caméra et micro**
 
 ````bash
 git apply <<'PATCH'
@@ -6645,7 +6645,7 @@ open(chemin, 'w', encoding='utf-8').write(json.dumps(d, ensure_ascii=False, inde
 PY
 ```
 
-- [ ] **Étape 7 : Compiler et vérifier le paquet**
+- [x] **Étape 7 : Compiler et vérifier le paquet**
 
 Run : `(cd mac/app/PTZBotKit && swift test)`
 Attendu : `Test run with 372 tests in 31 suites passed` (`AppCatalogTests` vérifie les deux nouveaux textes de l'Info.plist).
@@ -6666,7 +6666,7 @@ ok : NSMicrophoneUsageDescription
 
 et `check-bundle.sh` sort à 0. Ne lancer ni l'app, ni go2rtc, ni le gardien du paquet.
 
-- [ ] **Étape 8 : Commit**
+- [x] **Étape 8 : Commit**
 
 ```bash
 rm -rf mac/app/.build/Build mac/app/.build/Logs
@@ -6696,7 +6696,7 @@ MSG
 - Consomme : les textes des tâches 7 et 8 (cités tels quels dans le README, en anglais et en français), les chemins et réglages des tâches 5 et 9.
 - Produit : rien pour le code.
 
-- [ ] **Étape 1 : Le README**
+- [x] **Étape 1 : Le README**
 
 ````bash
 git apply <<'PATCH'
@@ -6990,7 +6990,7 @@ index 7ecc920..0bf4d3c 100644
 PATCH
 ````
 
-- [ ] **Étape 2 : Les notes de version 1.1.0**
+- [x] **Étape 2 : Les notes de version 1.1.0**
 
 ````bash
 git apply <<'PATCH'
@@ -7032,7 +7032,7 @@ index 8700dad..958ef4d 100644
 PATCH
 ````
 
-- [ ] **Étape 3 : Les précisions de la spec (§ 12)**
+- [x] **Étape 3 : Les précisions de la spec (§ 12)**
 
 ````bash
 git apply <<'PATCH'
@@ -7075,7 +7075,7 @@ index 871afe6..b23c7d5 100644
 PATCH
 ````
 
-- [ ] **Étape 4 : La version 1.1.0**
+- [x] **Étape 4 : La version 1.1.0**
 
 ````bash
 git apply <<'PATCH'
@@ -7095,7 +7095,7 @@ index 187ed3c..ccd44b6 100644
 PATCH
 ````
 
-- [ ] **Étape 5 : Vérifier**
+- [x] **Étape 5 : Vérifier**
 
 Run : `git status --short`
 Attendu : seuls les quatre fichiers de la tâche, modifiés.
@@ -7114,7 +7114,7 @@ Attendu : aucune ligne.
 Run : les quatre commandes de vérification des contraintes globales.
 Attendu : gardien 12 tests, PTZBotKit 372 tests, `** BUILD SUCCEEDED **` et `check-bundle.sh` à 0, publication `Ran 156 tests` `OK`.
 
-- [ ] **Étape 6 : Commit**
+- [x] **Étape 6 : Commit**
 
 ```bash
 rm -rf mac/gardien/.build mac/app/PTZBotKit/.build mac/app/.build/Build mac/app/.build/Logs
