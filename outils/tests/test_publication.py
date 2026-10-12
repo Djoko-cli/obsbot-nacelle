@@ -61,7 +61,9 @@ TEMPORAIRE = '/private' + '/tmp/'
 AUTRE_COMPTE = '/Us' + 'ers/autre'
 OID_RSA = '.'.join(['1', '2', '840', '113549', '1', '1', '11'])
 OID_APPLE = 'field.' + '.'.join(['1', '2', '840', '113635', '100', '6', '2', '6'])
-GIT_ENV = dict(os.environ, PATH=PATH_ISOLE, GIT_ALLOW_PROTOCOL='file',
+# publier.sh exporte NOTARISER et PROFIL_NOTARISATION avant de lancer ces tests (étape « tests » de la publication) :
+# ils sont retirés de l'environnement copié, sinon les refus « sans profil » échoueraient pendant une publication.
+GIT_ENV = dict({k: v for k, v in os.environ.items() if k not in ('NOTARISER', 'PROFIL_NOTARISATION')}, PATH=PATH_ISOLE, GIT_ALLOW_PROTOCOL='file',
                GIT_CONFIG_GLOBAL='/dev/null', GIT_CONFIG_SYSTEM='/dev/null',
                GIT_AUTHOR_NAME='Essai', GIT_AUTHOR_EMAIL='essai@example.invalid',
                GIT_COMMITTER_NAME='Essai', GIT_COMMITTER_EMAIL='essai@example.invalid')
