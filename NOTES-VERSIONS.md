@@ -6,6 +6,27 @@ release and to the update window.
 PTZBot pour Mac. Chaque section a un bloc **English**, puis un bloc **Français** ; les mêmes notes servent à la
 version GitHub et à la fenêtre de mise à jour.
 
+## 1.0.5
+
+**English**
+
+- Talkback is now installed as a classic background agent (`~/Library/LaunchAgents`) instead of a login item
+  registered with macOS. Updates no longer stop Talkback: after an update, PTZBot restarts `talkd` with the new
+  version by itself. If Talkback was on, it stays on; nothing to do on your side.
+- Talkback can no longer be turned on while PTZBot runs from a temporary location (Downloads or the disk image): move
+  PTZBot to the Applications folder first.
+- If you delete PTZBot while Talkback is on, see the README to remove the agent.
+
+**Français**
+
+- Talkback est désormais installé comme agent d'arrière-plan classique (`~/Library/LaunchAgents`) au lieu d'un
+  élément d'ouverture inscrit auprès de macOS. Les mises à jour n'arrêtent plus Talkback : après une mise à jour,
+  PTZBot relance de lui-même `talkd` dans sa nouvelle version. Si Talkback était allumé, il le reste ; rien à faire
+  de votre côté.
+- Talkback ne peut plus être allumé quand PTZBot tourne depuis un emplacement temporaire (Téléchargements ou image
+  disque) : déplacez d'abord PTZBot dans le dossier Applications.
+- Si vous supprimez PTZBot avec Talkback allumé, voyez le README pour retirer l'agent.
+
 ## 1.0.4
 
 **English**
