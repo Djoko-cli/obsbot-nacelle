@@ -8,7 +8,7 @@
 
 Remotely control the gimbal of an OBSBOT Tiny 2 from an iPhone.
 
-The camera is plugged over USB into a Mac that already streams it with [go2rtc](https://github.com/AlexxIT/go2rtc), and to HomeKit through Homebridge. HomeKit cannot drive a pan/tilt/zoom: this project adds what is missing.
+The camera is plugged over USB into a Mac. PTZBot for Mac streams it with [go2rtc](https://github.com/AlexxIT/go2rtc), to HomeKit through Homebridge and to the iPhone app. HomeKit cannot drive a pan/tilt/zoom: this project adds what is missing.
 
 > Personal project, not affiliated with OBSBOT.
 
@@ -17,7 +17,7 @@ The camera is plugged over USB into a Mac that already streams it with [go2rtc](
 - **Mac side**: the **PTZBot for Mac** app, which contains `ptzd`, installs from the disk image of the published releases (see "Installing PTZBot for Mac"), then updates itself. It can also be built from source with `scripts/install-mac.sh`. The OBSBOT SDK is then installed from the app, which compiles `obsbot-ai` on the Mac.
 - **iOS app** (PTZBot): installs from Xcode onto the iPhone (see "iOS app" below).
 
-Design: [spec](docs/superpowers/specs/2026-10-05-nacelle-design.md) · [local access spec](docs/superpowers/specs/2026-10-06-acces-local-design.md) · [discovery and QR code spec](docs/superpowers/specs/2026-10-06-decouverte-qr-design.md) · [Mac app spec](docs/superpowers/specs/2026-10-06-app-mac-design.md) · [ptzd in the app spec](docs/superpowers/specs/2026-10-07-ptzd-dans-app-design.md) · [distribution spec](docs/superpowers/specs/2026-10-08-distribution-design.md) · [Mac side plan](docs/superpowers/plans/2026-10-05-nacelle-mac.md) · [iOS app plan](docs/superpowers/plans/2026-10-05-nacelle-ios.md) · [local access plan](docs/superpowers/plans/2026-10-06-acces-local.md) · [discovery and QR code plan](docs/superpowers/plans/2026-10-06-decouverte-qr.md) · [Mac app plan](docs/superpowers/plans/2026-10-06-app-mac.md) · [feasibility tests](docs/spike/2026-10-05-faisabilite.md). The design documents are in French.
+Design: [spec](docs/superpowers/specs/2026-10-05-nacelle-design.md) · [local access spec](docs/superpowers/specs/2026-10-06-acces-local-design.md) · [discovery and QR code spec](docs/superpowers/specs/2026-10-06-decouverte-qr-design.md) · [Mac app spec](docs/superpowers/specs/2026-10-06-app-mac-design.md) · [ptzd in the app spec](docs/superpowers/specs/2026-10-07-ptzd-dans-app-design.md) · [distribution spec](docs/superpowers/specs/2026-10-08-distribution-design.md) · [go2rtc in PTZBot spec](docs/superpowers/specs/2026-10-12-go2rtc-dans-ptzbot-design.md) · [Mac side plan](docs/superpowers/plans/2026-10-05-nacelle-mac.md) · [iOS app plan](docs/superpowers/plans/2026-10-05-nacelle-ios.md) · [local access plan](docs/superpowers/plans/2026-10-06-acces-local.md) · [discovery and QR code plan](docs/superpowers/plans/2026-10-06-decouverte-qr.md) · [Mac app plan](docs/superpowers/plans/2026-10-06-app-mac.md) · [feasibility tests](docs/spike/2026-10-05-faisabilite.md). The design documents are in French.
 
 ### Architecture
 
@@ -47,6 +47,7 @@ Requirements:
 - an Apple silicon Mac running macOS 15 or later;
 - Tailscale on the Mac to control the camera away from home (without it, `ptzd` only listens on 127.0.0.1 and on the local network);
 - OBSBOT Center closed: when open, it skews the tilt readback;
+- for the camera stream (go2rtc): ffmpeg from Homebrew (`brew install ffmpeg`);
 - for AI tracking only: the OBSBOT SDK, to request at [obsbot.com/sdk](https://www.obsbot.com/sdk), and Apple's developer tools (PTZBot offers to install them).
 
 Then:
@@ -56,7 +57,7 @@ Then:
 3. On first launch:
    - **Previous installation.** If the launchd agent `io.github.djoko-cli.obsbot-nacelle.ptzd` from an earlier version is there, PTZBot offers to replace it. **Replace** stops it, renames its plist to `.plist.bak`, moves the old binaries in `bin/` to the Trash and takes over the SDK in `lib/`. Paired iPhones and settings are kept. **Later** keeps the old `ptzd` (the panel shows "Previous installation"); the question comes back at the next launch.
    - **`config.json`.** If it is missing, PTZBot creates it with the Mac's Tailscale address, or on 127.0.0.1 only without Tailscale (the panel says so).
-   - **Permissions.** macOS asks for local network access for PTZBot (`ptzd` depends on it): answer **Allow**. At the iPhone's first connection, it may also ask whether `ptzd` may accept incoming connections: answer **Allow**. The question may come back after an update, because the binary changes.
+   - **Permissions.** macOS asks for local network access for PTZBot (`ptzd` depends on it): answer **Allow**. At the iPhone's first connection, it may also ask whether `ptzd` may accept incoming connections: answer **Allow**. The question may come back after an update, because the binary changes. When go2rtc is first turned on, macOS asks for camera access, then microphone access, in the name of "ffmpeg" (not PTZBot): answer **Allow**. The question comes back after Homebrew updates ffmpeg (`brew upgrade`).
 4. **OBSBOT SDK.** In the panel, **OBSBOT SDK › Install SDK…**: choose the `.zip` archive received from OBSBOT or its unzipped folder. A lone `libdev.dylib` is refused: the headers are needed to compile `obsbot-ai`. PTZBot takes `macos/arm64-release/libdev.dylib` and the `include/` folder next to `macos/`; the other copies of the library in the archive are listed and ignored. The window shows the architecture, the signature, the origin and the quarantine; **Allow This SDK** copies the library and the headers into `sdk/`, removes the quarantine from these copies only, compiles `obsbot-ai` with Apple's developer tools, then checks that it loads the SDK. Everything happens in one go: if any step fails, the previous SDK and `obsbot-ai` are kept, and the compiler output goes to `obsbot-ai-compilation.log`. Without the SDK, everything works except AI tracking.
    - **Developer tools.** Without them, the panel's SDK line and the **OBSBOT SDK** window offer **Install Developer Tools…** before any choice of SDK. The button starts Apple's installation (`xcode-select --install`), only when you click it: accept in Apple's window, then reopen the panel, or click **Check Again** in the window. An SDK already installed whose `obsbot-ai` must be recompiled shows "Tools required", with the same button.
    - **SDK installed by an earlier version.** An SDK copied without its headers (a single `libdev.dylib`) shows "Incomplete", with "Reinstall the SDK from its archive or folder: its headers are missing." under it: reinstall it from the archive.
@@ -77,9 +78,9 @@ Requirements: Xcode and [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew
 scripts/install-mac.sh
 ```
 
-The script builds the app (`ptzd` and `talkd` in `Contents/Helpers`, the embedded plist of the old Talkback agent in `Contents/Library/LaunchAgents`, the `obsbot-ai` source in `Contents/Resources`, Sparkle in `Contents/Frameworks`), quits the running app, installs it into `~/Applications/PTZBot.app` and launches it. It touches neither launchd nor the files in `~/Library/Application Support/ObsbotNacelle/`. Such a build keeps build number 1: Sparkle never starts in it. Keep a single copy of PTZBot: to go back to the published releases, move `~/Applications/PTZBot.app` to the Trash and install the disk image.
+The script builds the app (`ptzd`, `talkd` and `gardien` in `Contents/Helpers`, with go2rtc 1.9.14 downloaded from its official releases and checked against `mac/app/go2rtc.sha256`, the embedded plist of the old Talkback agent in `Contents/Library/LaunchAgents`, the `obsbot-ai` source in `Contents/Resources`, Sparkle in `Contents/Frameworks`), quits the running app, installs it into `~/Applications/PTZBot.app` and launches it. It touches neither launchd nor the files in `~/Library/Application Support/ObsbotNacelle/`. Such a build keeps build number 1: Sparkle never starts in it. Keep a single copy of PTZBot: to go back to the published releases, move `~/Applications/PTZBot.app` to the Trash and install the disk image.
 
-`mac/app/check-bundle.sh` checks a Release build: `ptzd`, `talkd`, the embedded plist of the old Talkback agent, the `obsbot-ai` source and Sparkle are present; the SDK, its headers and any `obsbot-ai` binary are absent.
+`mac/app/check-bundle.sh` checks a Release build: `ptzd`, `talkd`, `gardien`, the official go2rtc binary and its license, the app's camera and microphone entitlements, the embedded plist of the old Talkback agent, the `obsbot-ai` source and Sparkle are present; the SDK, its headers and any `obsbot-ai` binary are absent.
 
 Publishing a release (maintainer): write its section in `NOTES-VERSIONS.md` (**English**, then **Français**), set `MARKETING_VERSION` in `mac/app/project.yml`, then run `outils/publier.sh X.Y.Z` from a clean, up-to-date `main`. If it stops halfway, resume from `gestes.txt` in the products folder, never by running the script again. `outils/publier.sh X.Y.Z --repetition FOLDER --url-base http://127.0.0.1:PORT …` rehearses everything without GitHub.
 
@@ -103,6 +104,7 @@ After a change, restart the service: in the panel, turn **ptzd service** off and
 | Need | Command |
 |---|---|
 | Service log | `tail -f ~/Library/Logs/obsbot-nacelle/ptzd.log` |
+| go2rtc log | `tail -f ~/Library/Logs/obsbot-nacelle/go2rtc.log` |
 | SDK output | `tail ~/Library/Logs/obsbot-nacelle/obsbot-ai.log` |
 | `obsbot-ai` compilation | `tail ~/Library/Logs/obsbot-nacelle/obsbot-ai-compilation.log` |
 | Read the camera position | `/Applications/PTZBot.app/Contents/Helpers/ptzd uvc get` |
@@ -123,11 +125,12 @@ It lives in the menu bar (the Tiny 2 icon), without a Dock icon, in English, or 
 - the **ptzd service** switch, remembered from one launch to the next, and the state of `ptzd` ("Active", "Starting…", "Stopped", "Restarted after an unexpected stop (n)", "Not responding" with a link to its log) and of the camera. Beyond 5 stops in 2 min, PTZBot stops restarting `ptzd`: "ptzd keeps stopping: open the log". It does not restart it either if another `ptzd` is already running (`ptzd.lock` lock or 127.0.0.1 port taken: "Port 1985 is already in use…"), if `config.json` is invalid or if its arguments are refused;
 - the **OBSBOT SDK** line, with a short state on the right ("Ready", "Missing", "Quarantined", "Incompatible", "Does not load", "Tools required", "Incomplete", "Recompiling…", "Compile failed", "obsbot-ai not found"), and under it, on the full width, what it means and **Install SDK…**, **Install Developer Tools…** or, when the SDK is ready, **Change…**; until the SDK is ready, **AI tracking** is greyed out ("OBSBOT SDK required"), unless a previous `obsbot-ai` is still in use;
 - the **Privacy** and **AI tracking** switches (tracking shows the last order: the real state cannot be read, a gesture in front of the camera can change it);
-- the **Talkback** switch and, under it, the state of `talkd` ("Ready", "Starting…", "Playing", "Disabled", "Approval required", and the reason when it stops); it installs or removes the background agent (see "Talkback" below);
+- the **go2rtc** switch, off by default, right after `ptzd` (see "go2rtc" below);
+- the **Talkback** switch; it installs or removes the background agent (see "Talkback" below). Each service shows a green dot when everything is normal (`ptzd` active, go2rtc running, Talkback ready or playing, SDK ready); otherwise its status line ("Starting…", "Disabled", "Approval required", the reason when it stops…);
 - the connected clients, with **Kick Out**: the connection is cut and the device refused for 10 min (while `ptzd` runs), without losing its pairing;
 - **Pair an iPhone…**: the QR code as an image, valid for 5 min; closing the window cancels it;
 - **Devices…**: the paired devices, **Unblock** and **Remove…** (the device is removed and its connections cut right away);
-- **Check for Updates…** on its own line, then **Settings…** (**Check automatically**, **Install automatically**, **Open at login**, the version, for example "PTZBot 1.0.0 (412)"; macOS may ask for approval in System Settings › General › Login Items) and **Quit**: stops `ptzd` (6 s at most), then the app.
+- **Check for Updates…** on its own line, then **Settings…** (**Check automatically**, **Install automatically**, **Open at login**, the version, for example "PTZBot 1.0.0 (412)"; macOS may ask for approval in System Settings › General › Login Items) and **Quit**: stops `ptzd` and go2rtc (16 s at most), then the app; when go2rtc is on, a confirmation says that quitting PTZBot also stops the HomeKit camera.
 
 If local network access is denied to PTZBot, the panel says so, with a button to the privacy settings: iPhones then only find the Mac through Tailscale.
 
@@ -216,31 +219,17 @@ While someone speaks, the built-in speakers are raised to at least 30 % (or unmu
 
 ### go2rtc
 
-`ptzd` relays the video negotiation to go2rtc's API on 127.0.0.1: the API therefore no longer needs to be open to the network. Suggested configuration (in `go2rtc.yaml`, to adapt):
+PTZBot for Mac includes [go2rtc](https://github.com/AlexxIT/go2rtc) 1.9.14 (MIT license), which streams the camera to HomeKit (through Homebridge, in RTSP) and to the iPhone app (in WebRTC, through `ptzd`). go2rtc only runs while PTZBot is open, as its child process: **Quit** stops it, and the HomeKit camera with it. If PTZBot crashes, its small `gardien` helper stops go2rtc as well.
 
-```yaml
-api:
-  listen: "127.0.0.1:1984"
-rtsp:
-  listen: ":8554"
-  username: "<user>"
-  password: "<password>"
-webrtc:
-  listen: ":8555"
-ffmpeg:
-  bin: /opt/homebrew/bin/ffmpeg   # full path: under launchd, PATH does not contain /opt/homebrew/bin
-streams:
-  obsbot:
-    - exec:…   # camera video (H.264)
-    - exec:…   # camera microphone (AAC, for HomeKit)
-    - ffmpeg:obsbot#audio=opus   # the same sound in Opus, for PTZBot (WebRTC)
-```
-
-- go2rtc lets local clients (127.0.0.1) skip the RTSP password: `exec:` sources that publish to `{output}` keep working unchanged.
-- A network RTSP client, such as Homebridge, must then give the user and password in the stream address: `rtsp://<user>:<password>@<Mac>:8554/obsbot`.
-- WebRTC port 8555 stays open: without an offer negotiated by `ptzd`, it gives no image.
-- Sound in PTZBot: WebRTC does not carry AAC. The `ffmpeg:obsbot#audio=opus` source converts it to Opus as soon as PTZBot is open, even muted (the button only stops playback, so that sound comes back immediately). Without the `ffmpeg: bin:` line, go2rtc started by launchd does not find `ffmpeg` and the audio track stays silent, with no error message.
-- `go2rtc.yaml` holds the RTSP password: set it to mode 600 (`chmod 600 go2rtc.yaml`).
+- **Turning it on.** The **go2rtc** switch in the panel is off by default: it must not take the camera of someone who already runs their own go2rtc. Once on, go2rtc starts with PTZBot and restarts after an unexpected stop; beyond 5 stops in 2 min, PTZBot stops restarting it ("go2rtc keeps stopping: open the log").
+- **ffmpeg.** go2rtc needs Homebrew's ffmpeg, which PTZBot never includes (it is under the GPL): `brew install ffmpeg`. PTZBot looks for it at the path set in **Settings › Camera**, then in `/opt/homebrew/bin/ffmpeg`, then in `/usr/local/bin/ffmpeg`.
+- **Configuration.** PTZBot writes `~/Library/Application Support/ObsbotNacelle/go2rtc.yaml` (mode 600: it holds the RTSP password) from **Settings › Camera**: user name and password, resolution, frame rate and bitrate, camera and microphone (by default, the first OBSBOT ones found), RTSP (8554) and WebRTC (8555) ports. The API stays on `127.0.0.1:1984`, where `ptzd` relays the iPhone's video, and the stream is named `obsbot`. **Apply** rewrites the file and restarts go2rtc: the HomeKit stream stops for a few seconds.
+- **Existing configuration.** **Import an Existing Configuration…** reads a `go2rtc.yaml` (for example `/opt/homebrew/etc/go2rtc.yaml`, reachable with ⇧⌘G) and shows what it takes over: user name, password, ports and, when recognized, the device names and the ffmpeg path. The imported file is never modified. **Use a Custom Configuration File** runs go2rtc on your own file, which PTZBot never writes; ports and devices are then not checked.
+- **Permissions.** go2rtc's ffmpeg processes open the camera and the microphone, so macOS grants the access to ffmpeg itself: the request is in the name of "ffmpeg", not PTZBot. It comes back after Homebrew updates ffmpeg (`brew upgrade`), because the binary changes. A refusal shows "Camera access denied" in the panel, with a button to the privacy settings.
+- **Panel.** A green dot when go2rtc runs normally; hovering over the row shows the clients by protocol ("2 clients · RTSP ×1, WebRTC ×1"). Otherwise a status line: "ffmpeg not found", "Port 8554 already in use: is another go2rtc running?", "OBSBOT camera not found", "Camera access denied", or, in orange, "coreaudiod is not responding: the camera is stuck", with **Copy the repair command** (`sudo killall -9 coreaudiod`, to run yourself in Terminal: PTZBot never runs it).
+- **Your own go2rtc.** With the switch off, PTZBot leaves go2rtc alone: a go2rtc you run yourself keeps working. Its API must then listen on `127.0.0.1:1984` and its stream be named `obsbot` (`go2rtcAPI` and `streamName` in `config.json`). Never two go2rtc at once: PTZBot does not start its own while the ports are taken.
+- A network RTSP client, such as Homebridge, gives the user name and password in the stream address: `rtsp://<user>:<password>@<Mac>:8554/obsbot`. go2rtc lets local clients (127.0.0.1) skip the password.
+- WebRTC port 8555 stays open: without an offer negotiated by `ptzd`, it gives no image. Sound in PTZBot: WebRTC does not carry AAC; the `ffmpeg:obsbot#audio=opus` source converts it to Opus as soon as PTZBot is open, even muted (the button only stops playback, so that sound comes back immediately).
 - The RTSP stream to Homebridge, credentials included, travels in clear on the local network: a device intercepting this traffic can read them, as well as the images.
 - The pairing QR code (PTZBot for Mac window, or `ptzd pair` and the URL shown under it) allows pairing a device for 5 minutes: only show it while scanning.
 - Never expose 127.0.0.1:1985 to the network, for example with `tailscale serve` or `ssh -L`: connections from 127.0.0.1 skip authentication, any remote client coming through there would control the camera.
@@ -249,7 +238,7 @@ streams:
 
 In PTZBot for Mac, turn off **Talkback** (its agent keeps running otherwise), **Settings…** › uncheck **Open at login**, then **Quit** (`ptzd` stops with the app), and move `/Applications/PTZBot.app` (or `~/Applications/PTZBot.app` for a build from source) to the Trash.
 
-The data stays in `~/Library/Application Support/ObsbotNacelle/` (settings, paired iPhones, SDK, its headers and `obsbot-ai`) and the logs in `~/Library/Logs/obsbot-nacelle/`, until you delete them:
+The data stays in `~/Library/Application Support/ObsbotNacelle/` (settings, paired iPhones, SDK, its headers, `obsbot-ai` and `go2rtc.yaml`) and the logs in `~/Library/Logs/obsbot-nacelle/`, until you delete them:
 
 ```bash
 rm -r ~/Library/Application\ Support/ObsbotNacelle ~/Library/Logs/obsbot-nacelle
@@ -263,9 +252,10 @@ After a migration, the old agent's plist stays at `~/Library/LaunchAgents/io.git
 |---|---|
 | `Packages/NacelleProtocol/` | Messages exchanged between the apps and `ptzd`, shared by both |
 | `mac/ptzd/` | The service: logic (`PTZCore`), pairing and authentication (`PTZAuth`), USB access (`CUVC`, `UVCCamera`), WebSocket server and local listener (`PTZServer`) |
+| `mac/gardien/` | The `gardien` helper: starts go2rtc as its child and stops it when PTZBot goes away, even after a crash |
 | `mac/talkd/` | The Talkback agent: `TalkCore` (tested logic, no real sound or network), the `talkd` executable (CoreAudio) and `talkd.example.json` |
 | `mac/ai/` | The `obsbot-ai` helper (C++): its source, shipped in the app and compiled on the user's Mac; `build.sh` builds it locally with the SDK in `vendor/`, for tests |
-| `mac/app/` | The PTZBot for Mac app: `project.yml` (xcodegen), interface (`PTZBot/`), tested logic (`PTZBotKit/`), helper build phase (`build-helpers.sh`), bundle check (`check-bundle.sh`) and update feed (`appcast.xml`, written at publication) |
+| `mac/app/` | The PTZBot for Mac app: `project.yml` (xcodegen), interface (`PTZBot/`), tested logic (`PTZBotKit/`), helper build phase (`build-helpers.sh`), bundle check (`check-bundle.sh`), go2rtc's checksums and license (`go2rtc.sha256`, `go2rtc-LICENSE.txt`) and update feed (`appcast.xml`, written at publication) |
 | `mac/tools/` | Test WebSocket client |
 | `ios/` | The iOS app: `project.yml` (xcodegen), sources and tests |
 | `outils/` | Publication of a release: `publier.sh`, `publication.py` and their tests, Sparkle's license |
@@ -276,7 +266,7 @@ After a migration, the old agent's plist stays at `~/Library/LaunchAgents/io.git
 
 ### License
 
-MIT. See [LICENSE](LICENSE). The disk image also carries the license of [Sparkle](https://sparkle-project.org) 2.10.0 (`outils/Sparkle-LICENSE.txt`).
+MIT. See [LICENSE](LICENSE). The disk image also carries the license of [Sparkle](https://sparkle-project.org) 2.10.0 (`outils/Sparkle-LICENSE.txt`), and the app the license of [go2rtc](https://github.com/AlexxIT/go2rtc) 1.9.14 (`Contents/Resources/go2rtc-LICENSE.txt`, MIT).
 
 <a id="francais"></a>
 
@@ -284,7 +274,7 @@ MIT. See [LICENSE](LICENSE). The disk image also carries the license of [Sparkle
 
 Piloter à distance la nacelle d'une OBSBOT Tiny 2 depuis l'iPhone.
 
-La caméra est branchée en USB sur un Mac qui la diffuse déjà avec [go2rtc](https://github.com/AlexxIT/go2rtc), et vers HomeKit via Homebridge. HomeKit ne sait pas piloter un pan/tilt/zoom : ce projet ajoute ce qui manque.
+La caméra est branchée en USB sur un Mac. PTZBot pour Mac la diffuse avec [go2rtc](https://github.com/AlexxIT/go2rtc), vers HomeKit via Homebridge et vers l'app iPhone. HomeKit ne sait pas piloter un pan/tilt/zoom : ce projet ajoute ce qui manque.
 
 > Projet personnel, sans lien avec OBSBOT.
 
@@ -293,7 +283,7 @@ La caméra est branchée en USB sur un Mac qui la diffuse déjà avec [go2rtc](h
 - **Côté Mac** : l'app **PTZBot pour Mac**, qui contient `ptzd`, s'installe depuis l'image disque des versions publiées (voir « Installer PTZBot pour Mac »), puis se met à jour seule. On peut aussi la compiler depuis les sources avec `scripts/install-mac.sh`. Le SDK OBSBOT s'installe ensuite depuis l'app, qui compile `obsbot-ai` sur le Mac.
 - **App iOS** (PTZBot) : s'installe depuis Xcode sur l'iPhone (voir « App iOS » plus bas).
 
-Conception : [spec](docs/superpowers/specs/2026-10-05-nacelle-design.md) · [spec de l'accès local](docs/superpowers/specs/2026-10-06-acces-local-design.md) · [spec de la découverte et du QR code](docs/superpowers/specs/2026-10-06-decouverte-qr-design.md) · [spec de l'app Mac](docs/superpowers/specs/2026-10-06-app-mac-design.md) · [spec de ptzd dans l'app](docs/superpowers/specs/2026-10-07-ptzd-dans-app-design.md) · [spec de la distribution](docs/superpowers/specs/2026-10-08-distribution-design.md) · [plan côté Mac](docs/superpowers/plans/2026-10-05-nacelle-mac.md) · [plan de l'app iOS](docs/superpowers/plans/2026-10-05-nacelle-ios.md) · [plan de l'accès local](docs/superpowers/plans/2026-10-06-acces-local.md) · [plan de la découverte et du QR code](docs/superpowers/plans/2026-10-06-decouverte-qr.md) · [plan de l'app Mac](docs/superpowers/plans/2026-10-06-app-mac.md) · [tests de faisabilité](docs/spike/2026-10-05-faisabilite.md).
+Conception : [spec](docs/superpowers/specs/2026-10-05-nacelle-design.md) · [spec de l'accès local](docs/superpowers/specs/2026-10-06-acces-local-design.md) · [spec de la découverte et du QR code](docs/superpowers/specs/2026-10-06-decouverte-qr-design.md) · [spec de l'app Mac](docs/superpowers/specs/2026-10-06-app-mac-design.md) · [spec de ptzd dans l'app](docs/superpowers/specs/2026-10-07-ptzd-dans-app-design.md) · [spec de la distribution](docs/superpowers/specs/2026-10-08-distribution-design.md) · [spec de go2rtc dans PTZBot](docs/superpowers/specs/2026-10-12-go2rtc-dans-ptzbot-design.md) · [plan côté Mac](docs/superpowers/plans/2026-10-05-nacelle-mac.md) · [plan de l'app iOS](docs/superpowers/plans/2026-10-05-nacelle-ios.md) · [plan de l'accès local](docs/superpowers/plans/2026-10-06-acces-local.md) · [plan de la découverte et du QR code](docs/superpowers/plans/2026-10-06-decouverte-qr.md) · [plan de l'app Mac](docs/superpowers/plans/2026-10-06-app-mac.md) · [tests de faisabilité](docs/spike/2026-10-05-faisabilite.md).
 
 ### Architecture
 
@@ -323,6 +313,7 @@ Prérequis :
 - un Mac Apple Silicon sous macOS 15 ou plus récent ;
 - Tailscale sur le Mac pour piloter hors de la maison (sans lui, `ptzd` n'écoute que sur 127.0.0.1 et sur le réseau local) ;
 - OBSBOT Center fermé : ouvert, il fausse la relecture du tilt ;
+- pour la diffusion de la caméra (go2rtc) : ffmpeg de Homebrew (`brew install ffmpeg`) ;
 - pour le suivi IA seulement : le SDK OBSBOT, à demander sur [obsbot.com/sdk](https://www.obsbot.com/sdk), et les outils de développement d'Apple (PTZBot propose de les installer).
 
 Puis :
@@ -332,7 +323,7 @@ Puis :
 3. Au premier lancement :
    - **Ancienne installation.** Si l'agent launchd `io.github.djoko-cli.obsbot-nacelle.ptzd` d'une version précédente est là, PTZBot propose de le remplacer. **Remplacer** l'arrête, renomme sa plist en `.plist.bak`, met les anciens binaires de `bin/` à la corbeille et reprend le SDK de `lib/`. Les iPhone appairés et les réglages sont conservés. **Plus tard** garde l'ancien `ptzd` (le panneau affiche « Ancienne installation ») ; la question revient au lancement suivant.
    - **`config.json`.** S'il manque, PTZBot le crée avec l'adresse Tailscale du Mac, ou sur 127.0.0.1 seulement sans Tailscale (le panneau le signale).
-   - **Autorisations.** macOS demande l'accès au réseau local pour PTZBot (`ptzd` en dépend) : répondre **Autoriser**. À la première connexion de l'iPhone, il peut aussi demander s'il faut autoriser `ptzd` à accepter des connexions entrantes : répondre **Autoriser**. La question peut revenir après une mise à jour, car le binaire change.
+   - **Autorisations.** macOS demande l'accès au réseau local pour PTZBot (`ptzd` en dépend) : répondre **Autoriser**. À la première connexion de l'iPhone, il peut aussi demander s'il faut autoriser `ptzd` à accepter des connexions entrantes : répondre **Autoriser**. La question peut revenir après une mise à jour, car le binaire change. Au premier allumage de go2rtc, macOS demande l'accès à la caméra, puis au micro, au nom de « ffmpeg » (et non de PTZBot) : répondre **Autoriser**. La question revient après une mise à jour de ffmpeg par Homebrew (`brew upgrade`).
 4. **SDK OBSBOT.** Dans le panneau, **SDK OBSBOT › Installer le SDK…** : choisir l'archive `.zip` reçue d'OBSBOT ou son dossier décompressé. Un `libdev.dylib` seul est refusé : les en-têtes sont nécessaires pour compiler `obsbot-ai`. PTZBot prend `macos/arm64-release/libdev.dylib` et le dossier `include/` à côté de `macos/` ; les autres copies de la bibliothèque dans l'archive sont listées et ignorées. La fenêtre montre l'architecture, la signature, la provenance et la quarantaine ; **Autoriser ce SDK** copie la bibliothèque et les en-têtes dans `sdk/`, retire la quarantaine de ces copies seulement, compile `obsbot-ai` avec les outils de développement d'Apple, puis vérifie qu'il charge le SDK. Tout se fait d'un seul tenant : si une étape échoue, l'ancien SDK et l'ancien `obsbot-ai` restent, et la sortie du compilateur va dans `obsbot-ai-compilation.log`. Sans SDK, tout marche sauf le suivi IA.
    - **Outils de développement.** Sans eux, la ligne SDK du panneau et la fenêtre **SDK OBSBOT** proposent **Installer les outils de développement…** avant tout choix du SDK. Le bouton lance l'installation d'Apple (`xcode-select --install`), seulement quand on clique : accepter dans la fenêtre d'Apple, puis rouvrir le panneau, ou cliquer sur **Vérifier à nouveau** dans la fenêtre. Un SDK déjà installé dont `obsbot-ai` doit être recompilé affiche « Outils requis », avec le même bouton.
    - **SDK installé par une version précédente.** Un SDK copié sans ses en-têtes (un `libdev.dylib` seul) affiche « À compléter », avec dessous « Réinstallez le SDK depuis son archive ou son dossier : ses en-têtes manquent. » : le réinstaller depuis l'archive.
@@ -353,9 +344,9 @@ Prérequis : Xcode et [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew i
 scripts/install-mac.sh
 ```
 
-Le script compile l'app (`ptzd` et `talkd` dans `Contents/Helpers`, la plist embarquée de l'ancien agent de Talkback dans `Contents/Library/LaunchAgents`, la source d'`obsbot-ai` dans `Contents/Resources`, Sparkle dans `Contents/Frameworks`), ferme l'app en cours, l'installe dans `~/Applications/PTZBot.app` et la lance. Il ne touche ni à launchd ni aux fichiers de `~/Library/Application Support/ObsbotNacelle/`. Une telle compilation garde le numéro 1 : Sparkle n'y démarre jamais. Ne garder qu'une copie de PTZBot : pour revenir aux versions publiées, mettre `~/Applications/PTZBot.app` à la corbeille et installer l'image disque.
+Le script compile l'app (`ptzd`, `talkd` et `gardien` dans `Contents/Helpers`, avec go2rtc 1.9.14 téléchargé depuis ses versions officielles et vérifié par `mac/app/go2rtc.sha256`, la plist embarquée de l'ancien agent de Talkback dans `Contents/Library/LaunchAgents`, la source d'`obsbot-ai` dans `Contents/Resources`, Sparkle dans `Contents/Frameworks`), ferme l'app en cours, l'installe dans `~/Applications/PTZBot.app` et la lance. Il ne touche ni à launchd ni aux fichiers de `~/Library/Application Support/ObsbotNacelle/`. Une telle compilation garde le numéro 1 : Sparkle n'y démarre jamais. Ne garder qu'une copie de PTZBot : pour revenir aux versions publiées, mettre `~/Applications/PTZBot.app` à la corbeille et installer l'image disque.
 
-`mac/app/check-bundle.sh` vérifie une compilation Release : `ptzd`, `talkd`, la plist embarquée de l'ancien agent de Talkback, la source d'`obsbot-ai` et Sparkle sont là ; le SDK, ses en-têtes et tout binaire `obsbot-ai` sont absents.
+`mac/app/check-bundle.sh` vérifie une compilation Release : `ptzd`, `talkd`, `gardien`, le binaire officiel de go2rtc et sa licence, les droits caméra et micro de l'app, la plist embarquée de l'ancien agent de Talkback, la source d'`obsbot-ai` et Sparkle sont là ; le SDK, ses en-têtes et tout binaire `obsbot-ai` sont absents.
 
 Publier une version (mainteneur) : écrire sa section dans `NOTES-VERSIONS.md` (**English**, puis **Français**), régler `MARKETING_VERSION` dans `mac/app/project.yml`, puis lancer `outils/publier.sh X.Y.Z` depuis un `main` propre et à jour. Si elle s'arrête en route, la reprendre depuis `gestes.txt`, dans le dossier des produits, jamais en relançant le script. `outils/publier.sh X.Y.Z --repetition DOSSIER --url-base http://127.0.0.1:PORT …` répète tout sans GitHub.
 
@@ -379,6 +370,7 @@ Après une modification, relancer le service : dans le panneau, éteindre puis r
 | Besoin | Commande |
 |---|---|
 | Journal du service | `tail -f ~/Library/Logs/obsbot-nacelle/ptzd.log` |
+| Journal de go2rtc | `tail -f ~/Library/Logs/obsbot-nacelle/go2rtc.log` |
 | Sortie du SDK | `tail ~/Library/Logs/obsbot-nacelle/obsbot-ai.log` |
 | Compilation d'`obsbot-ai` | `tail ~/Library/Logs/obsbot-nacelle/obsbot-ai-compilation.log` |
 | Lire la position de la caméra | `/Applications/PTZBot.app/Contents/Helpers/ptzd uvc get` |
@@ -399,11 +391,12 @@ Elle vit dans la barre des menus (icône de la Tiny 2), sans icône dans le Dock
 - l'interrupteur **Service ptzd**, retenu d'un lancement à l'autre, et l'état de `ptzd` (« Actif », « Démarrage… », « Arrêté », « Relancé après un arrêt inattendu (n) », « Ne répond pas » avec un lien vers son journal) et de la caméra. Au-delà de 5 arrêts en 2 min, PTZBot cesse de relancer `ptzd` : « ptzd s'arrête sans cesse : ouvrez le journal ». Il ne le relance pas non plus si un autre `ptzd` tourne déjà (verrou `ptzd.lock` ou port de 127.0.0.1 pris : « Le port 1985 est déjà pris… »), si `config.json` est invalide ou si ses arguments sont refusés ;
 - la ligne **SDK OBSBOT**, avec un état court à droite (« Prêt », « Absent », « En quarantaine », « Incompatible », « Ne se charge pas », « Outils requis », « À compléter », « Recompilation… », « Compilation impossible », « obsbot-ai introuvable ») et dessous, sur toute la largeur, ce qu'il veut dire et **Installer le SDK…**, **Installer les outils de développement…** ou, quand le SDK est prêt, **Changer…** ; tant que le SDK n'est pas prêt, **Suivi IA** est grisé (« SDK OBSBOT requis »), sauf si un ancien `obsbot-ai` reste en service ;
 - les interrupteurs **Vie privée** et **Suivi IA** (le suivi affiche le dernier ordre : l'état réel ne se lit pas, un geste devant la caméra peut le changer) ;
-- l'interrupteur **Talkback** et, dessous, l'état de `talkd` (« Prêt », « Démarrage… », « En lecture », « Désactivé », « Autorisation requise », et la raison quand il s'arrête) ; il installe ou retire l'agent en arrière-plan (voir « Talkback » plus bas) ;
+- l'interrupteur **go2rtc**, éteint par défaut, juste après `ptzd` (voir « go2rtc » plus bas) ;
+- l'interrupteur **Talkback** ; il installe ou retire l'agent en arrière-plan (voir « Talkback » plus bas). Chaque service montre une pastille verte quand tout est normal (`ptzd` actif, go2rtc en marche, Talkback prêt ou en lecture, SDK prêt) ; sinon sa ligne d'état (« Démarrage… », « Désactivé », « Autorisation requise », la raison quand il s'arrête…) ;
 - les clients connectés, avec **Expulser** : la connexion est coupée et l'appareil refusé 10 min (tant que `ptzd` tourne), sans perdre son appairage ;
 - **Appairer un iPhone…** : le QR code en image, valable 5 min ; fermer la fenêtre l'annule ;
 - **Appareils…** : les appareils appairés, **Débloquer** et **Retirer…** (l'appareil est retiré et ses connexions coupées tout de suite) ;
-- **Rechercher les mises à jour…** sur sa propre ligne, puis **Réglages…** (**Rechercher automatiquement**, **Installer automatiquement**, **Ouvrir à la connexion**, la version, par exemple « PTZBot 1.0.0 (412) » ; macOS peut demander un accord dans Réglages › Général › Ouverture) et **Quitter** : arrête `ptzd` (6 s au plus), puis l'app.
+- **Rechercher les mises à jour…** sur sa propre ligne, puis **Réglages…** (**Rechercher automatiquement**, **Installer automatiquement**, **Ouvrir à la connexion**, la version, par exemple « PTZBot 1.0.0 (412) » ; macOS peut demander un accord dans Réglages › Général › Ouverture) et **Quitter** : arrête `ptzd` et go2rtc (16 s au plus), puis l'app ; quand go2rtc est allumé, une confirmation dit que quitter PTZBot arrête aussi la caméra HomeKit.
 
 Si l'accès au réseau local est refusé à PTZBot, le panneau l'indique, avec un bouton vers les réglages de confidentialité : les iPhone ne trouvent alors le Mac que par Tailscale.
 
@@ -492,31 +485,17 @@ Pendant la parole, les haut-parleurs intégrés sont remontés à 30 % au moins 
 
 ### go2rtc
 
-`ptzd` relaie la négociation vidéo à l'API de go2rtc sur 127.0.0.1 : l'API n'a donc plus besoin d'être ouverte au réseau. Configuration conseillée (dans `go2rtc.yaml`, à adapter) :
+PTZBot pour Mac contient [go2rtc](https://github.com/AlexxIT/go2rtc) 1.9.14 (licence MIT), qui diffuse la caméra vers HomeKit (via Homebridge, en RTSP) et vers l'app iPhone (en WebRTC, par `ptzd`). go2rtc ne tourne que pendant que PTZBot est ouvert, comme processus enfant : **Quitter** l'arrête, et la caméra HomeKit avec lui. Si PTZBot plante, son petit utilitaire `gardien` arrête go2rtc lui aussi.
 
-```yaml
-api:
-  listen: "127.0.0.1:1984"
-rtsp:
-  listen: ":8554"
-  username: "<identifiant>"
-  password: "<mot de passe>"
-webrtc:
-  listen: ":8555"
-ffmpeg:
-  bin: /opt/homebrew/bin/ffmpeg   # chemin complet : sous launchd, le PATH ne contient pas /opt/homebrew/bin
-streams:
-  obsbot:
-    - exec:…   # vidéo de la caméra (H.264)
-    - exec:…   # micro de la caméra (AAC, pour HomeKit)
-    - ffmpeg:obsbot#audio=opus   # le même son en Opus, pour PTZBot (WebRTC)
-```
-
-- go2rtc dispense les clients locaux (127.0.0.1) du mot de passe RTSP : les sources `exec:` qui publient sur `{output}` continuent de fonctionner sans changement.
-- Un client RTSP du réseau, comme Homebridge, doit alors donner l'identifiant et le mot de passe dans l'adresse du flux : `rtsp://<identifiant>:<mot de passe>@<Mac>:8554/obsbot`.
-- Le port WebRTC 8555 reste ouvert : sans offre négociée par `ptzd`, il ne donne aucune image.
-- Son dans PTZBot : WebRTC ne transporte pas l'AAC. La source `ffmpeg:obsbot#audio=opus` le convertit en Opus dès que PTZBot est ouvert, même son coupé (le bouton ne fait que couper la lecture, pour que le son revienne tout de suite). Sans la ligne `ffmpeg: bin:`, go2rtc lancé par launchd ne trouve pas `ffmpeg` et la piste audio reste muette, sans message d'erreur.
-- `go2rtc.yaml` contient le mot de passe RTSP : le passer en droits 600 (`chmod 600 go2rtc.yaml`).
+- **L'allumer.** L'interrupteur **go2rtc** du panneau est éteint par défaut : il ne doit pas prendre la caméra de quelqu'un qui a déjà son go2rtc. Allumé, go2rtc démarre avec PTZBot et repart après un arrêt inattendu ; au-delà de 5 arrêts en 2 min, PTZBot cesse de le relancer (« go2rtc s'arrête sans cesse : ouvrez le journal »).
+- **ffmpeg.** go2rtc a besoin du ffmpeg de Homebrew, que PTZBot ne fournit jamais (il est sous GPL) : `brew install ffmpeg`. PTZBot le cherche au chemin réglé dans **Réglages › Caméra**, puis dans `/opt/homebrew/bin/ffmpeg`, puis dans `/usr/local/bin/ffmpeg`.
+- **Configuration.** PTZBot écrit `~/Library/Application Support/ObsbotNacelle/go2rtc.yaml` (droits 600 : il contient le mot de passe RTSP) d'après **Réglages › Caméra** : identifiant et mot de passe, résolution, cadence et débit, caméra et micro (par défaut, les premiers OBSBOT trouvés), ports RTSP (8554) et WebRTC (8555). L'API reste sur `127.0.0.1:1984`, où `ptzd` relaie la vidéo de l'iPhone, et le flux s'appelle `obsbot`. **Appliquer** réécrit le fichier et relance go2rtc : le flux HomeKit est coupé quelques secondes.
+- **Configuration existante.** **Importer une configuration existante…** lit un `go2rtc.yaml` (par exemple `/opt/homebrew/etc/go2rtc.yaml`, joignable par ⇧⌘G) et montre ce qu'il reprend : identifiant, mot de passe, ports et, s'ils sont reconnus, les noms des appareils et le chemin de ffmpeg. Le fichier importé n'est jamais modifié. **Utiliser un fichier de configuration personnalisé** lance go2rtc sur votre propre fichier, que PTZBot n'écrit jamais ; ports et appareils ne sont alors pas vérifiés.
+- **Autorisations.** Les ffmpeg de go2rtc ouvrent la caméra et le micro, donc macOS accorde l'accès à ffmpeg lui-même : la demande porte le nom « ffmpeg », et non PTZBot. Elle revient après une mise à jour de ffmpeg par Homebrew (`brew upgrade`), car le binaire change. Un refus affiche « Accès à la caméra refusé » dans le panneau, avec un bouton vers les réglages de confidentialité.
+- **Panneau.** Une pastille verte quand go2rtc tourne normalement ; le survol de la rangée montre les clients par protocole (« 2 clients · RTSP ×1, WebRTC ×1 »). Sinon une ligne d'état : « ffmpeg introuvable », « Port 8554 déjà utilisé : un autre go2rtc tourne-t-il ? », « Caméra OBSBOT absente », « Accès à la caméra refusé », ou, en orange, « coreaudiod ne répond pas : la caméra est bloquée », avec **Copier la commande de réparation** (`sudo killall -9 coreaudiod`, à lancer soi-même dans le Terminal : PTZBot ne la lance jamais).
+- **Son propre go2rtc.** Interrupteur éteint, PTZBot ne touche pas à go2rtc : un go2rtc lancé par ailleurs continue de fonctionner. Son API doit alors écouter sur `127.0.0.1:1984` et son flux s'appeler `obsbot` (`go2rtcAPI` et `streamName` dans `config.json`). Jamais deux go2rtc à la fois : PTZBot ne lance pas le sien tant que les ports sont pris.
+- Un client RTSP du réseau, comme Homebridge, donne l'identifiant et le mot de passe dans l'adresse du flux : `rtsp://<identifiant>:<mot de passe>@<Mac>:8554/obsbot`. go2rtc dispense les clients locaux (127.0.0.1) du mot de passe.
+- Le port WebRTC 8555 reste ouvert : sans offre négociée par `ptzd`, il ne donne aucune image. Son dans PTZBot : WebRTC ne transporte pas l'AAC ; la source `ffmpeg:obsbot#audio=opus` le convertit en Opus dès que PTZBot est ouvert, même son coupé (le bouton ne fait que couper la lecture, pour que le son revienne tout de suite).
 - Le flux RTSP vers Homebridge, identifiants compris, circule en clair sur le réseau local : un appareil qui intercepte ce trafic peut les lire, ainsi que les images.
 - Le QR code d'appairage (fenêtre de PTZBot pour Mac, ou `ptzd pair` et l'URL affichée sous lui) permet d'appairer un appareil pendant 5 minutes : ne l'afficher que le temps du scan.
 - Ne jamais exposer 127.0.0.1:1985 au réseau, par exemple avec `tailscale serve` ou `ssh -L` : les connexions venues de 127.0.0.1 sont dispensées d'authentification, tout client distant passé par là piloterait la caméra.
@@ -525,7 +504,7 @@ streams:
 
 Dans PTZBot pour Mac, éteindre **Talkback** (sinon son agent continue de tourner), **Réglages…** › décocher **Ouvrir à la connexion**, puis **Quitter** (`ptzd` s'arrête avec l'app), et mettre `/Applications/PTZBot.app` (ou `~/Applications/PTZBot.app` pour une compilation depuis les sources) à la corbeille.
 
-Les données restent dans `~/Library/Application Support/ObsbotNacelle/` (réglages, iPhone appairés, SDK, ses en-têtes et `obsbot-ai`) et les journaux dans `~/Library/Logs/obsbot-nacelle/`, tant qu'on ne les supprime pas :
+Les données restent dans `~/Library/Application Support/ObsbotNacelle/` (réglages, iPhone appairés, SDK, ses en-têtes, `obsbot-ai` et `go2rtc.yaml`) et les journaux dans `~/Library/Logs/obsbot-nacelle/`, tant qu'on ne les supprime pas :
 
 ```bash
 rm -r ~/Library/Application\ Support/ObsbotNacelle ~/Library/Logs/obsbot-nacelle
@@ -539,9 +518,10 @@ Après une migration, la plist de l'ancien agent reste en `~/Library/LaunchAgent
 |---|---|
 | `Packages/NacelleProtocol/` | Messages échangés entre les apps et `ptzd`, partagés par les deux |
 | `mac/ptzd/` | Le service : logique (`PTZCore`), appairage et authentification (`PTZAuth`), accès USB (`CUVC`, `UVCCamera`), serveur WebSocket et écoute locale (`PTZServer`) |
+| `mac/gardien/` | L'utilitaire `gardien` : lance go2rtc comme enfant et l'arrête quand PTZBot disparaît, même après un plantage |
 | `mac/talkd/` | L'agent Talkback : `TalkCore` (logique testée, sans son ni réseau réels), l'exécutable `talkd` (CoreAudio) et `talkd.example.json` |
 | `mac/ai/` | L'utilitaire `obsbot-ai` (C++) : sa source, livrée dans l'app et compilée sur le Mac de l'utilisateur ; `build.sh` le compile en local avec le SDK de `vendor/`, pour les essais |
-| `mac/app/` | L'app PTZBot pour Mac : `project.yml` (xcodegen), interface (`PTZBot/`), logique testée (`PTZBotKit/`), phase des utilitaires (`build-helpers.sh`), vérification du paquet (`check-bundle.sh`) et flux des mises à jour (`appcast.xml`, écrit à la publication) |
+| `mac/app/` | L'app PTZBot pour Mac : `project.yml` (xcodegen), interface (`PTZBot/`), logique testée (`PTZBotKit/`), phase des utilitaires (`build-helpers.sh`), vérification du paquet (`check-bundle.sh`), empreintes et licence de go2rtc (`go2rtc.sha256`, `go2rtc-LICENSE.txt`) et flux des mises à jour (`appcast.xml`, écrit à la publication) |
 | `mac/tools/` | Client WebSocket de test |
 | `ios/` | L'app iOS : `project.yml` (xcodegen), sources et tests |
 | `outils/` | Publication d'une version : `publier.sh`, `publication.py` et leurs tests, licence de Sparkle |
@@ -552,4 +532,4 @@ Après une migration, la plist de l'ancien agent reste en `~/Library/LaunchAgent
 
 ### Licence
 
-MIT. Voir [LICENSE](LICENSE). L'image disque porte aussi la licence de [Sparkle](https://sparkle-project.org) 2.10.0 (`outils/Sparkle-LICENSE.txt`).
+MIT. Voir [LICENSE](LICENSE). L'image disque porte aussi la licence de [Sparkle](https://sparkle-project.org) 2.10.0 (`outils/Sparkle-LICENSE.txt`), et l'app celle de [go2rtc](https://github.com/AlexxIT/go2rtc) 1.9.14 (`Contents/Resources/go2rtc-LICENSE.txt`, MIT).

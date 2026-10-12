@@ -6,6 +6,32 @@ release and to the update window.
 PTZBot pour Mac. Chaque section a un bloc **English**, puis un bloc **Français** ; les mêmes notes servent à la
 version GitHub et à la fenêtre de mise à jour.
 
+## 1.1.0
+
+**English**
+
+- go2rtc is now part of PTZBot: turn on **go2rtc** in the panel (off by default) and PTZBot streams the camera to
+  HomeKit and to the iPhone app while it is open. Its settings are in the new **Settings › Camera** tab, where an
+  existing go2rtc configuration can be imported.
+- go2rtc needs ffmpeg, which PTZBot does not include: install it with Homebrew (`brew install ffmpeg`).
+- The first time, macOS asks for camera access, then microphone access, in the name of "ffmpeg" (not PTZBot): choose
+  "Allow". The request comes back after Homebrew updates ffmpeg.
+- When go2rtc is on, quitting PTZBot also stops the HomeKit camera; PTZBot asks for confirmation first.
+- In the panel, each service shows a green dot when everything is normal; a status line appears only when something
+  needs attention.
+
+**Français**
+
+- go2rtc fait désormais partie de PTZBot : allumez **go2rtc** dans le panneau (éteint par défaut), et PTZBot diffuse
+  la caméra vers HomeKit et vers l'app iPhone tant qu'il est ouvert. Ses réglages sont dans le nouvel onglet
+  **Réglages › Caméra**, où une configuration go2rtc existante peut être importée.
+- go2rtc a besoin de ffmpeg, que PTZBot ne fournit pas : installez-le avec Homebrew (`brew install ffmpeg`).
+- La première fois, macOS demande l'accès à la caméra, puis au micro, au nom de « ffmpeg » (et non de PTZBot) :
+  choisissez « Autoriser ». La demande revient après une mise à jour de ffmpeg par Homebrew.
+- Quand go2rtc est allumé, quitter PTZBot arrête aussi la caméra HomeKit ; PTZBot demande d'abord confirmation.
+- Dans le panneau, chaque service montre une pastille verte quand tout est normal ; une ligne d'état n'apparaît que
+  quand il faut y prêter attention.
+
 ## 1.0.7
 
 **English**
