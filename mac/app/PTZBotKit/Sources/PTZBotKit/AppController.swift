@@ -1,9 +1,9 @@
 import Foundation
 import Observation
 
-/// Le lancement et l'arrêt de l'app autour de ptzd (spec ptzd dans l'app § 5.3, § 5.5 et § 5.6) :
-/// ancienne installation détectée et remplacée après confirmation, `config.json` créé au besoin,
-/// supervision de ptzd, état du SDK, « Quitter » qui attend ptzd.
+/// Le lancement et l'arrêt de l'app autour de ptzd (spec ptzd dans l'app § 5.3, § 5.5 et § 5.6) et de go2rtc (spec B3
+/// § 3.3) : ancienne installation détectée et remplacée après confirmation, `config.json` créé au besoin,
+/// supervision de ptzd et de go2rtc, état du SDK, « Quitter » qui attend ptzd et go2rtc.
 @MainActor
 @Observable
 public final class AppController {
@@ -18,6 +18,8 @@ public final class AppController {
 
     /// « Quitter » attend ptzd 5 s au plus (le superviseur envoie SIGKILL à 5 s) ; marge de sécurité.
     public static let quitTimeout: TimeInterval = 6
+    /// Avec go2rtc : son gardien reçoit SIGKILL à 15 s au plus tard ; marge de sécurité.
+    public static let go2rtcQuitTimeout: TimeInterval = Go2RTCSupervisor.killDelay + 1
 
     public private(set) var legacy: Legacy = .checking
     public private(set) var migrationError: String?
@@ -32,6 +34,8 @@ public final class AppController {
     public private(set) var tailscaleMissing = false
     public private(set) var configError: String?
     public let supervisor: ServiceSupervisor
+    /// go2rtc, processus enfant de l'app (spec B3) ; nil dans les tests qui ne s'en occupent pas.
+    public let go2rtc: Go2RTCSupervisor?
 
     @ObservationIgnored private let legacyAgent: LegacyAgent
     @ObservationIgnored private let configURL: URL
@@ -47,6 +51,7 @@ public final class AppController {
 
     public init(
         supervisor: ServiceSupervisor,
+        go2rtc: Go2RTCSupervisor? = nil,
         legacyAgent: LegacyAgent,
         configURL: URL,
         interfaces: any InterfaceAddressProvider,
@@ -55,6 +60,7 @@ public final class AppController {
         confirmMigration: @escaping @MainActor () async -> Bool
     ) {
         self.supervisor = supervisor
+        self.go2rtc = go2rtc
         self.legacyAgent = legacyAgent
         self.configURL = configURL
         self.interfaces = interfaces
@@ -68,6 +74,8 @@ public final class AppController {
     public func launch() async {
         guard !launched else { return }
         launched = true
+        // go2rtc ne dépend ni de ptzd ni de l'ancienne installation : il démarre tout de suite s'il est allumé.
+        go2rtc?.start()
         let agent = legacyAgent
         let found = await Task.detached { agent.detect() }.value
         if found {
@@ -160,11 +168,24 @@ public final class AppController {
         Task.detached { toolchain.requestInstall() }
     }
 
-    /// Arrête ptzd (SIGTERM, puis SIGKILL à 5 s), puis `completion`, une seule fois, au plus tard après `quitTimeout`.
+    /// « Quitter » arrête aussi la caméra HomeKit : la confirmation le dit quand go2rtc est allumé (spec B3 § 3.3).
+    public var quitStopsCamera: Bool {
+        go2rtc?.isEnabled == true
+    }
+
+    /// Le délai de sécurité de « Quitter » : celui de ptzd, ou celui de go2rtc quand l'app le supervise.
+    public var quitDelay: TimeInterval {
+        go2rtc == nil ? Self.quitTimeout : Self.go2rtcQuitTimeout
+    }
+
+    /// Arrête ptzd (SIGTERM, puis SIGKILL à 5 s) et go2rtc (SIGTERM, que le gardien transmet ; 10 s pour sortir),
+    /// puis `completion`, une seule fois, quand les deux sont sortis, au plus tard après `quitDelay`.
     public func quit(completion: @escaping @MainActor () -> Void) {
         let once = Once(completion)
-        supervisor.stop(forQuit: true) { once.run() }
-        scheduler.schedule(after: Self.quitTimeout) { once.run() }
+        let remaining = Countdown(go2rtc == nil ? 1 : 2) { once.run() }
+        supervisor.stop(forQuit: true) { remaining.done() }
+        go2rtc?.stop(forQuit: true) { remaining.done() }
+        scheduler.schedule(after: quitDelay) { once.run() }
     }
 
     private func startService() async {
@@ -193,6 +214,25 @@ public final class AppController {
 
 private struct BootstrapFailure: Error {
     var reason: String
+}
+
+/// Une action exécutée quand `count` tâches ont fini.
+@MainActor
+private final class Countdown {
+    private var count: Int
+    private let action: @MainActor () -> Void
+
+    init(_ count: Int, action: @escaping @MainActor () -> Void) {
+        self.count = count
+        self.action = action
+    }
+
+    func done() {
+        count -= 1
+        if count == 0 {
+            action()
+        }
+    }
 }
 
 /// Une action exécutée une seule fois.

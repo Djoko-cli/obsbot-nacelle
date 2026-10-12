@@ -371,6 +371,8 @@ final class FakeLauncher: ProcessLauncher {
 
     private(set) var launched: [FakeProcess] = []
     private(set) var executables: [URL] = []
+    /// Les variables données à chaque lancement (vide : l'environnement de l'app).
+    private(set) var environments: [[String: String]] = []
     var failure: (any Error)?
 
     var last: FakeProcess? {
@@ -380,6 +382,7 @@ final class FakeLauncher: ProcessLauncher {
     func launch(
         executableURL: URL,
         arguments: [String],
+        environment: [String: String],
         outputURL: URL,
         onExit: @escaping @MainActor (ProcessExit) -> Void
     ) throws -> any LaunchedProcess {
@@ -387,6 +390,7 @@ final class FakeLauncher: ProcessLauncher {
             throw failure
         }
         executables.append(executableURL)
+        environments.append(environment)
         let process = FakeProcess(pid: pid_t(1000 + launched.count), arguments: arguments, outputURL: outputURL, onExit: onExit)
         launched.append(process)
         return process
