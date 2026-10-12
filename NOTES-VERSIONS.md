@@ -10,16 +10,20 @@ version GitHub et à la fenêtre de mise à jour.
 
 **English**
 
-- PTZBot is now signed with an Apple Developer ID and notarized by Apple: macOS no longer warns about an unidentified
-  developer when you first open it. After this update, macOS may ask again for access to the local network, and you may
-  need to turn "Open at login" on again.
+- PTZBot is now signed with an Apple Developer ID and notarized by Apple: a freshly downloaded PTZBot opens without
+  "Open Anyway". When updating from an earlier version, macOS says once that the app differs from the versions opened
+  before and asks whether to open it: choose "Open Anyway". It may also ask again for access to the local network, and
+  you may need to turn "Open at login" on again.
+- The project moves to github.com/Djoko-cli/ptzbot; old links redirect there.
 - Talkback: an update no longer turns Talkback on by itself when you had turned it off.
 
 **Français**
 
-- PTZBot est désormais signé avec un Developer ID d'Apple et notarisé par Apple : macOS ne signale plus de développeur
-  non identifié à la première ouverture. Après cette mise à jour, macOS peut redemander l'accès au réseau local, et il
-  faudra peut-être réactiver « Ouvrir à la connexion ».
+- PTZBot est désormais signé avec un Developer ID d'Apple et notarisé par Apple : un PTZBot fraîchement téléchargé
+  s'ouvre sans « Ouvrir quand même ». Depuis une version précédente, macOS dit une seule fois que l'app diffère des
+  versions ouvertes jusque-là et demande s'il faut l'ouvrir : choisissez « Ouvrir quand même ». Il peut aussi
+  redemander l'accès au réseau local, et il faudra peut-être réactiver « Ouvrir à la connexion ».
+- Le projet passe à github.com/Djoko-cli/ptzbot ; les anciens liens y redirigent.
 - Talkback : une mise à jour ne rallume plus Talkback de lui-même quand vous l'aviez éteint.
 
 ## 1.0.6

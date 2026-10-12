@@ -58,7 +58,7 @@ export SPARKLE_BIN
 exec /usr/bin/python3 ../../outils/publication.py publier "$@" \
   --auteur Djoko-cli --etiquette ptzbot-v --flux appcast.xml --licence ../../outils/Sparkle-LICENSE.txt \
   --notes ../../NOTES-VERSIONS.md --sans-bac-a-sable \
-  --nom-app PTZBot --fichier PTZBot --depot-github Djoko-cli/obsbot-nacelle \
+  --nom-app PTZBot --fichier PTZBot --depot-github Djoko-cli/ptzbot \
   --projet PTZBot.xcodeproj --schema PTZBot --cible PTZBot \
   --test 'cd ../../Packages/NacelleProtocol && swift test' \
   --test 'cd ../ptzd && swift test' \

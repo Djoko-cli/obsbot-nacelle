@@ -72,7 +72,7 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         # Le flux des mises à jour (appcast.xml du dépôt, que publier.sh tient à jour, à son adresse brute) et la clé
         # publique ; la répétition les remplace en ligne de commande.
-        FLUX_MISES_A_JOUR: https://raw.githubusercontent.com/Djoko-cli/obsbot-nacelle/main/mac/app/appcast.xml
+        FLUX_MISES_A_JOUR: https://raw.githubusercontent.com/Djoko-cli/ptzbot/main/mac/app/appcast.xml
         CLE_MISES_A_JOUR: nRIVHOXbEktqGduJ4ukxhjZzlUaiE/yqR3sgbW9Ie6E=
         # Pas de bac à sable : l'app lit la configuration de ptzd et le lance.
         ENABLE_APP_SANDBOX: NO
