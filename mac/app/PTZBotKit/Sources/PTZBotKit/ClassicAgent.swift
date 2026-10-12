@@ -174,6 +174,7 @@ public struct ClassicAgent: Sendable {
     /// Au lancement de l'app (spec haut-parleur § 15), si la plist existe :
     /// - elle diffère de celle qu'on écrirait aujourd'hui (l'app a changé de chemin, ou les clés ont changé) : elle est
     ///   réécrite, puis l'agent est déchargé et rechargé ;
+    /// - elle est à jour mais l'agent n'est pas chargé : `bootstrap` (un `kickstart` échouerait sur un service absent) ;
     /// - sinon, si `restart` (le numéro de compilation de l'app a changé) : `kickstart -k`, pour que le nouveau talkd
     ///   remplace l'ancien encore en mémoire. Un binaire remplacé sur place ne demande rien d'autre.
     ///
@@ -184,6 +185,10 @@ public struct ClassicAgent: Sendable {
         if !plistMatches() {
             try writePlist()
             try unload()
+            try launchctl.bootstrap(plist: plistURL)
+        } else if !launchctl.isLoaded(label: label) {
+            // À jour mais pas chargé (un lancement précédent a échoué au `bootstrap`, ou un `bootout` à la main) : un
+            // `kickstart` échouerait sur un service absent, à chaque lancement. On le charge.
             try launchctl.bootstrap(plist: plistURL)
         } else if restart {
             try launchctl.kickstart(label: label)

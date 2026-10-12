@@ -40,7 +40,8 @@ public protocol TalkbackService: AnyObject, Sendable {
     nonisolated func disable() async throws
     /// Désinscrit l'ancien agent de la 1.0.4, en attendant la fin (`unregister()` asynchrone).
     nonisolated func unregisterLegacy() async throws
-    /// Met l'agent en ordre au lancement : plist réécrite si elle diffère, `kickstart -k` si `restart`.
+    /// Met l'agent en ordre au lancement : plist réécrite si elle diffère, `bootstrap` si l'agent n'est pas chargé, sinon
+    /// `kickstart -k` si `restart`.
     nonisolated func reconcile(restart: Bool) async throws
     func openSystemSettings()
 }
@@ -313,7 +314,7 @@ public final class TalkbackModel {
     /// allumé, il le reste. Éteint, rien n'est installé. L'ancien réglage du numéro d'inscription est effacé.
     ///
     /// **Mise à jour.** Si la plist de l'agent classique existe, elle est réécrite quand son contenu diffère de celui
-    /// attendu (l'app a changé de chemin), sinon talkd est redémarré (`kickstart -k`) quand le numéro de compilation
+    /// attendu (l'app a changé de chemin), sinon l'agent est chargé s'il ne l'est pas, sinon talkd est redémarré (`kickstart -k`) quand le numéro de compilation
     /// de l'app n'est pas celui du dernier passage : le nouveau talkd remplace l'ancien encore en mémoire.
     ///
     /// Depuis un emplacement temporaire (`installBlocker`), rien du tout.

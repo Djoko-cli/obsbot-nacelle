@@ -292,6 +292,30 @@ struct ClassicAgentTests {
         #expect(calls() == ["bootstrap"])
     }
 
+    @Test("Plist à jour mais agent pas chargé : bootstrap (jamais kickstart), avec ou sans nouveau numéro")
+    func reconcileUpToDateNotLoaded() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let agent = try installed()
+        let before = try Data(contentsOf: agent.plistURL)
+        for restart in [true, false] {
+            launchctl.state.withLock { $0.loaded = false; $0.calls = [] }
+            try agent.reconcile(restart: restart)
+            #expect(calls() == ["bootstrap"])
+            #expect(launchctl.state.withLock { $0.loaded })
+        }
+        #expect(try Data(contentsOf: agent.plistURL) == before)
+    }
+
+    @Test("Plist à jour, agent pas chargé et bootstrap refusé : l'erreur remonte, la plist est gardée")
+    func reconcileUpToDateBootstrapFails() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let agent = try installed()
+        launchctl.state.withLock { $0.loaded = false; $0.bootstrapFails = true }
+        #expect(throws: (any Error).self) { try agent.reconcile(restart: true) }
+        #expect(exists(agent.plistURL))
+        #expect(calls() == ["bootstrap"])
+    }
+
     // MARK: - Emplacement temporaire (app translocalisée ou lancée depuis une image disque)
 
     private let transient = URL(
