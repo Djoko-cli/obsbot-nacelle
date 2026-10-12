@@ -354,15 +354,18 @@ public final class TalkbackModel {
         // PTZBot lancé depuis un emplacement temporaire (app translocalisée, image disque) : rien du tout, ni migration, ni
         // réécriture de la plist, ni redémarrage, ni numéro retenu. L'installation en place reste telle qu'elle est.
         guard service.installBlocker == nil else { return }
-        // Lu avant d'être effacé : il dit que Talkback était allumé sous la 1.0.3/1.0.4.
+        // Il dit que Talkback était allumé sous la 1.0.3/1.0.4. Effacé seulement une fois la migration réglée (faite, ou
+        // sans objet) : si la désinscription échoue, il reste, et la migration repart au lancement suivant.
         let hadOldRegistration = settings.string(forKey: Self.obsoleteRegisteredBuildKey) != nil
-        settings.set(nil as String?, forKey: Self.obsoleteRegisteredBuildKey)
         // Une plist classique en place : la migration est faite, quoi que dise SMAppService de l'ancien agent.
         if service.agentState != .absent {
             settings.set(true, forKey: Self.migrationDoneKey)
         }
         let migrating = hadOldRegistration && settings.bool(forKey: Self.migrationDoneKey) != true
             && service.hasLegacyRegistration
+        if !migrating {
+            settings.set(nil as String?, forKey: Self.obsoleteRegisteredBuildKey)
+        }
         let pending = settings.string(forKey: Self.pendingInstallKey)
         // Une installation retenue ne se retente que si rien n'est installé ; sinon la plist en place passe d'abord.
         let retrying = !migrating && pending != nil && service.agentState == .absent
@@ -385,6 +388,7 @@ public final class TalkbackModel {
                     settings.set(bundleVersion, forKey: Self.agentBuildKey)
                 }
                 settings.set(true, forKey: Self.migrationDoneKey)
+                settings.set(nil as String?, forKey: Self.obsoleteRegisteredBuildKey)
             } else if retrying {
                 try await service.enable()
                 settings.set(bundleVersion, forKey: Self.agentBuildKey)

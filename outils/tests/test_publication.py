@@ -1656,27 +1656,23 @@ class PublicationTests(unittest.TestCase):
                 self.assertFalse([a for a in appels if a.startswith('hdiutil')], 'aucun .dmg')
 
     def test_refus_levee_de_la_validation_avec_developer_id(self):
-        """Un Developer ID a une equipe : la levee posee par Xcode est refusee, notarisation ou non."""
-        for notariser in ('1', '0'):
+        """Un Developer ID a une equipe : la levee posee par Xcode est refusee (NOTARISER=0 est refuse plus tot hors
+        repetition : test_refus_developer_id_sans_notarisation_hors_repetition)."""
+        for notariser in ('1', ''):
             with self.subTest(notariser=notariser):
                 self.m.oublier()
                 appels = self.refuse(env=self.devid(FAUX_DROITS='validation-levee', NOTARISER=notariser),
                                      motif='disable-library-validation est present')
                 self.assertFalse([a for a in appels if a.startswith(('hdiutil', 'sign_update'))], 'aucun .dmg')
 
-    def test_developer_id_sans_notarisation(self):
-        """NOTARISER=0 : ni soumission, ni agrafe, ni profil requis ; signature sans horodatage ; mais toujours sans la
-        levee de la validation des bibliotheques (une equipe)."""
+    def test_refus_developer_id_sans_notarisation_hors_repetition(self):
+        """NOTARISER=0 (un export oublie d'une repetition) avec un Developer ID : la vraie publication est refusee, avant
+        toute compilation ; un .dmg non notarise contredirait le README et les notes. La repetition l'accepte
+        (test_repetition_developer_id_notarise_aussi)."""
         env = self.devid(NOTARISER='0')
         del env['PROFIL_NOTARISATION']
-        self.m.publier(env=env)
-        appels = self.m.appels()
-        self.assertFalse([a for a in appels if a.startswith(('xcrun', 'spctl'))])
-        self.assertTrue(all('--timestamp=none' in a for a in appels if a.startswith('codesign --force')))
-        with open(os.path.join(self.m.depot, 'build', 'publication', '1.2.3', 'droits-app.plist'), 'rb') as f:
-            self.assertNotIn(P.VALIDATION_BIBLIOTHEQUES, plistlib.load(f))
-        self.assertIn('anchor apple generic', lire(os.path.join(self.m.depot, 'build', 'publication', '1.2.3',
-                                                                'exigence.txt')))
+        appels = self.refuse(env=env, motif='NOTARISER=0')
+        self.assertFalse([a for a in appels if a.startswith(('xcodebuild', 'xcrun'))], 'rien de compile ni soumis')
 
     def test_refus_developer_id_sans_profil_de_notarisation(self):
         env = self.devid()
@@ -1709,7 +1705,7 @@ class PublicationTests(unittest.TestCase):
 
     def test_certificat_de_la_personne_dans_la_signature(self):
         """Le certificat de Developer ID, dans la signature de l'app, porte le nom de la personne : si c'est aussi le nom
-        du compte, ce n'est pas un chemin personnel. Le meme nom ailleurs dans l'app en reste un."""
+        du compte, ce n'est pas un chemin personnel. Un chemin personnel (/Users/<compte>) ailleurs dans l'app en reste un."""
         compte = {'USER': 'Jean', 'LOGNAME': 'Jean'}
         self.m.publier(env=self.devid(FAUX_SIGNATURE_PORTE=SUJET_DEVID, **compte))
         self.assertIn('contenu du .dmg : aucun chemin personnel', self.m.dit)

@@ -267,6 +267,23 @@ struct TalkbackTests {
         let second = TalkbackModel(service: refused, state: state, process: process, scheduler: scheduler, settings: other, bundleVersion: "7")
         await second.prepareAtLaunch()
         #expect(other.values[TalkbackModel.migrationDoneKey] == nil)
+        // Le réglage de la 1.0.4 reste tant que la migration n'est pas réglée : elle repart au lancement suivant.
+        #expect(other.strings[TalkbackModel.obsoleteRegisteredBuildKey] == "6")
+    }
+
+    @Test("Désinscription refusée puis réussie au lancement suivant : l'ancien agent est désinscrit avant d'installer")
+    func migrationRetriedNextLaunch() async {
+        service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
+        service.unregisterLegacyFailure = Refused()
+        await model.prepareAtLaunch()
+        #expect(service.calls == ["unregisterLegacy"])
+        service.unregisterLegacyFailure = nil
+        let next = TalkbackModel(service: service, state: state, process: process, scheduler: scheduler, settings: settings, bundleVersion: "7")
+        await next.prepareAtLaunch()
+        #expect(service.calls == ["unregisterLegacy", "unregisterLegacy", "enable"])
+        #expect(settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] == nil)
+        #expect(settings.values[TalkbackModel.migrationDoneKey] == true)
     }
 
     @Test("Allumer par l'interrupteur retient la migration faite (l'agent classique existe désormais)")

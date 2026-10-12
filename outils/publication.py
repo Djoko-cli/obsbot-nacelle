@@ -799,6 +799,9 @@ def verifier(a, o, racine_git, version):
     if os.environ.get('NOTARISER', '') not in ('', '0', '1'):
         raise Refus('NOTARISER vaut 0 (sans notarisation) ou 1 (avec) ; par defaut, la notarisation suit '
                     'l\'identite : oui pour un Developer ID')
+    if developer_id(a.identite) and os.environ.get('NOTARISER') == '0' and not a.repetition:
+        # Un export oublie d'une repetition ne doit pas publier un .dmg non notarise (README, notes de version).
+        raise Refus('NOTARISER=0 avec un Developer ID : seulement en repetition ; la publication est notarisee')
     if notariser(a.identite) and not os.environ.get('PROFIL_NOTARISATION'):
         raise Refus('la notarisation demande PROFIL_NOTARISATION, le profil de notarytool store-credentials '
                     '(NOTARISER=0 pour la couper)')

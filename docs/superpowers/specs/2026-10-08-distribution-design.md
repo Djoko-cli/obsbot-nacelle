@@ -290,7 +290,7 @@ Avec un Developer ID, **`com.apple.security.cs.disable-library-validation` n'est
 
 ### 13.6 Chemins personnels et certificat de la personne
 
-La signature d'une app Developer ID embarque le certificat de la personne, donc son nom, public par nature. Le contrôle des chemins personnels du .dmg cherche entre autres le nom du compte macOS, qui peut être un prénom : le certificat serait alors pris pour une fuite. Le contrôle retire donc du contenu des fichiers, avant la recherche, le nom de l'identité, celui de la personne et l'identifiant d'équipe. Le même nom ailleurs dans l'app reste un refus.
+La signature d'une app Developer ID embarque le certificat de la personne, donc son nom, public par nature. Le contrôle des chemins personnels du .dmg cherche entre autres le nom du compte macOS, qui peut être un prénom : le certificat serait alors pris pour une fuite. Le contrôle retire donc du contenu des fichiers, avant la recherche, le nom de l'identité, celui de la personne et l'identifiant d'équipe. Ce masque vaut pour tout le contenu du .dmg : le nom seul n'y est donc plus cherché nulle part, mais un chemin personnel (`/Users/…`, le dossier personnel) reste un refus partout (relecture finale de la 1.0.7).
 
 ### 13.7 Tests
 
