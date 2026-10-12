@@ -12,6 +12,7 @@ final class FakePreparer: Go2RTCPreparing, @unchecked Sendable {
 
     private let lock = NSLock()
     private var _result: Go2RTCPreparation = .ready(FakePreparer.readyLaunch)
+    private var _queued: [Go2RTCPreparation] = []
     private var _writeResult: Go2RTCBlock?
     private var _prepared: [Go2RTCSettings] = []
     private var _written: [Go2RTCSettings] = []
@@ -22,6 +23,12 @@ final class FakePreparer: Go2RTCPreparing, @unchecked Sendable {
     var result: Go2RTCPreparation {
         get { lock.withLock { _result } }
         set { lock.withLock { _result = newValue } }
+    }
+
+    /// Les résultats des prochaines préparations, dans l'ordre ; ensuite, `result`.
+    var queued: [Go2RTCPreparation] {
+        get { lock.withLock { _queued } }
+        set { lock.withLock { _queued = newValue } }
     }
 
     var writeResult: Go2RTCBlock? {
@@ -53,7 +60,7 @@ final class FakePreparer: Go2RTCPreparing, @unchecked Sendable {
                 lock.withLock { held = continuation }
             }
         }
-        return result
+        return lock.withLock { _queued.isEmpty ? _result : _queued.removeFirst() }
     }
 
     func writeConfig(_ settings: Go2RTCSettings) async -> Go2RTCBlock? {

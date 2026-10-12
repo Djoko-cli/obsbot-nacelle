@@ -66,9 +66,9 @@ struct Go2RTCSupervisorTests {
         #expect(launcher.launched.count == 1)
     }
 
-    @Test("Préparation bloquée (ffmpeg introuvable, port pris) : échec avec la raison, sans lancement ni relance")
+    @Test("Préparation bloquée (ffmpeg introuvable, caméra absente) : échec avec la raison, sans lancement ni relance")
     func blocked() async {
-        for block in [Go2RTCBlock.ffmpegMissing, .portBusy(8554)] {
+        for block in [Go2RTCBlock.ffmpegMissing, .cameraMissing] {
             preparer.result = .blocked(block)
             let supervisor = makeSupervisor()
             await started(supervisor)
@@ -77,6 +77,70 @@ struct Go2RTCSupervisorTests {
             #expect(launcher.launched.isEmpty)
         }
         #expect(preparer.prepared.count == 2)
+    }
+
+    @Test("Port pris au lancement : nouveaux essais toutes les secondes, pendant 5 s ; le port se libère, go2rtc part")
+    func portBusyThenFree() async throws {
+        #expect(Go2RTCSupervisor.portRetryDelay == 1)
+        #expect(Go2RTCSupervisor.portRetries == 5)
+        preparer.queued = [.blocked(.portBusy(8554)), .blocked(.portBusy(8554)), .blocked(.portBusy(1984))]
+        let supervisor = makeSupervisor()
+        await started(supervisor)
+        #expect(supervisor.state == .starting, "l'échec n'est pas annoncé tout de suite")
+        #expect(preparer.prepared.count == 1)
+        scheduler.advance(by: 0.9)
+        #expect(preparer.prepared.count == 1)
+        scheduler.advance(by: 0.1)
+        await supervisor.waitForPreparation()
+        #expect(preparer.prepared.count == 2)
+        #expect(supervisor.state == .starting)
+        scheduler.advance(by: 1)
+        await supervisor.waitForPreparation()
+        scheduler.advance(by: 1)
+        await supervisor.waitForPreparation()
+        #expect(preparer.prepared.count == 4)
+        #expect(supervisor.state == .running)
+        #expect(launcher.launched.count == 1)
+        #expect(scheduler.pendingCount == 0)
+    }
+
+    @Test("Port qui reste pris : échec « port déjà utilisé » après 5 essais de plus, sans relance ; Appliquer ou l'interrupteur réessaient")
+    func portStaysBusy() async throws {
+        preparer.result = .blocked(.portBusy(8554))
+        let supervisor = makeSupervisor()
+        await started(supervisor)
+        for _ in 0 ..< Go2RTCSupervisor.portRetries {
+            #expect(supervisor.state == .starting)
+            scheduler.advance(by: 1)
+            await supervisor.waitForPreparation()
+        }
+        #expect(supervisor.state == .failed(.blocked(.portBusy(8554))))
+        #expect(preparer.prepared.count == 6)
+        scheduler.advance(by: 60)
+        #expect(preparer.prepared.count == 6)
+        #expect(launcher.launched.isEmpty)
+        // Une relance ultérieure reste possible, avec de nouveaux essais.
+        preparer.result = .ready(FakePreparer.readyLaunch)
+        supervisor.setEnabled(false)
+        supervisor.setEnabled(true)
+        await supervisor.waitForPreparation()
+        #expect(supervisor.state == .running)
+    }
+
+    @Test("Arrêt pendant les essais de port : plus aucun essai, rien n'est lancé")
+    func stopDuringPortRetries() async {
+        preparer.result = .blocked(.portBusy(8554))
+        let supervisor = makeSupervisor()
+        await started(supervisor)
+        preparer.result = .ready(FakePreparer.readyLaunch)
+        var done = 0
+        supervisor.stop { done += 1 }
+        #expect(done == 1)
+        scheduler.advance(by: 60)
+        await supervisor.waitForPreparation()
+        #expect(supervisor.state == .stopped)
+        #expect(preparer.prepared.count == 1)
+        #expect(launcher.launched.isEmpty)
     }
 
     @Test("Arrêt : SIGTERM au gardien ; stopped et completion à sa fin ; pas de relance")

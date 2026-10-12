@@ -97,34 +97,144 @@ struct Go2RTCPreparerTests {
         #expect(await preparer(directory, locator: .missing).writeConfig(settings) == nil)
     }
 
-    @Test("Ports réels : un port tenu par une autre socket est pris, en TCP et en UDP ; refermée, il est libre")
+    @Test("Ports réels : un serveur d'essai (joker IPv4, 127.0.0.1 ou double pile IPv6) est vu pris, en TCP comme en UDP ; refermé, le port est libre")
     func realPorts() throws {
         let probe = SystemPortProbe()
         for (type, transport) in [(SOCK_STREAM, PortTransport.tcp), (SOCK_DGRAM, .udp)] {
-            let descriptor = socket(AF_INET, type, 0)
-            try #require(descriptor >= 0)
+            for kind in TestServer.Kind.allCases {
+                let server = try #require(TestServer(kind: kind, type: type), "\(kind) \(transport)")
+                #expect(!probe.isFree(server.port, transport: transport, loopbackOnly: false), "\(kind) \(transport)")
+                #expect(!probe.isFree(server.port, transport: transport, loopbackOnly: true), "\(kind) \(transport)")
+                server.close()
+                #expect(probe.isFree(server.port, transport: transport, loopbackOnly: false), "\(kind) \(transport)")
+                #expect(probe.isFree(server.port, transport: transport, loopbackOnly: true), "\(kind) \(transport)")
+            }
+        }
+    }
+
+    @Test("Ports réels : un port qui n'a que des connexions en TIME_WAIT (après l'arrêt de go2rtc) est libre")
+    func timeWaitIsFree() throws {
+        let probe = SystemPortProbe()
+        let server = try #require(TestServer(kind: .wildcard, type: SOCK_STREAM))
+        try #require(server.leaveTimeWait(), "connexion de test")
+        // Le serveur est refermé : seules restent les connexions fermées en premier de son côté (TIME_WAIT).
+        #expect(probe.isFree(server.port, transport: .tcp, loopbackOnly: false))
+        #expect(probe.isFree(server.port, transport: .tcp, loopbackOnly: true))
+        // Et un serveur qui revient sur ce port est de nouveau vu pris.
+        let again = try #require(TestServer(kind: .wildcard, type: SOCK_STREAM, port: server.port))
+        #expect(!probe.isFree(server.port, transport: .tcp, loopbackOnly: false))
+        again.close()
+    }
+}
+
+/// Un vrai serveur d'essai sur un port haut éphémère, avec `SO_REUSEADDR` comme go2rtc (Go).
+struct TestServer {
+    enum Kind: CaseIterable, CustomStringConvertible {
+        /// 0.0.0.0
+        case wildcard
+        /// 127.0.0.1 seulement
+        case loopback
+        /// `[::]` en double pile, comme un serveur Go qui écoute sur `:port`
+        case dualStack
+
+        var description: String {
+            switch self {
+            case .wildcard: "0.0.0.0"
+            case .loopback: "127.0.0.1"
+            case .dualStack: "[::] double pile"
+            }
+        }
+    }
+
+    let descriptor: Int32
+    let family: Int32
+    let kind: Kind
+    let type: Int32
+    let port: Int
+
+    /// `port` 0 : le système en choisit un.
+    init?(kind: Kind, type: Int32, port: Int = 0) {
+        self.kind = kind
+        self.type = type
+        family = kind == .dualStack ? AF_INET6 : AF_INET
+        let descriptor = socket(family, type, 0)
+        guard descriptor >= 0 else { return nil }
+        var on: Int32 = 1
+        setsockopt(descriptor, SOL_SOCKET, SO_REUSEADDR, &on, socklen_t(MemoryLayout<Int32>.size))
+        var bound: Int32
+        var assigned = 0
+        if family == AF_INET6 {
+            var off: Int32 = 0
+            setsockopt(descriptor, IPPROTO_IPV6, IPV6_V6ONLY, &off, socklen_t(MemoryLayout<Int32>.size))
+            var address = sockaddr_in6()
+            address.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
+            address.sin6_family = sa_family_t(AF_INET6)
+            address.sin6_port = in_port_t(UInt16(port).bigEndian)
+            bound = withUnsafePointer(to: address) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in6>.size)) }
+            }
+        } else {
             var address = sockaddr_in()
             address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
             address.sin_family = sa_family_t(AF_INET)
-            address.sin_port = 0
-            address.sin_addr = in_addr(s_addr: 0)
-            let bound = withUnsafePointer(to: address) {
+            address.sin_port = in_port_t(UInt16(port).bigEndian)
+            address.sin_addr = in_addr(s_addr: (kind == .loopback ? 0x7F00_0001 : UInt32(0)).bigEndian)
+            bound = withUnsafePointer(to: address) {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
             }
-            try #require(bound == 0)
-            var length = socklen_t(MemoryLayout<sockaddr_in>.size)
-            var assigned = sockaddr_in()
-            _ = withUnsafeMutablePointer(to: &assigned) {
-                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(descriptor, $0, &length) }
-            }
-            let port = Int(UInt16(bigEndian: assigned.sin_port))
-            if type == SOCK_STREAM {
-                _ = listen(descriptor, 1)
-            }
-            #expect(!probe.isFree(port, transport: transport, loopbackOnly: false), "\(transport)")
-            #expect(!probe.isFree(port, transport: transport, loopbackOnly: true), "\(transport)")
-            close(descriptor)
-            #expect(probe.isFree(port, transport: transport, loopbackOnly: false), "\(transport)")
         }
+        guard bound == 0 else {
+            Darwin.close(descriptor)
+            return nil
+        }
+        var storage = sockaddr_storage()
+        var length = socklen_t(MemoryLayout<sockaddr_storage>.size)
+        _ = withUnsafeMutablePointer(to: &storage) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(descriptor, $0, &length) }
+        }
+        withUnsafePointer(to: &storage) {
+            $0.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { assigned = Int(UInt16(bigEndian: $0.pointee.sin_port)) }
+        }
+        // sockaddr_in et sockaddr_in6 ont le port au même endroit (octets 2 et 3).
+        if type == SOCK_STREAM, listen(descriptor, 4) != 0 {
+            Darwin.close(descriptor)
+            return nil
+        }
+        self.descriptor = descriptor
+        self.port = assigned
+    }
+
+    func close() {
+        Darwin.close(descriptor)
+    }
+
+    /// Une connexion en 127.0.0.1, acceptée puis fermée par le serveur en premier, puis le serveur est refermé :
+    /// il reste des connexions en TIME_WAIT sur son port. false si la connexion de test a échoué.
+    func leaveTimeWait() -> Bool {
+        let client = socket(AF_INET, SOCK_STREAM, 0)
+        guard client >= 0 else { return false }
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(UInt16(port).bigEndian)
+        address.sin_addr = in_addr(s_addr: UInt32(0x7F00_0001).bigEndian)
+        let connected = withUnsafePointer(to: address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(client, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+        }
+        guard connected == 0 else {
+            Darwin.close(client)
+            close()
+            return false
+        }
+        let accepted = accept(descriptor, nil, nil)
+        guard accepted >= 0 else {
+            Darwin.close(client)
+            close()
+            return false
+        }
+        Darwin.close(accepted)
+        Darwin.close(client)
+        close()
+        return true
     }
 }

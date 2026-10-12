@@ -8,27 +8,38 @@ public enum PortTransport: Sendable {
 /// Un port est-il libre ? (Spec B3 § 5 : essai d'ouverture juste avant le lancement.) Derrière un protocole pour les
 /// tests.
 public protocol PortProbe: Sendable {
-    /// `loopbackOnly` : 127.0.0.1 seulement (l'API de go2rtc) ; sinon toutes les adresses, IPv4 et IPv6.
+    /// `loopbackOnly` : l'API de go2rtc, qui n'écoute qu'en 127.0.0.1 ; sinon toutes les adresses, IPv4 et IPv6.
     func isFree(_ port: Int, transport: PortTransport, loopbackOnly: Bool) -> Bool
 }
 
-/// Le vrai essai : une socket ouverte sans `SO_REUSEADDR`, refusée si un autre programme tient déjà le port, et
-/// refermée aussitôt.
+/// Le vrai essai : une socket ouverte avec `SO_REUSEADDR`, comme celles de go2rtc (Go), refusée si un autre programme
+/// tient déjà le port, et refermée aussitôt. Avec `SO_REUSEADDR`, les connexions en TIME_WAIT que go2rtc laisse sur ses
+/// ports à sa sortie (30 s) ne comptent pas : sans lui, un relancement rapide, après « Quitter » ou « Appliquer »,
+/// verrait à tort le port pris. En revanche, le joker (0.0.0.0) ne voit plus un serveur qui n'écoute qu'en 127.0.0.1 :
+/// cette adresse est essayée à part.
 public struct SystemPortProbe: PortProbe {
     public init() {}
 
     public func isFree(_ port: Int, transport: PortTransport, loopbackOnly: Bool) -> Bool {
         let type = transport == .tcp ? SOCK_STREAM : SOCK_DGRAM
+        let ipv4Free = Self.bindIPv4(port, type: type, address: 0x7F00_0001) && Self.bindIPv4(port, type: type, address: 0)
         if loopbackOnly {
-            return Self.bindIPv4(port, type: type, address: 0x7F00_0001)
+            return ipv4Free
         }
-        return Self.bindIPv4(port, type: type, address: 0) && Self.bindIPv6(port, type: type)
+        return ipv4Free && Self.bindIPv6(port, type: type)
+    }
+
+    /// `SO_REUSEADDR` : un port qui n'a plus que des connexions en TIME_WAIT est libre.
+    private static func allowReuse(_ descriptor: Int32) {
+        var on: Int32 = 1
+        _ = setsockopt(descriptor, SOL_SOCKET, SO_REUSEADDR, &on, socklen_t(MemoryLayout<Int32>.size))
     }
 
     static func bindIPv4(_ port: Int, type: Int32, address: UInt32) -> Bool {
         let descriptor = socket(AF_INET, type, 0)
         guard descriptor >= 0 else { return false }
         defer { close(descriptor) }
+        allowReuse(descriptor)
         var socketAddress = sockaddr_in()
         socketAddress.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         socketAddress.sin_family = sa_family_t(AF_INET)
@@ -46,6 +57,7 @@ public struct SystemPortProbe: PortProbe {
         let descriptor = socket(AF_INET6, type, 0)
         guard descriptor >= 0 else { return true }
         defer { close(descriptor) }
+        allowReuse(descriptor)
         var only: Int32 = 1
         _ = setsockopt(descriptor, IPPROTO_IPV6, IPV6_V6ONLY, &only, socklen_t(MemoryLayout<Int32>.size))
         var socketAddress = sockaddr_in6()

@@ -56,6 +56,11 @@ public final class Go2RTCSupervisor {
     public static let stopDelay: TimeInterval = 10
     /// Le gardien lui-même ne reçoit SIGKILL qu'après ce délai, une fois son propre arrêt de go2rtc écoulé.
     public static let killDelay: TimeInterval = 15
+    /// Un port vu pris au lancement : `portRetries` nouveaux essais, un tous les `portRetryDelay` secondes, avant l'échec
+    /// « port déjà utilisé ». Le port d'un go2rtc qui vient de sortir (ou d'un client qui ferme) se libère en quelques
+    /// instants. Une relance ultérieure reste possible, par l'interrupteur ou « Appliquer ».
+    public static let portRetryDelay: TimeInterval = 1
+    public static let portRetries = 5
     public static let enabledKey = "go2rtcEnabled"
     /// Code de sortie du gardien quand go2rtc n'a pas pu être lancé.
     public static let missingBinaryStatus: Int32 = 127
@@ -87,6 +92,8 @@ public final class Go2RTCSupervisor {
     @ObservationIgnored private var restartCount = 0
     @ObservationIgnored private var unexpectedExits: [TimeInterval] = []
     @ObservationIgnored private var pendingRestart: (any Cancellable)?
+    @ObservationIgnored private var pendingPortRetry: (any Cancellable)?
+    @ObservationIgnored private var portRetriesDone = 0
     @ObservationIgnored private var pendingKill: (any Cancellable)?
     @ObservationIgnored private var pendingWatchdog: (any Cancellable)?
     @ObservationIgnored private var stopping = false
@@ -161,6 +168,8 @@ public final class Go2RTCSupervisor {
         restartAfterStop = false
         pendingRestart?.cancel()
         pendingRestart = nil
+        pendingPortRetry?.cancel()
+        pendingPortRetry = nil
         guard let process else {
             // Le numéro change : une préparation en cours ne lancera rien.
             generation += 1
@@ -218,7 +227,11 @@ public final class Go2RTCSupervisor {
         state = .starting
         // Chaque lancement a son numéro : une préparation ou une fin d'un lancement déjà remplacé est ignorée.
         generation += 1
-        let launchedGeneration = generation
+        portRetriesDone = 0
+        prepare(generation: generation)
+    }
+
+    private func prepare(generation launchedGeneration: Int) {
         let settings = configuration
         let preparer = preparer
         preparation = Task { [weak self] in
@@ -230,6 +243,18 @@ public final class Go2RTCSupervisor {
     private func prepared(_ result: Go2RTCPreparation, generation launchedGeneration: Int) {
         guard launchedGeneration == generation, state == .starting, isEnabled, !stopping, !quitting else { return }
         switch result {
+        case let .blocked(.portBusy(port)):
+            guard portRetriesDone < Self.portRetries else {
+                state = .failed(.blocked(.portBusy(port)))
+                return
+            }
+            portRetriesDone += 1
+            pendingPortRetry = scheduler.schedule(after: Self.portRetryDelay) { [weak self] in
+                guard let self else { return }
+                pendingPortRetry = nil
+                guard launchedGeneration == generation, state == .starting, isEnabled, !stopping, !quitting else { return }
+                prepare(generation: launchedGeneration)
+            }
         case let .blocked(block):
             state = .failed(.blocked(block))
         case let .ready(launch):
