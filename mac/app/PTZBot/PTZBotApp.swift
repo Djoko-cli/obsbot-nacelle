@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let paths = AppPaths.system()
         panel = PanelModel(config: .load(from: paths.config), transport: URLSessionAdminTransport(), scheduler: scheduler)
         talkback = TalkbackModel(
-            service: TalkbackAgent(),
+            service: ClassicTalkbackService.system(program: paths.talkd),
             state: FileTalkbackStateSource(url: paths.talkbackState),
             process: SystemProcessProbe(),
             scheduler: scheduler,
@@ -113,9 +113,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !started else { return }
         started = true
         panel.start()
-        // La réinscription attend la fin de la désinscription : l'état se relit une fois qu'elle est faite.
+        // Migration depuis la 1.0.4 (désinscription de l'ancien agent, attendue) ou mise à jour de l'agent classique, hors du
+        // fil de l'interface : l'état se relit une fois qu'elles sont faites.
         Task { [talkback] in
-            await talkback.reregisterIfUpdated()
+            await talkback.prepareAtLaunch()
             talkback.refresh()
         }
         network.check()

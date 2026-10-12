@@ -133,7 +133,7 @@ struct PanelView: View {
             PanelRow(icon: "speaker.wave.2", title: AppText.text("Talkback")) {
                 Toggle(AppText.text("Talkback"), isOn: Binding(get: { talkback.isEnabled }, set: { talkback.setEnabled($0) }))
                     .labelsHidden()
-                    .disabled(talkback.isReregistering || talkback.isBusy)
+                    .disabled(talkback.isPreparing || talkback.isBusy)
                     .toggleStyle(.switch)
                     .controlSize(.small)
             } notes: {

@@ -171,6 +171,110 @@ final class FakeLoginItem: LoginItemService {
     }
 }
 
+/// Une opération gardée en suspens jusqu'à `open()` : le test regarde l'état pendant qu'elle dure.
+@MainActor
+final class Gate {
+    var isHeld = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    var isPending: Bool {
+        continuation != nil
+    }
+
+    func wait() async {
+        if isHeld {
+            await withCheckedContinuation { continuation = $0 }
+        }
+    }
+
+    func open() {
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
+/// L'agent de Talkback simulé (`TalkbackService`) : le test choisit l'état, les échecs et la durée de chaque opération.
+@MainActor
+final class FakeTalkbackService: TalkbackService {
+    var agentState: TalkbackAgentState = .absent
+    var hasLegacyRegistration = false
+    /// L'état de l'agent après un `enable()` réussi.
+    var stateAfterEnable: TalkbackAgentState = .installed
+    var enableFailure: (any Error)?
+    var disableFailure: (any Error)?
+    var unregisterLegacyFailure: (any Error)?
+    var reconcileFailure: (any Error)?
+    let enableGate = Gate()
+    let disableGate = Gate()
+    let unregisterLegacyGate = Gate()
+    let reconcileGate = Gate()
+    /// Les opérations appelées, dans l'ordre : « enable », « disable », « unregisterLegacy », « reconcile(restart: …) ».
+    private(set) var calls: [String] = []
+    /// Pour chaque opération hors du MainActor : tournait-elle sur le fil principal ?
+    private(set) var backgroundCallsOnMainThread: [Bool] = []
+    private(set) var settingsOpened = 0
+
+    func count(_ call: String) -> Int {
+        calls.filter { $0 == call }.count
+    }
+
+    private func record(_ call: String, onMain: Bool) {
+        calls.append(call)
+        backgroundCallsOnMainThread.append(onMain)
+    }
+
+    nonisolated func enable() async throws {
+        let onMain = pthread_main_np() != 0
+        try await enableOnMain(calledOnMainThread: onMain)
+    }
+
+    private func enableOnMain(calledOnMainThread: Bool) async throws {
+        record("enable", onMain: calledOnMainThread)
+        await enableGate.wait()
+        if let enableFailure { throw enableFailure }
+        agentState = stateAfterEnable
+    }
+
+    nonisolated func disable() async throws {
+        let onMain = pthread_main_np() != 0
+        try await disableOnMain(calledOnMainThread: onMain)
+    }
+
+    private func disableOnMain(calledOnMainThread: Bool) async throws {
+        record("disable", onMain: calledOnMainThread)
+        await disableGate.wait()
+        if let disableFailure { throw disableFailure }
+        agentState = .absent
+    }
+
+    nonisolated func unregisterLegacy() async throws {
+        let onMain = pthread_main_np() != 0
+        try await unregisterLegacyOnMain(calledOnMainThread: onMain)
+    }
+
+    private func unregisterLegacyOnMain(calledOnMainThread: Bool) async throws {
+        record("unregisterLegacy", onMain: calledOnMainThread)
+        await unregisterLegacyGate.wait()
+        if let unregisterLegacyFailure { throw unregisterLegacyFailure }
+        hasLegacyRegistration = false
+    }
+
+    nonisolated func reconcile(restart: Bool) async throws {
+        let onMain = pthread_main_np() != 0
+        try await reconcileOnMain(restart: restart, calledOnMainThread: onMain)
+    }
+
+    private func reconcileOnMain(restart: Bool, calledOnMainThread: Bool) async throws {
+        record("reconcile(restart: \(restart))", onMain: calledOnMainThread)
+        await reconcileGate.wait()
+        if let reconcileFailure { throw reconcileFailure }
+    }
+
+    func openSystemSettings() {
+        settingsOpened += 1
+    }
+}
+
 /// Préférences en mémoire.
 @MainActor
 final class FakeSettings: SettingsStore {
