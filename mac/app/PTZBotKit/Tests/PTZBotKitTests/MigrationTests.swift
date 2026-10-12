@@ -20,7 +20,13 @@ final class FakeLaunchctl: Launchctl {
         var bootouts = 0
         var bootstrapFails = false
         var kickstartFails = false
-        /// Les appels qui changent quelque chose, dans l'ordre : « bootout », « bootstrap », « kickstart ».
+        /// Le service est désactivé dans la base de launchd (l'utilisateur a coupé l'élément dans Réglages) : le
+        /// `bootstrap` échoue jusqu'à un `enable`.
+        var disabled = false
+        var enableFails = false
+        /// Les labels reçus par `enable`.
+        var enabledLabels: [String] = []
+        /// Les appels qui changent quelque chose, dans l'ordre : « bootout », « enable », « bootstrap », « kickstart ».
         var calls: [String] = []
         /// Les labels reçus, dans l'ordre des appels.
         var labels: [String] = []
@@ -64,9 +70,18 @@ final class FakeLaunchctl: Launchctl {
         try state.withLock { state in
             state.calls.append("bootstrap")
             state.plistPresentAtBootstrap.append(FileManager.default.fileExists(atPath: plist.path))
-            if state.bootstrapFails { throw Failure() }
+            if state.bootstrapFails || state.disabled { throw Failure() }
             state.loaded = true
             state.unloading = false
+        }
+    }
+
+    func enable(label: String) throws {
+        try state.withLock { state in
+            state.calls.append("enable")
+            state.enabledLabels.append(label)
+            if state.enableFails { throw Failure() }
+            state.disabled = false
         }
     }
 

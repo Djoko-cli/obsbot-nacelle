@@ -149,15 +149,28 @@ public struct ClassicAgent: Sendable {
     /// charge. Si le `bootstrap` échoue, la plist est retirée : l'interrupteur revient à « Désactivé » avec l'erreur,
     /// et non à un agent « installé » qui ne tourne pas.
     ///
+    /// Allumé par l'interrupteur (geste explicite de l'utilisateur), `launchctl enable` précède le `bootstrap` : si
+    /// l'utilisateur a coupé l'élément dans Réglages › Ouverture, launchd garde le service « désactivé » sous ce label,
+    /// même plist supprimée, et le `bootstrap` échouerait sans cela (« Service is disabled »).
+    ///
+    /// `respectingRefusal` (migration d'un ancien agent « Autorisation requise ») : le refus de l'utilisateur est
+    /// respecté, pas d'`enable`. Si le `bootstrap` échoue, la plist est **gardée** : l'état affiche « Autorisation
+    /// requise » et le bouton ouvre Réglages ; elle sera chargée au lancement suivant une fois l'élément autorisé.
+    ///
     /// Refusé depuis un emplacement temporaire (`isTransient`), avant d'écrire quoi que ce soit.
-    public func install() throws {
+    public func install(respectingRefusal: Bool = false) throws {
         guard !isTransient else { throw ClassicAgentError.transientLocation }
         try writePlist()
         try unload()
         do {
+            if !respectingRefusal {
+                try launchctl.enable(label: label)
+            }
             try launchctl.bootstrap(plist: plistURL)
         } catch {
-            try? FileManager.default.removeItem(at: plistURL)
+            if !respectingRefusal {
+                try? FileManager.default.removeItem(at: plistURL)
+            }
             throw error
         }
     }

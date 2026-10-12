@@ -83,24 +83,25 @@ struct ClassicAgentTests {
 
     // MARK: - Allumer
 
-    @Test("Allumer : le dossier est créé, la plist écrite, puis bootstrap ; pas de bootout si rien n'est chargé")
+    @Test("Allumer : le dossier est créé, la plist écrite, puis enable et bootstrap ; pas de bootout si rien n'est chargé")
     func installFresh() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let agent = agent()
         try agent.install()
-        #expect(calls() == ["bootstrap"])
+        #expect(calls() == ["enable", "bootstrap"])
+        #expect(launchctl.state.withLock { $0.enabledLabels } == [Talkback.label])
         #expect(launchctl.state.withLock { $0.plistPresentAtBootstrap } == [true])
         #expect(exists(agent.plistURL))
         #expect(sleeper.slept.withLock { $0 } == 0)
     }
 
-    @Test("Déjà chargé : bootout d'abord, attente du déchargement, puis bootstrap")
+    @Test("Déjà chargé : bootout d'abord, attente du déchargement, puis enable et bootstrap")
     func installAlreadyLoaded() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         launchctl.state.withLock { $0.loaded = true; $0.pollsBeforeUnload = 3 }
         let agent = agent()
         try agent.install()
-        #expect(calls() == ["bootout", "bootstrap"])
+        #expect(calls() == ["bootout", "enable", "bootstrap"])
         #expect(launchctl.state.withLock { $0.labels } == [Talkback.label])
         #expect(sleeper.slept.withLock { $0 } == 3 * ClassicAgent.pollInterval)
         #expect(launchctl.state.withLock { $0.loaded })
@@ -121,7 +122,7 @@ struct ClassicAgentTests {
         launchctl.state.withLock { $0.loaded = true; $0.bootoutFails = true; $0.unloadsDespiteFailure = true }
         let agent = agent()
         try agent.install()
-        #expect(calls() == ["bootout", "bootstrap"])
+        #expect(calls() == ["bootout", "enable", "bootstrap"])
     }
 
     @Test("Encore chargé après 10 s : erreur « pas arrêté à temps », attente bornée, pas de bootstrap")
@@ -143,7 +144,48 @@ struct ClassicAgentTests {
         let agent = agent()
         #expect(throws: (any Error).self) { try agent.install() }
         #expect(!exists(agent.plistURL))
+        #expect(calls() == ["enable", "bootstrap"])
+    }
+
+    @Test("Service désactivé dans launchd (élément coupé dans Réglages) : l'interrupteur le réactive (enable) avant le bootstrap")
+    func installDisabledService() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        launchctl.state.withLock { $0.disabled = true }
+        let agent = agent()
+        try agent.install()
+        #expect(calls() == ["enable", "bootstrap"])
+        #expect(launchctl.state.withLock { $0.loaded && !$0.disabled })
+        #expect(exists(agent.plistURL))
+    }
+
+    @Test("enable refusé : l'erreur remonte, la plist écrite est retirée, pas de bootstrap")
+    func installEnableFails() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        launchctl.state.withLock { $0.enableFails = true }
+        let agent = agent()
+        #expect(throws: (any Error).self) { try agent.install() }
+        #expect(!exists(agent.plistURL))
+        #expect(calls() == ["enable"])
+    }
+
+    @Test("Refus respecté (migration d'un agent « Autorisation requise ») : pas d'enable ; bootstrap refusé, la plist est gardée")
+    func installRespectingRefusal() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        launchctl.state.withLock { $0.disabled = true }
+        let agent = agent()
+        #expect(throws: (any Error).self) { try agent.install(respectingRefusal: true) }
         #expect(calls() == ["bootstrap"])
+        #expect(exists(agent.plistURL))
+        #expect(launchctl.state.withLock { $0.disabled && !$0.loaded })
+    }
+
+    @Test("Refus respecté mais service non désactivé : l'agent est simplement chargé, sans enable")
+    func installRespectingRefusalNotDisabled() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let agent = agent()
+        try agent.install(respectingRefusal: true)
+        #expect(calls() == ["bootstrap"])
+        #expect(launchctl.state.withLock { $0.loaded })
     }
 
     @Test("Écriture impossible (le dossier est un fichier) : erreur, aucun appel à launchctl")
@@ -368,11 +410,12 @@ struct ClassicAgentTests {
 
     // MARK: - launchctl réel : les arguments (sans l'exécuter)
 
-    @Test("Les arguments de launchctl : bootstrap gui/<uid> <plist>, kickstart -k gui/<uid>/<label>, bootout gui/<uid>/<label>")
+    @Test("Les arguments de launchctl : bootstrap gui/<uid> <plist>, enable gui/<uid>/<label>, kickstart -k gui/<uid>/<label>, bootout gui/<uid>/<label>")
     func launchctlArguments() {
         let plist = URL(fileURLWithPath: "/tmp/essai.plist")
         #expect(SystemLaunchctl.arguments(.bootstrap(plist), uid: 501) == ["bootstrap", "gui/501", "/tmp/essai.plist"])
         #expect(SystemLaunchctl.arguments(.kickstart("a.b"), uid: 501) == ["kickstart", "-k", "gui/501/a.b"])
+        #expect(SystemLaunchctl.arguments(.enable("a.b"), uid: 501) == ["enable", "gui/501/a.b"])
         #expect(SystemLaunchctl.arguments(.bootout("a.b"), uid: 501) == ["bootout", "gui/501/a.b"])
         #expect(SystemLaunchctl.arguments(.print("a.b"), uid: 501) == ["print", "gui/501/a.b"])
         #expect(SystemLaunchctl.Failure(command: "bootstrap", status: 5).errorDescription == "launchctl bootstrap a échoué (code 5).")

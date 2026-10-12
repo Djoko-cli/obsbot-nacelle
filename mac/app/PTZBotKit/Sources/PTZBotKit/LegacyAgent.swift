@@ -7,12 +7,15 @@ public protocol Launchctl: Sendable {
     func bootout(label: String) throws
     /// `launchctl bootstrap gui/<uid> <plist>` : charge l'agent de cette plist. Échoue s'il est déjà chargé.
     func bootstrap(plist: URL) throws
+    /// `launchctl enable gui/<uid>/<label>` : retire le service de la liste des services désactivés de launchd (où le met
+    /// l'utilisateur quand il coupe l'élément dans Réglages › Général › Ouverture). Sans effet s'il n'y est pas.
+    func enable(label: String) throws
     /// `launchctl kickstart -k gui/<uid>/<label>` : tue l'agent chargé puis le relance, depuis le programme que sa plist
     /// désigne (le nouveau talkd remplace l'ancien encore en mémoire).
     func kickstart(label: String) throws
 }
 
-/// Implémentation réelle : `/bin/launchctl print|bootout|bootstrap|kickstart` sur le domaine `gui/<uid>`.
+/// Implémentation réelle : `/bin/launchctl print|bootout|bootstrap|enable|kickstart` sur le domaine `gui/<uid>`.
 public struct SystemLaunchctl: Launchctl {
     public struct Failure: LocalizedError {
         public var command: String
@@ -25,6 +28,7 @@ public struct SystemLaunchctl: Launchctl {
         case print(String)
         case bootout(String)
         case bootstrap(URL)
+        case enable(String)
         case kickstart(String)
 
         var name: String {
@@ -32,6 +36,7 @@ public struct SystemLaunchctl: Launchctl {
             case .print: "print"
             case .bootout: "bootout"
             case .bootstrap: "bootstrap"
+            case .enable: "enable"
             case .kickstart: "kickstart"
             }
         }
@@ -46,6 +51,7 @@ public struct SystemLaunchctl: Launchctl {
         case let .print(label): ["print", "gui/\(uid)/\(label)"]
         case let .bootout(label): ["bootout", "gui/\(uid)/\(label)"]
         case let .bootstrap(plist): ["bootstrap", "gui/\(uid)", plist.path]
+        case let .enable(label): ["enable", "gui/\(uid)/\(label)"]
         case let .kickstart(label): ["kickstart", "-k", "gui/\(uid)/\(label)"]
         }
     }
@@ -80,6 +86,10 @@ public struct SystemLaunchctl: Launchctl {
 
     public func bootstrap(plist: URL) throws {
         try check(.bootstrap(plist))
+    }
+
+    public func enable(label: String) throws {
+        try check(.enable(label))
     }
 
     public func kickstart(label: String) throws {

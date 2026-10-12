@@ -198,6 +198,8 @@ final class Gate {
 final class FakeTalkbackService: TalkbackService {
     var agentState: TalkbackAgentState = .absent
     var hasLegacyRegistration = false
+    /// L'ancien agent de la 1.0.4 attend l'accord de l'utilisateur (il a coupé l'élément).
+    var legacyRequiresApproval = false
     /// Ce qui empêche d'allumer (app translocalisée…) ; nil : rien.
     var installBlocker: (any Error)?
     /// L'état de l'agent après un `enable()` réussi.
@@ -210,7 +212,8 @@ final class FakeTalkbackService: TalkbackService {
     let disableGate = Gate()
     let unregisterLegacyGate = Gate()
     let reconcileGate = Gate()
-    /// Les opérations appelées, dans l'ordre : « enable », « disable », « unregisterLegacy », « reconcile(restart: …) ».
+    /// Les opérations appelées, dans l'ordre : « enable » ou « enable(respectingRefusal) », « disable »,
+    /// « unregisterLegacy », « reconcile(restart: …) ».
     private(set) var calls: [String] = []
     /// Pour chaque opération hors du MainActor : tournait-elle sur le fil principal ?
     private(set) var backgroundCallsOnMainThread: [Bool] = []
@@ -225,13 +228,13 @@ final class FakeTalkbackService: TalkbackService {
         backgroundCallsOnMainThread.append(onMain)
     }
 
-    nonisolated func enable() async throws {
+    nonisolated func enable(respectingRefusal: Bool) async throws {
         let onMain = pthread_main_np() != 0
-        try await enableOnMain(calledOnMainThread: onMain)
+        try await enableOnMain(respectingRefusal: respectingRefusal, calledOnMainThread: onMain)
     }
 
-    private func enableOnMain(calledOnMainThread: Bool) async throws {
-        record("enable", onMain: calledOnMainThread)
+    private func enableOnMain(respectingRefusal: Bool, calledOnMainThread: Bool) async throws {
+        record(respectingRefusal ? "enable(respectingRefusal)" : "enable", onMain: calledOnMainThread)
         await enableGate.wait()
         if let enableFailure { throw enableFailure }
         agentState = stateAfterEnable

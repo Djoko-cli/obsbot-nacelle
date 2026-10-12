@@ -103,10 +103,10 @@ struct ClassicTalkbackServiceTests {
         defer { try? FileManager.default.removeItem(at: root) }
         try await service.enable()
         #expect(FileManager.default.fileExists(atPath: plistURL.path))
-        #expect(calls() == ["bootstrap"])
+        #expect(calls() == ["enable", "bootstrap"])
         try await service.disable()
         #expect(!FileManager.default.fileExists(atPath: plistURL.path))
-        #expect(calls() == ["bootstrap", "bootout"])
+        #expect(calls() == ["enable", "bootstrap", "bootout"])
         #expect(service.agentState == .absent)
     }
 
@@ -147,11 +147,58 @@ struct ClassicTalkbackServiceTests {
         let model = model(bundleVersion: "9")
         await model.prepareAtLaunch()
         #expect(registry.state.withLock { $0.unregisters } == 1)
-        #expect(calls() == ["bootstrap"])
+        #expect(calls() == ["enable", "bootstrap"])
         #expect(FileManager.default.fileExists(atPath: plistURL.path))
         #expect(settings.strings[TalkbackModel.agentBuildKey] == "9")
         #expect(model.lastError == nil)
         #expect(model.status == .starting)
+    }
+
+    @Test("De bout en bout, migration d'un agent « Autorisation requise » : le refus est respecté (pas d'enable), la plist est gardée")
+    func fullMigrationRespectsRefusal() async {
+        defer { try? FileManager.default.removeItem(at: root) }
+        registry.state.withLock { $0.registered = .requiresApproval; $0.plistStatus = .requiresApproval }
+        launchctl.state.withLock { $0.disabled = true }
+        let model = model(bundleVersion: "9")
+        await model.prepareAtLaunch()
+        #expect(registry.state.withLock { $0.unregisters } == 1)
+        #expect(calls() == ["bootstrap"])
+        #expect(FileManager.default.fileExists(atPath: plistURL.path))
+        #expect(model.status == .requiresApproval)
+        #expect(model.lastError == nil)
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+        #expect(launchctl.state.withLock { $0.disabled && !$0.loaded })
+    }
+
+    @Test("De bout en bout, migration d'un agent actif dont le service est désactivé dans launchd : enable puis bootstrap")
+    func fullMigrationEnabledButDisabledService() async {
+        defer { try? FileManager.default.removeItem(at: root) }
+        registry.state.withLock { $0.registered = .enabled }
+        launchctl.state.withLock { $0.disabled = true }
+        let model = model(bundleVersion: "9")
+        await model.prepareAtLaunch()
+        #expect(calls() == ["enable", "bootstrap"])
+        #expect(launchctl.state.withLock { $0.loaded })
+        #expect(model.lastError == nil)
+    }
+
+    @Test("De bout en bout, installation en échec après la désinscription : l'intention est retenue et retentée au lancement suivant")
+    func fullMigrationRetried() async {
+        defer { try? FileManager.default.removeItem(at: root) }
+        registry.state.withLock { $0.registered = .enabled }
+        launchctl.state.withLock { $0.bootstrapFails = true }
+        await model(bundleVersion: "9").prepareAtLaunch()
+        #expect(!FileManager.default.fileExists(atPath: plistURL.path))
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == "enable")
+        #expect(settings.strings[TalkbackModel.agentBuildKey] == nil)
+        launchctl.state.withLock { $0.bootstrapFails = false; $0.calls = [] }
+        let next = model(bundleVersion: "9")
+        await next.prepareAtLaunch()
+        #expect(calls() == ["enable", "bootstrap"])
+        #expect(FileManager.default.fileExists(atPath: plistURL.path))
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+        #expect(settings.strings[TalkbackModel.agentBuildKey] == "9")
+        #expect(next.lastError == nil)
     }
 
     @Test("De bout en bout, migration : désinscription refusée, rien n'est installé ni chargé")

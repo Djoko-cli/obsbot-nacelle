@@ -64,9 +64,13 @@ public final class ClassicTalkbackService: TalkbackService {
         return status == .enabled || status == .requiresApproval
     }
 
-    public nonisolated func enable() async throws {
+    public var legacyRequiresApproval: Bool {
+        registry.registeredStatus() == .requiresApproval
+    }
+
+    public nonisolated func enable(respectingRefusal: Bool) async throws {
         let agent = agent
-        try await Blocking.run { try agent.install() }
+        try await Blocking.run { try agent.install(respectingRefusal: respectingRefusal) }
     }
 
     public nonisolated func disable() async throws {

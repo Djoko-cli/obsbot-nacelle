@@ -191,6 +191,99 @@ struct TalkbackTests {
         #expect(!model.isPreparing)
     }
 
+    @Test("Migration d'un agent « Autorisation requise » : le refus est respecté, l'installation le sait")
+    func migrationRespectsRefusal() async {
+        service.hasLegacyRegistration = true
+        service.legacyRequiresApproval = true
+        await model.prepareAtLaunch()
+        #expect(service.calls == ["unregisterLegacy", "enable(respectingRefusal)"])
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+        #expect(settings.strings[TalkbackModel.agentBuildKey] == "7")
+    }
+
+    @Test("Migration, installation refusée alors que rien n'est installé : l'intention est retenue, sans numéro")
+    func migrationRetainsIntention() async {
+        service.hasLegacyRegistration = true
+        service.enableFailure = Refused()
+        await model.prepareAtLaunch()
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == "enable")
+        #expect(settings.strings[TalkbackModel.agentBuildKey] == nil)
+        #expect(model.lastError == "Talkback impossible : refusé")
+    }
+
+    @Test("Migration d'un agent « Autorisation requise », installation refusée : l'intention du refus est retenue")
+    func migrationRetainsRefusalIntention() async {
+        service.hasLegacyRegistration = true
+        service.legacyRequiresApproval = true
+        service.enableFailure = Refused()
+        await model.prepareAtLaunch()
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == "respectRefusal")
+    }
+
+    @Test("Migration, échec mais plist gardée (Autorisation requise) : rien à retenir, pas d'erreur")
+    func migrationKeptPlist() async {
+        service.hasLegacyRegistration = true
+        service.legacyRequiresApproval = true
+        service.enableFailure = Refused()
+        service.agentState = .requiresApproval
+        await model.prepareAtLaunch()
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+        #expect(model.status == .requiresApproval)
+        #expect(model.lastError == nil)
+    }
+
+    @Test("Intention retenue : retentée au lancement suivant (une fois par lancement), puis oubliée")
+    func pendingInstallRetried() async {
+        settings.strings[TalkbackModel.pendingInstallKey] = "enable"
+        service.enableFailure = Refused()
+        await model.prepareAtLaunch()
+        #expect(service.calls == ["enable"])
+        #expect(model.lastError == "Talkback impossible : refusé")
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == "enable")
+        // Une seule tentative par lancement.
+        await model.prepareAtLaunch()
+        #expect(service.calls == ["enable"])
+        // Lancement suivant : l'installation réussit.
+        service.enableFailure = nil
+        let next = makeModel(bundleVersion: "7")
+        await next.prepareAtLaunch()
+        #expect(service.calls == ["enable", "enable"])
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+        #expect(settings.strings[TalkbackModel.agentBuildKey] == "7")
+        #expect(next.lastError == nil)
+        #expect(next.isEnabled)
+        // Rien de plus ensuite.
+        await makeModel(bundleVersion: "7").prepareAtLaunch()
+        #expect(service.calls.filter { $0.hasPrefix("enable") }.count == 2)
+    }
+
+    @Test("Intention retenue du refus : la nouvelle tentative respecte encore le refus")
+    func pendingRefusalRetried() async {
+        settings.strings[TalkbackModel.pendingInstallKey] = "respectRefusal"
+        await model.prepareAtLaunch()
+        #expect(service.calls == ["enable(respectingRefusal)"])
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+    }
+
+    @Test("Intention retenue mais plist déjà là : pas de nouvelle installation, l'intention est oubliée")
+    func pendingInstallWithPlist() async {
+        settings.strings[TalkbackModel.pendingInstallKey] = "enable"
+        service.agentState = .installed
+        await model.prepareAtLaunch()
+        #expect(service.calls == ["reconcile(restart: true)"])
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+    }
+
+    @Test("Intention retenue puis l'interrupteur : allumer ou éteindre l'oublie")
+    func toggleClearsPendingInstall() async {
+        settings.strings[TalkbackModel.pendingInstallKey] = "enable"
+        await toggle(true)
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+        settings.strings[TalkbackModel.pendingInstallKey] = "enable"
+        await toggle(false)
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+    }
+
     @Test("Agent classique en place, même numéro qu'au dernier passage : mise en ordre sans redémarrage")
     func updateSameBuild() async {
         service.agentState = .installed
@@ -227,9 +320,6 @@ struct TalkbackTests {
         await model.prepareAtLaunch()
         #expect(model.lastError == "Talkback impossible : refusé")
         #expect(settings.strings[TalkbackModel.agentBuildKey] == "6")
-        model.beginWatching()
-        scheduler.advance(by: 5)
-        model.endWatching()
         await model.prepareAtLaunch()
         #expect(service.calls == ["reconcile(restart: true)"])
     }
@@ -250,8 +340,10 @@ struct TalkbackTests {
         service.agentState = .installed
         settings.strings[TalkbackModel.agentBuildKey] = "6"
         settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
+        settings.strings[TalkbackModel.pendingInstallKey] = "enable"
         await model.prepareAtLaunch()
         #expect(service.calls == [])
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == "enable")
         #expect(settings.strings[TalkbackModel.agentBuildKey] == "6")
         #expect(settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] == "6")
         #expect(model.lastError == nil)
