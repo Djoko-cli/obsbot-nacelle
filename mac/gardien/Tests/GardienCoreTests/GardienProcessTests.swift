@@ -8,10 +8,14 @@ import Testing
 @MainActor
 @Suite("Gardien : vrais processus", .timeLimit(.minutes(1)))
 struct GardienProcessTests {
-    /// Construit par `swift build`, que la commande de vérification lance avant `swift test`.
-    static let executable = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        .appending(path: ".build/debug/gardien")
+    /// Construit par `swift build`, que la commande de vérification lance avant `swift test`. Il est à côté du paquet de
+    /// tests (`<dossier de construction>/debug/gardien`, `--scratch-path` compris) ; `GARDIEN_EXECUTABLE` le remplace.
+    static let executable: URL = {
+        if let path = ProcessInfo.processInfo.environment["GARDIEN_EXECUTABLE"] {
+            return URL(fileURLWithPath: path)
+        }
+        return Bundle(for: BundleToken.self).bundleURL.deletingLastPathComponent().appending(path: "gardien")
+    }()
 
     static let sleeps = #"echo $$ > "$1"; exec /bin/sleep 60"#
     static let ignoresTerm = #"trap "" TERM; echo $$ > "$1"; exec /bin/sleep 60"#
@@ -42,10 +46,11 @@ struct GardienProcessTests {
     }
 
     /// Le gardien sur un shell qui écrit son pid dans le fichier rendu.
-    private func launchGardien(parent: pid_t, stopDelay: String = "10", script: String) throws -> (process: Process, pidFile: URL) {
+    /// `extra` : d'autres arguments pour le script, après le fichier du pid.
+    private func launchGardien(parent: pid_t, stopDelay: String = "10", script: String, extra: [String] = []) throws -> (process: Process, pidFile: URL) {
         try #require(FileManager.default.isExecutableFile(atPath: Self.executable.path), "lancez `swift build` avant `swift test`")
         let pidFile = FileManager.default.temporaryDirectory.appending(path: "gardien-\(UUID().uuidString).pid")
-        let process = try launch(Self.executable, ["--parent", String(parent), "--arret", stopDelay, "--", "/bin/sh", "-c", script, "sh", pidFile.path])
+        let process = try launch(Self.executable, ["--parent", String(parent), "--arret", stopDelay, "--", "/bin/sh", "-c", script, "sh", pidFile.path] + extra)
         return (process, pidFile)
     }
 
@@ -171,4 +176,123 @@ struct GardienProcessTests {
         #expect(missing.terminationStatus == GardienExit.launchFailed)
         #expect(refused.terminationStatus == GardienExit.usage)
     }
+
+    // MARK: - Enfants du programme (les ffmpeg de go2rtc)
+
+    /// L'enfant du faux go2rtc : un shell qui note SIGTERM dans un fichier (`$1`), écrit son pid (`$2`) et continue
+    /// (`$3` = "oui") ou s'arrête (autre valeur) ; un SIGKILL ne laisserait pas de note.
+    static let notingChild = #"trap 'echo term > "$1"; [ "$3" = oui ] || exit 0' TERM; echo $$ > "$2"; while :; do /bin/sleep 0.2; done"#
+    /// Le faux go2rtc : `$1` son pid, `$2` le pid de l'enfant, `$3` la note, `$4` le script de l'enfant, `$5` "oui" pour
+    /// que l'enfant survive à SIGTERM. L'enfant est lancé par un sous-shell qui sort (il passe sous launchd, en restant
+    /// dans le groupe du faux go2rtc), puis le faux go2rtc sort sur SIGTERM sans l'arrêter.
+    static let sameGroupOrphan = #"""
+    echo $$ > "$1"; ( /bin/sh -c "$4" sh "$3" "$2" "$5" & ); trap 'exit 0' TERM; while :; do /bin/sleep 0.2; done
+    """#
+    /// Comme `sameGroupOrphan`, mais l'enfant passe dans un autre groupe (go2rtc le permet) : seul le relevé de ses
+    /// enfants, avant SIGTERM, le retrouve.
+    static let otherGroupOrphan = #"""
+    echo $$ > "$1"; /usr/bin/perl -e 'setpgrp(0,0); exec @ARGV' /bin/sh -c "$4" sh "$3" "$2" "$5" & trap 'exit 0' TERM; while :; do /bin/sleep 0.2; done
+    """#
+    /// Le faux go2rtc sort de lui-même, sans signal, en laissant son enfant (dans son groupe).
+    static let exitsAlone = #"""
+    echo $$ > "$1"; ( /bin/sh -c "$4" sh "$3" "$2" "$5" & ); /bin/sleep 1; exit 0
+    """#
+
+    private struct Orphan {
+        let gardien: Process
+        let parent: Process
+        let goPID: URL
+        let childPID: URL
+        let note: URL
+
+        func cleanUp() {
+            for process in [gardien, parent] where process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
+            for file in [goPID, childPID] {
+                if let pid = (try? String(contentsOf: file, encoding: .utf8)).flatMap({ pid_t($0.trimmingCharacters(in: .whitespacesAndNewlines)) }) {
+                    kill(pid, SIGKILL)
+                }
+                try? FileManager.default.removeItem(at: file)
+            }
+            try? FileManager.default.removeItem(at: note)
+        }
+    }
+
+    /// Lance le gardien sur un faux go2rtc et attend que l'enfant ait écrit son pid.
+    private func launchOrphan(script: String, childSurvives: Bool = false, stopDelay: String = "10") async throws -> (Orphan, childPID: pid_t) {
+        let parent = try launchParent()
+        let directory = FileManager.default.temporaryDirectory
+        let childPIDFile = directory.appending(path: "gardien-\(UUID().uuidString).child")
+        let note = directory.appending(path: "gardien-\(UUID().uuidString).note")
+        let (gardien, goPID) = try launchGardien(parent: parent.processIdentifier, stopDelay: stopDelay, script: script,
+                                                 extra: [childPIDFile.path, note.path, Self.notingChild, childSurvives ? "oui" : "non"])
+        let orphan = Orphan(gardien: gardien, parent: parent, goPID: goPID, childPID: childPIDFile, note: note)
+        let child = try await childPID(childPIDFile)
+        return (orphan, child)
+    }
+
+    @Test("Le programme sort sur SIGTERM sans arrêter son enfant (même groupe) : l'enfant reçoit SIGTERM, pas SIGKILL")
+    func sameGroupChildGetsTerm() async throws {
+        let (orphan, child) = try await launchOrphan(script: Self.sameGroupOrphan, childSurvives: true)
+        defer { orphan.cleanUp() }
+        kill(orphan.gardien.processIdentifier, SIGTERM) // pas `terminate()` : il vise peut-être tout le groupe
+        #expect(try await wait(.seconds(10)) { !orphan.gardien.isRunning })
+        #expect(orphan.gardien.terminationReason == .exit)
+        #expect(orphan.gardien.terminationStatus == 0, "la fin du programme est rendue")
+        #expect(FileManager.default.fileExists(atPath: orphan.note.path), "l'enfant a reçu SIGTERM")
+        #expect(!Gardien.isGone(child), "et pas SIGKILL : il a continué")
+    }
+
+    @Test("Enfant dans un autre groupe : retrouvé par le relevé fait avant SIGTERM, qui lui est transmis")
+    func otherGroupChildGetsTerm() async throws {
+        let (orphan, child) = try await launchOrphan(script: Self.otherGroupOrphan)
+        defer { orphan.cleanUp() }
+        let go = try await childPID(orphan.goPID)
+        #expect(ProcessTable.identity(of: child)?.groupID == child, "l'enfant a son propre groupe")
+        #expect(ProcessTable.identity(of: child)?.groupID != ProcessTable.identity(of: go)?.groupID)
+        kill(orphan.gardien.processIdentifier, SIGTERM) // pas `terminate()` : il vise peut-être tout le groupe
+        #expect(try await wait(.seconds(10)) { !orphan.gardien.isRunning })
+        #expect(orphan.gardien.terminationStatus == 0)
+        #expect(FileManager.default.fileExists(atPath: orphan.note.path), "l'enfant a reçu SIGTERM")
+        #expect(try await wait(.seconds(3)) { Gardien.isGone(child) }, "et il s'est arrêté sur ce signal")
+    }
+
+    @Test("Le programme sort de lui-même en laissant son enfant dans son groupe : SIGTERM au groupe")
+    func exitedAloneChildGetsTerm() async throws {
+        let (orphan, child) = try await launchOrphan(script: Self.exitsAlone)
+        defer { orphan.cleanUp() }
+        #expect(try await wait(.seconds(10)) { !orphan.gardien.isRunning })
+        #expect(orphan.gardien.terminationStatus == 0)
+        #expect(FileManager.default.fileExists(atPath: orphan.note.path), "l'enfant a reçu SIGTERM")
+        #expect(try await wait(.seconds(3)) { Gardien.isGone(child) })
+    }
+
+    @Test("Enfant qui ignore SIGTERM : jamais de SIGKILL, le gardien rend la main après 5 s environ")
+    func stubbornChildKeepsLiving() async throws {
+        let (orphan, child) = try await launchOrphan(script: Self.sameGroupOrphan, childSurvives: true)
+        defer { orphan.cleanUp() }
+        let start = ContinuousClock.now
+        kill(orphan.gardien.processIdentifier, SIGTERM) // pas `terminate()` : il vise peut-être tout le groupe
+        #expect(try await wait(.seconds(15)) { !orphan.gardien.isRunning })
+        let elapsed = ContinuousClock.now - start
+        #expect(elapsed > .seconds(4) && elapsed < .seconds(9), "attente bornée : \(elapsed)")
+        #expect(orphan.gardien.terminationStatus == 0)
+        #expect(!Gardien.isGone(child), "pas de SIGKILL")
+    }
+
+    @Test("Un faux go2rtc sans enfant : le gardien ne s'attarde pas")
+    func noChildNoWait() async throws {
+        let parent = try launchParent()
+        let (gardien, pidFile) = try launchGardien(parent: parent.processIdentifier, script: Self.sleeps)
+        let child = try await childPID(pidFile)
+        defer { cleanUp([parent, gardien], child: child, pidFile: pidFile) }
+        let start = ContinuousClock.now
+        gardien.terminate()
+        #expect(try await wait(.seconds(3)) { !gardien.isRunning })
+        #expect(ContinuousClock.now - start < .seconds(2))
+    }
 }
+
+/// Pour retrouver le paquet de tests (`Bundle(for:)` veut une classe).
+private final class BundleToken {}
