@@ -4,7 +4,9 @@
 # fuite, version publiee (etiquette ptzbot-vX.Y.Z, avec le .dmg), puis le flux des mises a jour
 # (mac/app/appcast.xml, qui garde toutes les versions) commite sur main et pousse aussitot, .dmg sur le Bureau.
 # Le .dmg porte aussi la licence de Sparkle 2.10.0 (outils/Sparkle-LICENSE.txt, le fichier LICENSE de l'etiquette
-# 2.10.0, entier) ; le commit du flux est signe Djoko-cli, a l'adresse noreply de GitHub.
+# 2.10.0, entier) ; le commit du flux est signe Djoko-cli, a l'adresse noreply de GitHub. Depuis la 1.1.0 (spec B3) :
+# l'app porte les droits camera et micro, et eux seuls (--droit-requis) ; Contents/Helpers/go2rtc doit etre le binaire
+# officiel de go2rtc 1.9.14 (--empreintes-go2rtc, mac/app/go2rtc.sha256).
 # Repris de maillage-thread ; la logique est dans outils/publication.py, ses tests dans outils/tests.
 #   outils/publier.sh X.Y.Z [--sans-bureau]
 # La repetition, sans GitHub ni Bureau (spec, section 10), avec la cle du trousseau, ou une paire d'essai :
@@ -58,11 +60,14 @@ export SPARKLE_BIN
 exec /usr/bin/python3 ../../outils/publication.py publier "$@" \
   --auteur Djoko-cli --etiquette ptzbot-v --flux appcast.xml --licence ../../outils/Sparkle-LICENSE.txt \
   --notes ../../NOTES-VERSIONS.md --sans-bac-a-sable \
+  --droit-requis com.apple.security.device.camera --droit-requis com.apple.security.device.audio-input \
+  --empreintes-go2rtc go2rtc.sha256 \
   --nom-app PTZBot --fichier PTZBot --depot-github Djoko-cli/ptzbot \
   --projet PTZBot.xcodeproj --schema PTZBot --cible PTZBot \
   --test 'cd ../../Packages/NacelleProtocol && swift test' \
   --test 'cd ../ptzd && swift test' \
   --test 'cd ../talkd && swift test' \
+  --test 'cd ../gardien && swift test' \
   --test 'cd PTZBotKit && swift test' \
   --test '/usr/bin/python3 -m unittest discover -s ../../outils/tests' \
   --test 'bash -n ../../scripts/install-mac.sh' \

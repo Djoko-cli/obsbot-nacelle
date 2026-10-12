@@ -17,6 +17,40 @@
           }
         }
       }
+    },
+    "NSCameraUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PTZBot streams the picture of your OBSBOT camera to HomeKit and the iPhone app."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PTZBot diffuse l'image de votre caméra OBSBOT vers HomeKit et l'app iPhone."
+          }
+        }
+      }
+    },
+    "NSMicrophoneUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PTZBot streams the sound of your OBSBOT camera's microphone to HomeKit and the iPhone app."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PTZBot diffuse le son du micro de votre caméra OBSBOT vers HomeKit et l'app iPhone."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

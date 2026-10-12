@@ -48,6 +48,10 @@ targets:
         NSLocalNetworkUsageDescription: PTZBot accepte les connexions des iPhone appairés sur votre réseau local.
         NSBonjourServices:
           - _nacelle._tcp
+        # go2rtc et ses ffmpeg, descendants de PTZBot, ouvrent la caméra et le micro : macOS demande l'accès au nom de
+        # PTZBot (spec B3 § 3.4). Traduit dans InfoPlist.xcstrings.
+        NSCameraUsageDescription: PTZBot diffuse l'image de votre caméra OBSBOT vers HomeKit et l'app iPhone.
+        NSMicrophoneUsageDescription: PTZBot diffuse le son du micro de votre caméra OBSBOT vers HomeKit et l'app iPhone.
         # Mises à jour (Sparkle 2) : le flux des versions publiées et la clé publique Ed25519 (réglages
         # ci-dessous) ; recherche au lancement puis toutes les 24 h, téléchargement et installation automatiques.
         # Pas de bac à sable, donc pas de service d'installation de Sparkle (SUEnableInstallerLauncherService).
@@ -76,28 +80,38 @@ targets:
         CLE_MISES_A_JOUR: nRIVHOXbEktqGduJ4ukxhjZzlUaiE/yqR3sgbW9Ie6E=
         # Pas de bac à sable : l'app lit la configuration de ptzd et le lance.
         ENABLE_APP_SANDBOX: NO
+        # Les droits caméra et micro du runtime renforcé (spec B3 § 3.4), sur l'app seulement : les utilitaires n'en ont
+        # aucun. La publication les exige et n'en accepte pas d'autre (outils/publication.py, --droit-requis).
+        CODE_SIGN_ENTITLEMENTS: PTZBot/PTZBot.entitlements
         # Signature locale (ad hoc) ; seule la publication signe avec le certificat, runtime renforcé compris
         # (outils/publier.sh).
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
-        # La phase des utilitaires compile mac/ptzd et copie la source d'obsbot-ai.
+        # La phase des utilitaires compile mac/ptzd, mac/talkd et mac/gardien, télécharge go2rtc et copie la source
+        # d'obsbot-ai.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
     postBuildScripts:
-      # ptzd et talkd dans Contents/Helpers, la plist embarquée de l'ancien agent de talkd dans Contents/Library/LaunchAgents
+      # ptzd, talkd, gardien et go2rtc (vérifié par son empreinte, spec B3 § 3.1) dans Contents/Helpers, la licence de
+      # go2rtc dans Contents/Resources, la plist embarquée de l'ancien agent de talkd dans Contents/Library/LaunchAgents
       # (depuis la 1.0.5 elle ne sert plus qu'à désinscrire l'agent inscrit par la 1.0.4 : l'agent de Talkback est
       # maintenant une plist classique que l'app écrit dans ~/Library/LaunchAgents, spec haut-parleur § 15), la source
       # d'obsbot-ai dans Contents/Resources ; jamais le SDK ni un binaire obsbot-ai dans le paquet (spec distribution
       # § 5.1). Toujours exécutée : swift build sait ce qui a changé dans mac/ptzd et mac/talkd.
-      - name: Utilitaires ptzd et talkd, plist embarquée de l'ancien agent de talkd et source d'obsbot-ai
+      - name: Utilitaires ptzd, talkd, gardien et go2rtc, plist embarquée de l'ancien agent de talkd et source d'obsbot-ai
         script: '"$SRCROOT/build-helpers.sh"'
         basedOnDependencyAnalysis: false
         inputFiles:
           - $(SRCROOT)/build-helpers.sh
           - $(SRCROOT)/../ai/main.cpp
           - $(SRCROOT)/LaunchAgents/io.github.djoko-cli.obsbot-nacelle.talkd.plist
+          - $(SRCROOT)/go2rtc.sha256
+          - $(SRCROOT)/go2rtc-LICENSE.txt
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/ptzd
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/talkd
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/gardien
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/go2rtc
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/go2rtc-LICENSE.txt
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchAgents/io.github.djoko-cli.obsbot-nacelle.talkd.plist
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/obsbot-ai.cpp
 schemes:

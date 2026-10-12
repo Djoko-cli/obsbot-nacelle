@@ -13,6 +13,7 @@ git ; HOME est un dossier temporaire, et le nom du compte, invente (USER, LOGNAM
 """
 import contextlib
 import datetime
+import hashlib
 import io
 import json
 import os
@@ -187,7 +188,13 @@ FAUX = {
                     "mach-lookup-seul": {"com.apple.security.temporary-exception.mach-lookup.global-name":
                                          ["fr.exemple.essai-spks"]},
                     "aucun-get-task-allow": {"com.apple.security.get-task-allow": True},
-                    "aucun-dyld": {"com.apple.security.cs.allow-dyld-environment-variables": True}}
+                    "aucun-dyld": {"com.apple.security.cs.allow-dyld-environment-variables": True},
+                    # go2rtc dans PTZBot (spec B3) : la camera et le micro, l'un des deux, ou un droit de plus.
+                    "camera-micro": {"com.apple.security.device.camera": True, "com.apple.security.device.audio-input": True},
+                    "camera-seule": {"com.apple.security.device.camera": True},
+                    "camera-micro-usb": {"com.apple.security.device.camera": True,
+                                         "com.apple.security.device.audio-input": True,
+                                         "com.apple.security.device.usb": True}}
             if cas in sans:
                 droits = sans[cas]
             if cas == "get-task-allow":
@@ -303,6 +310,15 @@ FAUX = {
         # L'utilitaire, comme ptzd : Contents/Helpers, executable ; un fichier non executable a cote n'est pas signe.
         # ptzd simule est un « Mach-O » (ses quatre premiers octets) : otool -L le lit.
         fichier(os.path.join(app, 'Helpers', 'ptzd'), contenu('ptzd', b'\\xcf\\xfa\\xed\\xfe ptzd invente'), 0o755)
+        # go2rtc (FAUX_GO2RTC = officiel ou altere) : un « Mach-O » qui porte une adresse, comme le vrai (multidiffusion,
+        # DNS publics) ; altere, il a quelques octets de plus. L'adresse est ecrite en morceaux (controle de fuite des
+        # commits).
+        go2rtc = os.environ.get('FAUX_GO2RTC')
+        if go2rtc:
+            fichier(os.path.join(app, 'Helpers', 'go2rtc'), b'\\xcf\\xfa\\xed\\xfe go2rtc invente ' b'203.0.113' b'.7'
+                    + (b' altere' if go2rtc == 'altere' else b''), 0o755)
+        elif os.path.exists(os.path.join(app, 'Helpers', 'go2rtc')):
+            os.remove(os.path.join(app, 'Helpers', 'go2rtc'))
         # Un element de trop dans Contents/Helpers (FAUX_UTILITAIRE_EN_TROP = non-executable ou lien).
         en_trop = os.environ.get('FAUX_UTILITAIRE_EN_TROP')
         if en_trop == 'non-executable':
@@ -1456,6 +1472,84 @@ class PublicationTests(unittest.TestCase):
         """Une app sans droits (Xcode n'en pose pas) se lit {} avant la signature ; apres, des droits illisibles
         restent un refus."""
         self.refuse_droits('illisibles', 'illisibles')
+
+    def test_droits_camera_et_micro_requis(self):
+        """--droit-requis (PTZBot : la camera et le micro, spec B3) : l'app signee avec les droits de Xcode, relus ;
+        la publication continue."""
+        requis = ('--droit-requis', 'com.apple.security.device.camera', '--droit-requis', 'com.apple.security.device.audio-input')
+        self.m.publier('--sans-bac-a-sable', *requis, env={'FAUX_DROITS': 'camera-micro'})
+        with open(os.path.join(self.m.depot, 'build', 'publication', '1.2.3', 'droits-app.plist'), 'rb') as f:
+            self.assertEqual(plistlib.load(f), {'com.apple.security.device.camera': True,
+                                                'com.apple.security.device.audio-input': True,
+                                                P.VALIDATION_BIBLIOTHEQUES: True})
+        self.assertTrue([a for a in self.m.appels() if a.startswith('gh release create')])
+
+    def test_refus_droit_requis_manquant_ou_droit_inattendu(self):
+        """Un droit requis qui manque, un droit de plus (sans bac a sable), ou les droits camera et micro sans
+        --droit-requis : refus apres la signature, aucun .dmg."""
+        requis = ('--droit-requis', 'com.apple.security.device.camera', '--droit-requis', 'com.apple.security.device.audio-input')
+        for extra, cas, motif in ((requis, 'camera-seule', 'com.apple.security.device.audio-input manque'),
+                                  (requis, 'camera-micro-usb', 'droit inattendu com.apple.security.device.usb'),
+                                  ((), 'camera-micro', 'droit inattendu com.apple.security.device.audio-input, '
+                                                       'com.apple.security.device.camera')):
+            with self.subTest(cas=cas):
+                self.m.oublier()
+                appels = self.refuse('--sans-bac-a-sable', *extra, env={'FAUX_DROITS': cas}, motif=motif)
+                self.assertTrue([a for a in appels if a.startswith('codesign --force')], 'apres la signature')
+                self.assertFalse([a for a in appels if a.startswith(('hdiutil', 'sign_update'))], 'aucun .dmg')
+
+    def empreintes_go2rtc(self, contenu=b'\xcf\xfa\xed\xfe go2rtc invente ' + ADRESSE.encode()):
+        """Le fichier des empreintes de go2rtc, celle du faux binaire officiel (hors du depot : l'arbre reste propre)."""
+        chemin = os.path.join(self.dossier, 'go2rtc.sha256')
+        ecrire(chemin, '%s  go2rtc_mac_arm64.zip\n%s  go2rtc\n' % ('0' * 64, hashlib.sha256(contenu).hexdigest()))
+        return chemin
+
+    def test_go2rtc_officiel_signe_et_ses_adresses_admises(self):
+        """--empreintes-go2rtc : le binaire officiel est signe comme les autres utilitaires ; l'adresse qu'il porte
+        passe le controle de fuite du .dmg ; la publication continue."""
+        self.m.publier('--empreintes-go2rtc', self.empreintes_go2rtc(), env={'FAUX_GO2RTC': 'officiel'})
+        self.assertIn('Essai Inventee.app/Contents/Helpers/go2rtc', self.signatures())
+        self.assertTrue([a for a in self.m.appels() if a.startswith('gh release create')])
+
+    def test_refus_go2rtc_altere_ou_absent(self):
+        """Un go2rtc qui n'a pas l'empreinte attendue, ou absent : refus avant toute signature."""
+        for env, motif in (({'FAUX_GO2RTC': 'altere'}, "n'est pas le binaire officiel de go2rtc"),
+                           ({}, 'Contents/Helpers/go2rtc manque')):
+            with self.subTest(motif=motif):
+                self.m.oublier()
+                appels = self.refuse('--empreintes-go2rtc', self.empreintes_go2rtc(), env=env, motif=motif)
+                self.assertFalse([a for a in appels if a.startswith('codesign --force')], 'rien de signe')
+
+    def test_adresse_hors_de_go2rtc_toujours_refusee(self):
+        """La meme adresse dans le binaire de l'app : refus au controle de fuite, go2rtc verifie ou non."""
+        appels = self.refuse('--empreintes-go2rtc', self.empreintes_go2rtc(),
+                             env={'FAUX_GO2RTC': 'officiel', 'FAUX_FUITE': ADRESSE + ':app'},
+                             motif='le controle de fuite a trouve des donnees locales')
+        self.assertFalse([a for a in appels if a.startswith('hdiutil')])
+
+    def test_fuites_adresses_libres(self):
+        """fuites : dans un fichier aux adresses libres, une adresse est admise, un chemin personnel ou un nom
+        Tailscale non ; ailleurs, l'adresse reste une fuite."""
+        with tempfile.TemporaryDirectory() as d:
+            libre = os.path.join(d, 'go2rtc')
+            autre = os.path.join(d, 'ptzd')
+            for f in (libre, autre):
+                with open(f, 'wb') as e:
+                    e.write(b'x ' + ADRESSE.encode() + b' y\n')
+            self.assertEqual(P.fuites([libre, autre], dmg=True, adresses_libres={libre}), [(autre, 1)])
+            with open(libre, 'ab') as e:
+                e.write(b'\0' + NOM_TAILSCALE.encode() + b'\0' + AUTRE_COMPTE.encode() + b'\n')
+            self.assertEqual(P.fuites([libre], dmg=True, adresses_libres={libre}), [(libre, 2)])
+
+    def test_empreinte_attendue(self):
+        """Le fichier des empreintes : la ligne du nom demande ; absente ou mal formee, refus."""
+        with tempfile.TemporaryDirectory() as d:
+            chemin = os.path.join(d, 'go2rtc.sha256')
+            ecrire(chemin, '%s  go2rtc_mac_arm64.zip\n%s  go2rtc\n' % ('a' * 64, 'b' * 64))
+            self.assertEqual(P.empreinte_attendue(chemin, 'go2rtc'), 'b' * 64)
+            ecrire(chemin, 'zz  go2rtc\n')
+            with self.assertRaises(P.Refus):
+                P.empreinte_attendue(chemin, 'go2rtc')
 
     def test_utilitaires(self):
         """Contents/Helpers : chaque fichier ordinaire executable, dans l'ordre ; un lien ou un fichier non executable
