@@ -268,3 +268,9 @@ Aucun label personnel n'entre dans le code public : la migration est un geste de
   le cas, le gardien peut demander une priorité plus haute (`setpriority`, QoS) pour go2rtc.
 - **coreaudiod** : le va-et-vient de clients CoreAudio reste le déclencheur suspecté. `preload` et l'arrêt en douceur
   le limitent ; le détecteur le signale.
+
+## 12. Résultat de l'essai des autorisations (12/10/2026)
+
+- **Fait.** Le ffmpeg de capture avait bien l'app pour processus responsable, mais **macOS a attribué l'accès à la caméra au programme qui l'ouvre, ffmpeg**, et non à l'app (essai de la tâche 0 du plan). Le § 3.4 ne se vérifie donc pas : la demande porte le nom « ffmpeg », et l'autorisation suit le binaire de Homebrew. Elle est redemandée après chaque `brew upgrade ffmpeg`.
+- **Décision de Majid : B3 tel quel.** Les droits caméra et micro de l'app et ses textes d'explication restent : ils préparent l'évolution suivante.
+- **Évolution au backlog : un utilitaire de capture signé de PTZBot** (AVFoundation, VideoToolbox et AudioToolbox, flux vers go2rtc par `exec:`). Il remplacerait ffmpeg pour la capture, pour que l'accès soit attribué à PTZBot et survive aux mises à jour. ffmpeg ne servirait plus qu'à l'Opus.

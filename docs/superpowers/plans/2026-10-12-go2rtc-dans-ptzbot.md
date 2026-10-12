@@ -367,6 +367,17 @@ Attendu, phase A : la demande « “Essai B3” souhaite accéder à la caméra 
 
 ---
 
+### Résultat de la tâche 0 (essai du 12/10/2026, avec Majid)
+
+- **Fait.** Le ffmpeg de l'essai avait bien l'app pour processus responsable (`launchctl procinfo` : `responsible path = …/EssaiB3.app/Contents/MacOS/EssaiB3`), et pourtant **macOS a attribué l'accès à la caméra à ffmpeg lui-même**, le programme qui ouvre la caméra. La première demande portait sur « ffmpeg ». Ensuite, ni la remise à zéro des autorisations de l'app, ni un go2rtc renommé (`essai-go2rtc`) n'ont fait revenir de demande.
+- **Décision de Majid : B3 tel quel.** L'accès est attribué au ffmpeg de Homebrew, et une nouvelle demande « ffmpeg » vient après chaque `brew upgrade ffmpeg`. Un utilitaire de capture signé, qui ferait attribuer l'accès à PTZBot, va au backlog.
+- **Conséquences sur les tâches :**
+  - **Tâche 6** : l'essai n'a produit aucun refus réel, donc aucune ligne de refus n'a été relevée dans le journal. Le détecteur de refus reste comme écrit. Au banc, si go2rtc n'écrit rien de reconnaissable, l'état retombe sur « Caméra OBSBOT absente ».
+  - **Tâche 9** : les droits caméra et micro de l'app et les textes d'`Info.plist` **restent comme écrits**. Ils ne servent pas à l'attribution actuelle, mais ils préparent l'utilitaire de capture. L'empreinte SHA-256 du binaire `go2rtc` extrait de `go2rtc_mac_arm64.zip` (1.9.14) relevée par l'essai est `6e5039d56d652d2d325cb3ce3f7cc20248a34db42fe8abf9bb13488494ac023e` : l'étape 5 de la tâche 9 doit retrouver exactement celle-là.
+  - **Tâche 10** : le README (anglais puis français) dit que la demande d'accès à la caméra et au micro porte le nom « ffmpeg », et qu'elle revient après une mise à jour de ffmpeg par Homebrew.
+
+---
+
 ### Tâche 1 : le gardien (`mac/gardien`)
 
 **But :** un petit utilitaire en Swift qui lance go2rtc comme processus enfant et l'arrête quand PTZBot disparaît, même après un plantage (spec § 3.2). Usage : `gardien --parent <pid> --arret <secondes> -- <programme> <arguments…>`. Il transmet SIGTERM et SIGINT au programme ; dès le premier de ces signaux, ou la disparition du parent, le programme a `--arret` secondes pour sortir, puis SIGKILL. Le gardien rend la fin du programme : son code de sortie, ou le même signal. Surveillance par `kqueue` (`EVFILT_PROC`, `NOTE_EXIT`), sans sondage ; pas de fil, pas de file de distribution, donc rien à isoler.
