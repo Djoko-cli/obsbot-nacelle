@@ -46,3 +46,7 @@ Un geste de pincement à deux doigts sur la vidéo pour zoomer **l'affichage seu
 ## Échec périmé dans l'état de talkd (relecture finale du 12/10, M1)
 
 Un `failure` écrit par un ancien talkd (port occupé, puis Talkback éteint) reste dans `talkd-state.json` : aucun talkd ne réécrit le fichier tant que l'agent est désinscrit. Au rallumage, le panneau affiche « Arrêté : le port UDP est déjà utilisé » avant que le nouveau talkd ait démarré, et la relance automatique des 4 s ne se fait pas (elle ne vise que « Démarrage… »). Correction possible : ignorer un état dont `since` précède la dernière inscription, ou effacer le fichier à l'extinction. Cas rare : il faut un port occupé juste avant.
+
+## PTZBot iOS sur TestFlight, puis l'App Store (décision de Majid, 12/10/2026)
+
+Sous-projet à part, après le Developer ID (1.0.7) et B3. Certificat « Apple Distribution » et profil App Store créés par Xcode (signature automatique), fiche de l'app dans App Store Connect. Étape 1 : TestFlight pour les appareils de Majid (testeurs internes, sans relecture d'Apple). Étape 2, si décidée : App Store public, avec relecture d'Apple (l'app dépend d'un Mac et d'une OBSBOT : vidéo de démonstration probable), politique de confidentialité en ligne, étiquettes de confidentialité, déclaration de chiffrement (exemption standard TLS/WebRTC), question du nom et de la marque vis-à-vis d'OBSBOT.
