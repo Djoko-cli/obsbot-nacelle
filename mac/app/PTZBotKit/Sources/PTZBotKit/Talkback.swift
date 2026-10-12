@@ -165,6 +165,9 @@ public final class TalkbackModel {
     public static let changeDebounce: TimeInterval = 0.1
     /// Au-delà de ce délai en « Démarrage… » (secondes), talkd est dit « ne démarre pas ».
     public static let startupGrace: TimeInterval = 15
+    /// Délai (secondes) après une inscription au bout duquel un talkd toujours absent fait réinscrire l'agent, une fois.
+    /// talkd démarre d'habitude en moins d'une seconde.
+    public static let launchCheckDelay: TimeInterval = 4
 
     public private(set) var status: Status = .disabled
     public private(set) var lastError: String?
@@ -186,10 +189,12 @@ public final class TalkbackModel {
     @ObservationIgnored private var watching = false
     /// L'instant (horloge du `Scheduler`) du premier « Démarrage… » d'affilée.
     @ObservationIgnored private var startingSince: TimeInterval?
+    /// La vérification programmée après la dernière inscription (`launchCheckDelay`).
+    @ObservationIgnored private var launchCheck: (any Cancellable)?
     /// L'agent a été réinscrit par la mise à jour pendant ce lancement, et talkd n'a pas encore tourné depuis.
     @ObservationIgnored private var reregisteredThisLaunch = false
-    /// Réinscription automatique en cours (environ une seconde au lancement d'une nouvelle version) : l'interrupteur est
-    /// grisé et `setEnabled` sans effet, pour qu'un clic ne la contrarie pas (éteindre puis être rallumé d'office, ou
+    /// Réinscription automatique en cours (au lancement d'une nouvelle version, ou relance d'un talkd qui n'a pas démarré
+    /// après une inscription ; environ une seconde) : l'interrupteur est grisé et `setEnabled` sans effet, pour qu'un clic ne la contrarie pas (éteindre puis être rallumé d'office, ou
     /// une erreur « déjà inscrit »).
     public private(set) var isReregistering = false
     /// Inscription ou désinscription lancée par l'interrupteur, en cours hors du fil de l'interface : l'interrupteur est
@@ -234,7 +239,11 @@ public final class TalkbackModel {
     public func refresh() {
         // Une opération en cours montre son état transitoire ; elle relit l'état réel en finissant.
         guard !isBusy else { return }
-        let next = currentStatus()
+        var next = currentStatus()
+        // Pendant une réinscription, l'agent est un instant désinscrit : « Démarrage… » plutôt que « Désactivé ».
+        if isReregistering, next == .disabled || next == .unavailable {
+            next = .starting
+        }
         if next == .starting {
             let since = startingSince ?? scheduler.now
             startingSince = since
@@ -247,8 +256,8 @@ public final class TalkbackModel {
     }
 
     /// Après une réinscription faite par la mise à jour, un talkd qui ne repart pas (`.notRunning`) reçoit l'avis du
-    /// remède trouvé au banc du 09/10 : éteindre puis rallumer Talkback. Pas de nouvelle tentative automatique, qui
-    /// risquerait une boucle. L'avis s'efface quand talkd tourne, et il ne remplace jamais une autre erreur.
+    /// remède trouvé au banc du 09/10 : éteindre puis rallumer Talkback. La relance automatique (`retryLaunchIfNeeded`)
+    /// a déjà eu lieu ; pas d'autre tentative, qui risquerait une boucle. L'avis s'efface quand talkd tourne, et il ne remplace jamais une autre erreur.
     private func updateRestartAdvice() {
         switch status {
         case .notRunning:
@@ -309,6 +318,8 @@ public final class TalkbackModel {
         restartAdviceShown = false
         isBusy = true
         startingSince = nil
+        launchCheck?.cancel()
+        launchCheck = nil
         status = enabled ? .starting : .stopping
         operation = Task { [weak self] in
             await self?.apply(enabled)
@@ -326,6 +337,7 @@ public final class TalkbackModel {
                 try await service.registerInBackground()
                 registerFailed = false
                 settings.set(bundleVersion, forKey: Self.registeredBuildKey)
+                armLaunchCheck()
             } else {
                 try await service.unregisterAndWait()
                 settings.set(nil as String?, forKey: Self.registeredBuildKey)
@@ -359,19 +371,63 @@ public final class TalkbackModel {
         let registered = service.status == .enabled || service.status == .requiresApproval
         guard registered, settings.string(forKey: Self.registeredBuildKey) != bundleVersion else { return }
         isReregistering = true
-        defer { isReregistering = false }
         lastError = nil
         do {
-            // On attend la fin de la désinscription : launchd démonte encore l'ancien job, et réinscrire avant risque un
-            // refus, ou un agent « inscrit » mais pas chargé (`SMAppService.h`).
-            try await service.unregisterAndWait()
-            // Hors du fil de l'interface, comme l'interrupteur : l'inscription peut prendre une à deux secondes.
-            try await service.registerInBackground()
+            try await reregister()
             settings.set(bundleVersion, forKey: Self.registeredBuildKey)
             reregisteredThisLaunch = true
+            armLaunchCheck()
         } catch {
             lastError = Localization.text("Talkback impossible : \(error.localizedDescription)")
         }
+        isReregistering = false
+        refresh()
+        clearErrorIfApprovalNeeded()
+    }
+
+    /// Désinscrit l'agent, attend, puis le réinscrit.
+    private func reregister() async throws {
+        // On attend la fin de la désinscription : launchd démonte encore l'ancien job, et réinscrire avant risque un
+        // refus, ou un agent « inscrit » mais pas chargé (`SMAppService.h`).
+        try await service.unregisterAndWait()
+        // Hors du fil de l'interface, comme l'interrupteur : l'inscription peut prendre une à deux secondes.
+        try await service.registerInBackground()
+    }
+
+    /// Après une inscription (interrupteur ou mise à jour), vérifie dans `launchCheckDelay` que talkd a démarré.
+    ///
+    /// Pourquoi (banc du 12/10) : après tout changement du binaire `talkd`, la première inscription reprend la fiche que
+    /// BTM gardait de l'ancien binaire, et launchd refuse le nouveau (« Launch Constraint Violation »). BTM recrée
+    /// ensuite une fiche, mais sans Team ID il n'y résout pas le chemin du programme : talkd ne démarre jamais. Une
+    /// seconde inscription, désinscription attendue d'abord, le fait démarrer.
+    private func armLaunchCheck() {
+        launchCheck?.cancel()
+        launchCheck = scheduler.schedule(after: Self.launchCheckDelay) { [weak self] in
+            guard let self else { return }
+            launchCheck = nil
+            retryLaunchIfNeeded()
+        }
+    }
+
+    /// Une seule relance, et seulement si l'agent est inscrit sans talkd vivant (pas d'accord en attente, pas d'échec
+    /// écrit par talkd) et qu'aucune opération n'est en cours. La relance n'arme pas de nouvelle vérification.
+    private func retryLaunchIfNeeded() {
+        guard !isBusy, !isReregistering, currentStatus() == .starting else { return }
+        isReregistering = true
+        lastError = nil
+        operation = Task { [weak self] in
+            await self?.retryLaunch()
+        }
+    }
+
+    private func retryLaunch() async {
+        do {
+            try await reregister()
+        } catch {
+            lastError = Localization.text("Talkback impossible : \(error.localizedDescription)")
+        }
+        isReregistering = false
+        operation = nil
         refresh()
         clearErrorIfApprovalNeeded()
     }

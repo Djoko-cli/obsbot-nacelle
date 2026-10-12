@@ -561,6 +561,8 @@ struct TalkbackTests {
     func notRunningResetsWhenDisabled() async {
         await toggle(true)
         scheduler.advance(by: 20)
+        // La relance automatique (au bout de 4 s) grise l'interrupteur jusqu'à sa fin.
+        await model.waitForOperation()
         await toggle(false)
         #expect(model.status == .disabled)
         await toggle(true)
@@ -590,6 +592,8 @@ struct TalkbackTests {
         await toggle(true)
         process.alive = [4242]
         state.state = speaking(false)
+        // La vérification du démarrage, qui lit aussi l'état, est passée.
+        scheduler.advance(by: TalkbackModel.launchCheckDelay)
         model.beginWatching()
         #expect(model.status == .ready)
         let reads = state.reads
@@ -871,6 +875,139 @@ struct TalkbackTests {
         let url = FileManager.default.temporaryDirectory.appending(path: "absent-\(UUID().uuidString)/talkd-state.json")
         let observation = DispatchFileChangeObserver(url: url).observe {}
         observation.cancel()
+    }
+
+    // MARK: - Relance quand talkd ne démarre pas après une inscription
+
+    // Banc du 12/10 : après tout changement du binaire talkd, la première inscription reprend l'ancienne fiche de BTM
+    // et launchd refuse talkd (« Launch Constraint Violation ») ; désinscrire puis réinscrire le fait démarrer.
+
+    @Test("talkd démarré à temps : aucune relance")
+    func noRetryWhenTalkdStarts() async {
+        await toggle(true)
+        process.alive = [4242]
+        state.state = speaking(false)
+        scheduler.advance(by: TalkbackModel.launchCheckDelay + 1)
+        await model.waitForOperation()
+        #expect(service.registerCalls == 1)
+        #expect(service.unregisterCalls == 0)
+        #expect(!model.isReregistering)
+    }
+
+    @Test("talkd absent 4 s après l'inscription : désinscription puis réinscription, une seule fois")
+    func retryOnceWhenTalkdDoesNotStart() async {
+        await toggle(true)
+        #expect(TalkbackModel.launchCheckDelay == 4)
+        scheduler.advance(by: 3.9)
+        #expect(!model.isReregistering)
+        #expect(service.unregisterCalls == 0)
+        scheduler.advance(by: 0.1)
+        #expect(model.isReregistering)
+        await model.waitForOperation()
+        #expect(service.unregisterCalls == 1)
+        #expect(service.registerCalls == 2)
+        #expect(service.status == .enabled)
+        #expect(!model.isReregistering)
+        #expect(model.status == .starting)
+        #expect(model.lastError == nil)
+        #expect(settings.strings[TalkbackModel.registeredBuildKey] == "7")
+        // La relance ne s'arme pas elle-même : pas de boucle.
+        scheduler.advance(by: 20)
+        await model.waitForOperation()
+        #expect(service.registerCalls == 2)
+        #expect(service.unregisterCalls == 1)
+    }
+
+    @Test("Pendant la relance : « Démarrage… » (jamais « Désactivé »), interrupteur grisé et sans effet")
+    func retryShowsStartingAndLocksToggle() async {
+        await toggle(true)
+        service.holdRegister = true
+        scheduler.advance(by: TalkbackModel.launchCheckDelay)
+        await waitUntil { service.isRegisterPending }
+        #expect(service.status == .notRegistered)
+        model.refresh()
+        #expect(model.status == .starting)
+        #expect(model.isEnabled)
+        #expect(model.isReregistering)
+        model.setEnabled(false)
+        #expect(service.unregisterCalls == 1)
+        service.finishRegister()
+        await model.waitForOperation()
+        #expect(service.registerCalls == 2)
+        #expect(service.status == .enabled)
+    }
+
+    @Test("Éteint avant 4 s : aucune relance")
+    func noRetryAfterDisable() async {
+        await toggle(true)
+        scheduler.advance(by: 1)
+        await toggle(false)
+        scheduler.advance(by: TalkbackModel.launchCheckDelay + 1)
+        await model.waitForOperation()
+        #expect(service.registerCalls == 1)
+        #expect(service.unregisterCalls == 1)
+        #expect(service.status == .notRegistered)
+    }
+
+    @Test("Rallumé avant 4 s : une seule vérification, comptée depuis la dernière inscription")
+    func checkRestartsOnNewToggle() async {
+        await toggle(true)
+        scheduler.advance(by: 2)
+        await toggle(false)
+        await toggle(true)
+        scheduler.advance(by: 3)
+        await model.waitForOperation()
+        #expect(service.registerCalls == 2)
+        scheduler.advance(by: 1)
+        await model.waitForOperation()
+        #expect(service.registerCalls == 3)
+        #expect(service.unregisterCalls == 2)
+    }
+
+    @Test("Après la réinscription d'une mise à jour : même relance si talkd ne démarre pas")
+    func retryAfterUpdateReregistration() async {
+        service.status = .enabled
+        settings.strings[TalkbackModel.registeredBuildKey] = "6"
+        await model.reregisterIfUpdated()
+        #expect(service.registerCalls == 1)
+        scheduler.advance(by: TalkbackModel.launchCheckDelay)
+        await model.waitForOperation()
+        #expect(service.unregisterCalls == 2)
+        #expect(service.registerCalls == 2)
+        #expect(service.status == .enabled)
+        #expect(!model.isReregistering)
+    }
+
+    @Test("Relance refusée : l'erreur est montrée, l'état réel relu, rien n'est retenté")
+    func retryRefused() async {
+        await toggle(true)
+        service.registerFailure = Refused()
+        scheduler.advance(by: TalkbackModel.launchCheckDelay)
+        await model.waitForOperation()
+        #expect(service.registerCalls == 2)
+        #expect(model.lastError == "Talkback impossible : refusé")
+        #expect(model.status == .disabled)
+        #expect(!model.isReregistering)
+        scheduler.advance(by: 20)
+        await model.waitForOperation()
+        #expect(service.registerCalls == 2)
+    }
+
+    @Test("Autorisation requise ou talkd arrêté sur un échec : pas de relance")
+    func noRetryWhenApprovalOrFailure() async {
+        service.statusAfterRegister = .requiresApproval
+        await toggle(true)
+        scheduler.advance(by: TalkbackModel.launchCheckDelay + 1)
+        await model.waitForOperation()
+        #expect(service.registerCalls == 1)
+        await toggle(false)
+        service.statusAfterRegister = .enabled
+        await toggle(true)
+        state.state = TalkbackState(speaking: false, since: Date(), pid: 4242, failure: "portBusy")
+        scheduler.advance(by: TalkbackModel.launchCheckDelay + 1)
+        await model.waitForOperation()
+        #expect(service.registerCalls == 2)
+        #expect(service.unregisterCalls == 1)
     }
 
     // MARK: - Textes
