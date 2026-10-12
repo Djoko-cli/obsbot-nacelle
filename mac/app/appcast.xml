@@ -3,6 +3,21 @@
   <channel>
     <title>PTZBot</title>
     <item>
+      <title>1.0.4</title>
+      <pubDate>Mon, 12 Oct 2026 07:34:49 +0000</pubDate>
+      <sparkle:version>206</sparkle:version>
+      <sparkle:shortVersionString>1.0.4</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+<meta charset="utf-8">
+<p><strong>English</strong></p>
+<ul><li>The Talkback switch reacts at once: "Starting…" or "Stopping…" shows immediately while macOS registers the agent, and the panel no longer freezes.</li><li>In the panel, "Playing" appears and disappears as soon as someone speaks. The talk button of the PTZBot iOS app follows Talkback being turned on or off within a fraction of a second.</li><li>If macOS refuses to start Talkback right after it is turned on or after an update, PTZBot now registers it again by itself after a few seconds: no need to turn it off and on again.</li></ul>
+<p><strong>Français</strong></p>
+<ul><li>L'interrupteur Talkback réagit tout de suite : « Démarrage… » ou « Arrêt… » s'affiche aussitôt pendant que macOS inscrit l'agent, et le panneau ne se fige plus.</li><li>Dans le panneau, « En lecture » apparaît et disparaît dès qu'on parle. Le bouton pour parler de l'app PTZBot iOS suit l'allumage ou l'extinction de Talkback en une fraction de seconde.</li><li>Si macOS refuse de lancer Talkback juste après son allumage ou après une mise à jour, PTZBot le réinscrit de lui-même au bout de quelques secondes : plus besoin de l'éteindre puis de le rallumer.</li></ul>
+]]></description>
+      <enclosure url="https://github.com/Djoko-cli/obsbot-nacelle/releases/download/ptzbot-v1.0.4/PTZBot-1.0.4.dmg" length="3212780" type="application/octet-stream" sparkle:edSignature="aNcTbtAQK16HQDC7FI9+wdCVMP5/DO3hd7o/JwqKYjB8KF4PVL+D0w1nDpy/DAEcl/TzZLphRc7s6CahJpm/Bw=="/>
+    </item>
+    <item>
       <title>1.0.3</title>
       <pubDate>Sun, 11 Oct 2026 15:10:07 +0000</pubDate>
       <sparkle:version>199</sparkle:version>
