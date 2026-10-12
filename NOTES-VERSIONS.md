@@ -6,6 +6,26 @@ release and to the update window.
 PTZBot pour Mac. Chaque section a un bloc **English**, puis un bloc **Français** ; les mêmes notes servent à la
 version GitHub et à la fenêtre de mise à jour.
 
+## 1.0.4
+
+**English**
+
+- The Talkback switch reacts at once: "Starting…" or "Stopping…" shows immediately while macOS registers the agent,
+  and the panel no longer freezes.
+- In the panel, "Playing" appears and disappears as soon as someone speaks. The talk button of the PTZBot iOS app
+  follows Talkback being turned on or off within a fraction of a second.
+- If macOS refuses to start Talkback right after it is turned on or after an update, PTZBot now registers it again by
+  itself after a few seconds: no need to turn it off and on again.
+
+**Français**
+
+- L'interrupteur Talkback réagit tout de suite : « Démarrage… » ou « Arrêt… » s'affiche aussitôt pendant que macOS
+  inscrit l'agent, et le panneau ne se fige plus.
+- Dans le panneau, « En lecture » apparaît et disparaît dès qu'on parle. Le bouton pour parler de l'app PTZBot iOS
+  suit l'allumage ou l'extinction de Talkback en une fraction de seconde.
+- Si macOS refuse de lancer Talkback juste après son allumage ou après une mise à jour, PTZBot le réinscrit de
+  lui-même au bout de quelques secondes : plus besoin de l'éteindre puis de le rallumer.
+
 ## 1.0.3
 
 **English**
