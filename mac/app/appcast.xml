@@ -3,6 +3,21 @@
   <channel>
     <title>PTZBot</title>
     <item>
+      <title>1.0.5</title>
+      <pubDate>Mon, 12 Oct 2026 09:08:05 +0000</pubDate>
+      <sparkle:version>216</sparkle:version>
+      <sparkle:shortVersionString>1.0.5</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+<meta charset="utf-8">
+<p><strong>English</strong></p>
+<ul><li>Talkback is now installed as a classic background agent (<code>~/Library/LaunchAgents</code>) instead of a login item registered with macOS. Updates no longer stop Talkback: after an update, PTZBot restarts <code>talkd</code> with the new version by itself. If Talkback was on, it stays on; nothing to do on your side.</li><li>Talkback can no longer be turned on while PTZBot runs from a temporary location (Downloads or the disk image): move PTZBot to the Applications folder first.</li><li>If you delete PTZBot while Talkback is on, see the README to remove the agent.</li></ul>
+<p><strong>Français</strong></p>
+<ul><li>Talkback est désormais installé comme agent d'arrière-plan classique (<code>~/Library/LaunchAgents</code>) au lieu d'un élément d'ouverture inscrit auprès de macOS. Les mises à jour n'arrêtent plus Talkback : après une mise à jour, PTZBot relance de lui-même <code>talkd</code> dans sa nouvelle version. Si Talkback était allumé, il le reste ; rien à faire de votre côté.</li><li>Talkback ne peut plus être allumé quand PTZBot tourne depuis un emplacement temporaire (Téléchargements ou image disque) : déplacez d'abord PTZBot dans le dossier Applications.</li><li>Si vous supprimez PTZBot avec Talkback allumé, voyez le README pour retirer l'agent.</li></ul>
+]]></description>
+      <enclosure url="https://github.com/Djoko-cli/obsbot-nacelle/releases/download/ptzbot-v1.0.5/PTZBot-1.0.5.dmg" length="3222796" type="application/octet-stream" sparkle:edSignature="RodHKPY9ZTYgsWvPIbOr0S7cD+iWWydBmVoy96rtJcIeKJttq6I8k07PNaXEL0uP7khSCldnA7RkV7GXZIkaCQ=="/>
+    </item>
+    <item>
       <title>1.0.4</title>
       <pubDate>Mon, 12 Oct 2026 07:34:49 +0000</pubDate>
       <sparkle:version>206</sparkle:version>
