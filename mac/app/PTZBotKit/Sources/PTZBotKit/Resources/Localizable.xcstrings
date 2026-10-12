@@ -2465,6 +2465,91 @@
           }
         }
       }
+    },
+    "Le nom « %@ » contient un caractère que go2rtc ne sait pas lire.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The name “%@” contains a character go2rtc cannot read."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le nom « %@ » contient un caractère que go2rtc ne sait pas lire."
+          }
+        }
+      }
+    },
+    "L'identifiant et le mot de passe RTSP sont obligatoires.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The RTSP user name and password are required."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'identifiant et le mot de passe RTSP sont obligatoires."
+          }
+        }
+      }
+    },
+    "L'identifiant ou le mot de passe contient un caractère interdit (saut de ligne, tabulation…).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The user name or password contains a forbidden character (line break, tab…)."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'identifiant ou le mot de passe contient un caractère interdit (saut de ligne, tabulation…)."
+          }
+        }
+      }
+    },
+    "Port %@ invalide : choisissez un port entre 1024 et 65535.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid port %@: choose a port between 1024 and 65535."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port %@ invalide : choisissez un port entre 1024 et 65535."
+          }
+        }
+      }
+    },
+    "Les ports RTSP, WebRTC et 1984 doivent être différents.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The RTSP, WebRTC and 1984 ports must be different."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les ports RTSP, WebRTC et 1984 doivent être différents."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
