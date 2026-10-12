@@ -95,7 +95,7 @@ Les messages de la spec § 5, définis une seule fois et partagés par `ptzd` et
   - `NacelleCodec.encode(_: ClientMessage) throws -> String`, `NacelleCodec.encode(_: ServerMessage) throws -> String`, `NacelleCodec.decodeClient(_: String) throws -> ClientMessage`, `NacelleCodec.decodeServer(_: String) throws -> ServerMessage`
   - `NacelleProtocolError.unknownType(String)`
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 `Packages/NacelleProtocol/Package.swift` :
 
@@ -204,7 +204,7 @@ struct ServerMessageTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd Packages/NacelleProtocol && swift test
@@ -212,7 +212,7 @@ cd Packages/NacelleProtocol && swift test
 
 Échec attendu : la compilation échoue : la cible `NacelleProtocol` n'a pas encore de sources (`Source files for target NacelleProtocol should be located under…`).
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `Packages/NacelleProtocol/Sources/NacelleProtocol/Messages.swift` :
 
@@ -439,7 +439,7 @@ extension ServerMessage: Codable {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd Packages/NacelleProtocol && swift test
@@ -447,7 +447,7 @@ cd Packages/NacelleProtocol && swift test
 
 Attendu : `Test run with 9 tests` … `passed`.
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 La vérification doit afficher `Aucune donnée locale.` ; sinon, retirer la donnée avant de commiter.
 
@@ -496,7 +496,7 @@ Crée le paquet du service avec sa seule cible logique, `PTZCore`, testable sans
   - `SpeedCurve.axis(_:maxSpeed:direction:) -> (direction: Int8, speed: UInt8)`, `SpeedCurve.command(pan:tilt:settings:) -> PanTiltRelative`
   - Faux pour les tests : `FakeCamera`, `FakeScheduler` (avec `advance(by:)` et `pendingCount`), `LogRecorder`
 
-- [ ] **Étape 1 : Écrire le manifeste et les tests**
+- [x] **Étape 1 : Écrire le manifeste et les tests**
 
 Créer `mac/ptzd/Package.swift` :
 
@@ -698,7 +698,7 @@ struct SpeedCurveTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd mac/ptzd && swift test --filter SpeedCurveTests
@@ -706,7 +706,7 @@ cd mac/ptzd && swift test --filter SpeedCurveTests
 
 Échec attendu : la compilation échoue : la cible `PTZCore` n'a pas encore de sources.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `mac/ptzd/Sources/PTZCore/CameraDevice.swift` :
 
@@ -860,7 +860,7 @@ public enum SpeedCurve {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd mac/ptzd && swift test --filter SpeedCurveTests
@@ -868,7 +868,7 @@ cd mac/ptzd && swift test --filter SpeedCurveTests
 
 Attendu : `Test run with 7 tests` … `passed`.
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 La vérification doit afficher `Aucune donnée locale.` ; sinon, retirer la donnée avant de commiter.
 
@@ -911,7 +911,7 @@ Spec § 6.2 : une commande UVC n'est envoyée que si elle change ; sans `move` d
   - `isMoving: Bool`, `position: PanTiltPosition?`, `onChange: (() -> Void)?`
   - `move(pan:tilt:from: ClientID) throws`, `stop() throws`, `clientDisconnected(_: ClientID)`, `refreshPosition()`, `reset()`
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 `mac/ptzd/Tests/PTZCoreTests/MotionDriverTests.swift` :
 
@@ -1034,7 +1034,7 @@ struct MotionDriverTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd mac/ptzd && swift test --filter MotionDriverTests
@@ -1042,7 +1042,7 @@ cd mac/ptzd && swift test --filter MotionDriverTests
 
 Échec attendu : la compilation échoue : `cannot find 'MotionDriver' in scope`.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `mac/ptzd/Sources/PTZCore/MotionDriver.swift` :
 
@@ -1185,7 +1185,7 @@ public final class MotionDriver {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd mac/ptzd && swift test --filter MotionDriverTests
@@ -1201,7 +1201,7 @@ cd mac/ptzd && swift test
 
 Attendu : 17 tests au total, tous `passed` (somme des lignes `Test run with N tests`).
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 La vérification doit afficher `Aucune donnée locale.` ; sinon, retirer la donnée avant de commiter.
 
@@ -1236,7 +1236,7 @@ Spec § 6.3 : zoom borné à 0…100, au plus 10 envois par seconde ; si les mes
   - `@MainActor final class ZoomDriver(camera:scheduler:log:)`, `ZoomDriver.minInterval = 0.1`
   - `value: Int?`, `onChange: (() -> Void)?`, `set(_: Int) throws`, `refresh()`, `reset()`
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 `mac/ptzd/Tests/PTZCoreTests/ZoomDriverTests.swift` :
 
@@ -1303,7 +1303,7 @@ struct ZoomDriverTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd mac/ptzd && swift test --filter ZoomDriverTests
@@ -1311,7 +1311,7 @@ cd mac/ptzd && swift test --filter ZoomDriverTests
 
 Échec attendu : la compilation échoue : `cannot find 'ZoomDriver' in scope`.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `mac/ptzd/Sources/PTZCore/ZoomDriver.swift` :
 
@@ -1398,7 +1398,7 @@ public final class ZoomDriver {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd mac/ptzd && swift test --filter ZoomDriverTests
@@ -1414,7 +1414,7 @@ cd mac/ptzd && swift test
 
 Attendu : 22 tests au total, tous `passed` (somme des lignes `Test run with N tests`).
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 La vérification doit afficher `Aucune donnée locale.` ; sinon, retirer la donnée avant de commiter.
 
@@ -1455,7 +1455,7 @@ Spec § 6.5, avec l'amendement A2 : à l'entrée, la position est mémorisée et
   - `isActive: Bool`, `onChange`, `enter(currentPosition: PanTiltPosition?, currentZoom: Int?) throws`, `exit() throws`, `enforce() throws`
   - Faux pour les tests : `MemoryStateStore` (avec `failSaves`)
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 `mac/ptzd/Tests/PTZCoreTests/MemoryStateStore.swift` :
 
@@ -1634,7 +1634,7 @@ struct PrivacyKeeperTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd mac/ptzd && swift test --filter "StateStoreTests|PrivacyKeeperTests"
@@ -1642,7 +1642,7 @@ cd mac/ptzd && swift test --filter "StateStoreTests|PrivacyKeeperTests"
 
 Échec attendu : la compilation échoue : `cannot find type 'StateStore' in scope`.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `mac/ptzd/Sources/PTZCore/StateStore.swift` :
 
@@ -1787,7 +1787,7 @@ public final class PrivacyKeeper {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd mac/ptzd && swift test --filter "StateStoreTests|PrivacyKeeperTests"
@@ -1803,7 +1803,7 @@ cd mac/ptzd && swift test
 
 Attendu : 33 tests au total, tous `passed` (somme des lignes `Test run with N tests`).
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 La vérification doit afficher `Aucune donnée locale.` ; sinon, retirer la donnée avant de commiter.
 
@@ -1847,7 +1847,7 @@ Spec § 6.4 et § 6.9 : `takeControl` lance l'utilitaire dans un processus sépa
   - `@MainActor final class ControlTaker(runner:isObsbotCenterRunning:log:)` : `state: ControlState`, `onChange`, `take()`
   - Faux pour les tests : `FakeAIOffRunner` (avec `runCount` et `finish(_:)`)
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 `mac/ptzd/Tests/PTZCoreTests/FakeAIOffRunner.swift` :
 
@@ -2005,7 +2005,7 @@ struct ControlTakerTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd mac/ptzd && swift test --filter "AIOffRunnerTests|ControlTakerTests"
@@ -2013,7 +2013,7 @@ cd mac/ptzd && swift test --filter "AIOffRunnerTests|ControlTakerTests"
 
 Échec attendu : la compilation échoue : `cannot find type 'AIOffRunner' in scope`.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `mac/ptzd/Sources/PTZCore/AIOffRunner.swift` :
 
@@ -2183,7 +2183,7 @@ public final class ControlTaker {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd mac/ptzd && swift test --filter "AIOffRunnerTests|ControlTakerTests"
@@ -2199,7 +2199,7 @@ cd mac/ptzd && swift test
 
 Attendu : 44 tests au total, tous `passed` (somme des lignes `Test run with N tests`).
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 La vérification doit afficher `Aucune donnée locale.` ; sinon, retirer la donnée avant de commiter.
 
@@ -2240,7 +2240,7 @@ Le point d'entrée de la logique (spec § 5 et § 6). Il refuse `move`, `zoom` e
   - `handle(_: ClientMessage, from: ClientID) -> (code: ErrorCode, message: String)?` (nil = pas d'erreur)
   - `clientDisconnected(_: ClientID)`, `cameraPresenceChanged(_: Bool)`
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 `mac/ptzd/Tests/PTZCoreTests/PTZControllerTests.swift` :
 
@@ -2390,7 +2390,7 @@ struct PTZControllerTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd mac/ptzd && swift test --filter PTZControllerTests
@@ -2398,7 +2398,7 @@ cd mac/ptzd && swift test --filter PTZControllerTests
 
 Échec attendu : la compilation échoue : `cannot find 'PTZController' in scope`.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `mac/ptzd/Sources/PTZCore/PTZController.swift` :
 
@@ -2572,7 +2572,7 @@ public final class PTZController {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd mac/ptzd && swift test --filter PTZControllerTests
@@ -2588,7 +2588,7 @@ cd mac/ptzd && swift test
 
 Attendu : 55 tests au total, tous `passed` (somme des lignes `Test run with N tests`).
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 La vérification doit afficher `Aucune donnée locale.` ; sinon, retirer la donnée avant de commiter.
 
@@ -2624,7 +2624,7 @@ Spec § 6.7. Seule `listenAddress` est obligatoire et doit être une IPv4. Borne
   - `PTZConfig.load(from: URL) throws -> PTZConfig`, `validate() throws`, `motion: MotionSettings`, `aiOffURL(relativeTo: URL) -> URL`
   - `ConfigError` : `.missingListenAddress`, `.invalidListenAddress(String)`, `.outOfRange(String)`
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 `mac/ptzd/Tests/PTZCoreTests/PTZConfigTests.swift` :
 
@@ -2679,7 +2679,7 @@ struct PTZConfigTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd mac/ptzd && swift test --filter PTZConfigTests
@@ -2687,7 +2687,7 @@ cd mac/ptzd && swift test --filter PTZConfigTests
 
 Échec attendu : la compilation échoue : `cannot find 'PTZConfig' in scope`.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `mac/ptzd/Sources/PTZCore/PTZConfig.swift` :
 
@@ -2784,7 +2784,7 @@ public struct PTZConfig: Codable, Equatable, Sendable {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd mac/ptzd && swift test --filter PTZConfigTests
@@ -2800,7 +2800,7 @@ cd mac/ptzd && swift test
 
 Attendu : 59 tests au total, tous `passed` (somme des lignes `Test run with N tests`).
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 La vérification doit afficher `Aucune donnée locale.` ; sinon, retirer la donnée avant de commiter.
 
@@ -2840,7 +2840,7 @@ Spec § 6.1. Une petite cible C reprend la sonde des tests de faisabilité : req
   - `@MainActor public final class UVCCamera: CameraDevice` : `init(vendorID: = 0x3564, productID: = 0xFEF8, log:)`, `onPresenceChange: ((Bool) -> Void)?`, `startWatching()`
   - `UVCPayload` (interne) : encodage et décodage PanTilt absolu, PanTilt en vitesse, zoom
 
-- [ ] **Étape 1 : Mettre à jour le manifeste et écrire les tests**
+- [x] **Étape 1 : Mettre à jour le manifeste et écrire les tests**
 
 Remplacer tout le contenu de `mac/ptzd/Package.swift` :
 
@@ -2921,7 +2921,7 @@ struct UVCPayloadTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd mac/ptzd && swift test --filter UVCPayloadTests
@@ -2929,7 +2929,7 @@ cd mac/ptzd && swift test --filter UVCPayloadTests
 
 Échec attendu : la compilation échoue : les cibles `CUVC` et `UVCCamera` n'ont pas encore de sources.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `mac/ptzd/Sources/CUVC/include/cuvc.h` :
 
@@ -3352,7 +3352,7 @@ public final class UVCCamera: CameraDevice {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd mac/ptzd && swift test --filter UVCPayloadTests
@@ -3368,7 +3368,7 @@ cd mac/ptzd && swift test
 
 Attendu : 64 tests au total, tous `passed` (somme des lignes `Test run with N tests`).
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 La vérification doit afficher `Aucune donnée locale.` ; sinon, retirer la donnée avant de commiter.
 
@@ -3410,7 +3410,7 @@ Spec § 6.1 et § 6.10, avec l'amendement A1 : une écoute `NWListener` par adre
   - `WebSocketServer.maxClients = 4`, `WebSocketServer.retryDelay = 5`
   - `onReady: ((_ host: String, _ port: UInt16) -> Void)?`, `start()`
 
-- [ ] **Étape 1 : Mettre à jour le manifeste et écrire les tests**
+- [x] **Étape 1 : Mettre à jour le manifeste et écrire les tests**
 
 Remplacer tout le contenu de `mac/ptzd/Package.swift` :
 
@@ -3616,7 +3616,7 @@ final class StubStore: StateStore {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd mac/ptzd && swift test --filter WebSocketServerTests
@@ -3624,7 +3624,7 @@ cd mac/ptzd && swift test --filter WebSocketServerTests
 
 Échec attendu : la compilation échoue : la cible `PTZServer` n'a pas encore de sources.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `mac/ptzd/Sources/PTZServer/WebSocketServer.swift` :
 
@@ -3805,7 +3805,7 @@ public final class WebSocketServer {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd mac/ptzd && swift test --filter WebSocketServerTests
@@ -3821,7 +3821,7 @@ cd mac/ptzd && swift test
 
 Attendu : 68 tests au total, tous `passed` (somme des lignes `Test run with N tests`).
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 La vérification doit afficher `Aucune donnée locale.` ; sinon, retirer la donnée avant de commiter.
 
@@ -3858,7 +3858,7 @@ Le point d'entrée assemble les modules : lit `config.json`, ouvre la caméra, d
 
 Pas de test automatique pour cette tâche : elle ne fait qu'assembler des modules testés. Les vérifications se font sur la vraie caméra (étapes 4 et 5).
 
-- [ ] **Étape 1 : Mettre à jour le manifeste**
+- [x] **Étape 1 : Mettre à jour le manifeste**
 
 Remplacer tout le contenu de `mac/ptzd/Package.swift` :
 
@@ -3897,7 +3897,7 @@ let package = Package(
 )
 ```
 
-- [ ] **Étape 2 : Écrire l'exécutable**
+- [x] **Étape 2 : Écrire l'exécutable**
 
 `mac/ptzd/Sources/ptzd/PTZDaemon.swift` :
 
@@ -4052,7 +4052,7 @@ enum UVCDebugCommand {
 }
 ```
 
-- [ ] **Étape 3 : Compiler et lancer toute la suite**
+- [x] **Étape 3 : Compiler et lancer toute la suite**
 
 ```bash
 cd mac/ptzd && swift build && swift test
@@ -4060,7 +4060,7 @@ cd mac/ptzd && swift build && swift test
 
 Attendu : `Build complete!`, aucun avertissement, puis 68 tests au total, tous `passed`.
 
-- [ ] **Étape 4 : Lire la caméra (lecture seule, OBSBOT Center fermé)**
+- [x] **Étape 4 : Lire la caméra (lecture seule, OBSBOT Center fermé)**
 
 ```bash
 mac/ptzd/.build/debug/ptzd uvc get
@@ -4074,7 +4074,7 @@ mac/ptzd/.build/debug/ptzd uvc; echo "code=$?"
 
 Attendu : l'aide (`usage : ptzd uvc get` …) puis `code=2`.
 
-- [ ] **Étape 5 : Étalonner les sens (prévenir Majid : la caméra bouge environ 2 s)**
+- [x] **Étape 5 : Étalonner les sens (prévenir Majid : la caméra bouge environ 2 s)**
 
 Repères des tests de faisabilité : un **pan absolu positif regarde vers la gauche** de l'image d'origine, un **tilt absolu positif vers le haut**. Le joystick vers la droite envoie le sens UVC `panDirection × (+1)` ; vers le haut, `tiltDirection × (+1)`.
 
@@ -4095,7 +4095,7 @@ Si un axe va dans l'autre sens, noter qu'il faudra mettre `-1` pour cet axe dans
 mac/ptzd/.build/debug/ptzd uvc pt <pan noté> <tilt noté>
 ```
 
-- [ ] **Étape 6 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 6 : Vérifier l'absence de données locales, commiter, pousser**
 
 ```bash
 git add mac/ptzd/Package.swift \
@@ -4129,7 +4129,7 @@ Spec § 6.9. Trente lignes de C++ autour du SDK : trouver la Tiny 2 (5 s au plus
 
 Pas de test automatique : le contrat (codes de sortie, délai, sortie redirigée) est déjà testé à la tâche 6 avec des programmes de substitution ; ici on vérifie l'appel réel au SDK.
 
-- [ ] **Étape 1 : Écrire l'utilitaire et son script de compilation**
+- [x] **Étape 1 : Écrire l'utilitaire et son script de compilation**
 
 `mac/ai-off/main.cpp` :
 
@@ -4206,7 +4206,7 @@ echo "$OUT/bin/obsbot-ai-off"
 chmod +x mac/ai-off/build.sh
 ```
 
-- [ ] **Étape 2 : Compiler et vérifier l'`rpath`**
+- [x] **Étape 2 : Compiler et vérifier l'`rpath`**
 
 ```bash
 mac/ai-off/build.sh && otool -l mac/ai-off/build/bin/obsbot-ai-off | grep -A2 LC_RPATH | grep path
@@ -4214,7 +4214,7 @@ mac/ai-off/build.sh && otool -l mac/ai-off/build/bin/obsbot-ai-off | grep -A2 LC
 
 Attendu : le chemin du binaire, puis `path @executable_path/../lib`.
 
-- [ ] **Étape 3 : Couper le suivi IA pour de vrai (OBSBOT Center fermé)**
+- [x] **Étape 3 : Couper le suivi IA pour de vrai (OBSBOT Center fermé)**
 
 ```bash
 mac/ai-off/build/bin/obsbot-ai-off; echo "code=$?"
@@ -4222,7 +4222,7 @@ mac/ai-off/build/bin/obsbot-ai-off; echo "code=$?"
 
 Attendu, en 4 à 6 s : des lignes `d-d:` / `d-i:` du SDK (normal), `d-d: cameraSetAiModeU 22 successfully`, `obsbot-ai-off : suivi IA coupé`, puis `code=0`.
 
-- [ ] **Étape 4 : Vérifier que rien du SDK ni de la compilation n'entre dans git**
+- [x] **Étape 4 : Vérifier que rien du SDK ni de la compilation n'entre dans git**
 
 ```bash
 git status --short
@@ -4230,7 +4230,7 @@ git status --short
 
 Attendu : seulement `?? mac/ai-off/` (le dossier `build/` et `vendor/` sont ignorés). Vérifier avec `git status --short --untracked-files=all mac/ai-off` : seuls `main.cpp` et `build.sh` apparaissent.
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 ```bash
 git add mac/ai-off/main.cpp \
@@ -4260,7 +4260,7 @@ Un petit client WebSocket en script Swift, pour dialoguer avec `ptzd` sans l'app
 - Utilise : l'exécutable `ptzd` (tâche 11), `obsbot-ai-off` (tâche 12), le protocole de la spec § 5.
 - Produit : `swift mac/tools/nacelle-ws.swift ws://<adresse>:<port> ['<json>' | wait <s> | hold <s> <pan> <tilt>]…`
 
-- [ ] **Étape 1 : Écrire le client**
+- [x] **Étape 1 : Écrire le client**
 
 `mac/tools/nacelle-ws.swift` :
 
@@ -4335,7 +4335,7 @@ try await Task.sleep(for: .seconds(1))
 task.cancel(with: .normalClosure, reason: nil)
 ```
 
-- [ ] **Étape 2 : Démarrer ptzd en essai, sur 127.0.0.1**
+- [x] **Étape 2 : Démarrer ptzd en essai, sur 127.0.0.1**
 
 ```bash
 (cd mac/ptzd && swift build)
@@ -4350,7 +4350,7 @@ sleep 2 && cat "$SUP/ptzd.log"
 
 Noter la position (`uvc get`) et les deux PID. Attendu dans le journal : `ptzd démarre.`, `Caméra branchée.`, `En écoute sur 127.0.0.1:19850.` (une seule fois : l'adresse de la config est ici déjà 127.0.0.1, et le serveur ne l'écoute qu'une fois).
 
-- [ ] **Étape 3 : Dérouler le scénario (prévenir Majid : la caméra bouge environ 6 s)**
+- [x] **Étape 3 : Dérouler le scénario (prévenir Majid : la caméra bouge environ 6 s)**
 
 ```bash
 swift mac/tools/nacelle-ws.swift ws://127.0.0.1:19850 '{"type":"takeControl"}' wait 7 hold 0.6 0.5 0 wait 1 '{"type":"zoom","value":60}' wait 1 '{"type":"privacy","on":true}' wait 3 '{"type":"move","pan":1,"tilt":0}' '{"type":"privacy","on":false}' wait 3 'nimporte'
@@ -4365,7 +4365,7 @@ Attendu, dans l'ordre (les valeurs de pan et tilt varient) :
 6. `"privacy":false` après la sortie, puis un `state` avec la position relue 2 s plus tard (et `"zoom":60`, rétabli) ;
 7. `{"code":"badMessage","message":"Message illisible.","type":"error"}` en réponse à `nimporte`.
 
-- [ ] **Étape 4 : Vie privée après un redémarrage de ptzd (la caméra bouge)**
+- [x] **Étape 4 : Vie privée après un redémarrage de ptzd (la caméra bouge)**
 
 On entre en vie privée, on arrête `ptzd`, on simule une caméra revenue à sa position d'origine (`uvc pt 0 0`), puis on relance `ptzd` : il doit renvoyer l'objectif vers le bas et recouper le suivi IA de lui-même (spec § 6.5).
 
@@ -4382,7 +4382,7 @@ grep -c "destroy devices object successfully" "$SUP/logs/obsbot-ai-off.log"
 
 Attendu : `uvc get` affiche un tilt de `-69.0°` ou `-70.0°` ; le premier `state` reçu contient `"privacy":true`, `"control":"ready"` et le même tilt ; après la sortie, `"privacy":false` ; le compteur vaut `2` (une prise en main à l'étape 3, une au redémarrage).
 
-- [ ] **Étape 5 (facultative, avec l'accord de Majid) : Vie privée après un débranchement de la caméra**
+- [x] **Étape 5 (facultative, avec l'accord de Majid) : Vie privée après un débranchement de la caméra**
 
 Débrancher la caméra fait disparaître un périphérique audio : coreaudiod est sollicité, et il s'est déjà bloqué sur ce Mac. Ne faire ce test que si Majid l'accepte, et seulement quand go2rtc ne diffuse pas (aucun spectateur) :
 
@@ -4401,7 +4401,7 @@ swift mac/tools/nacelle-ws.swift ws://127.0.0.1:19850 '{"type":"privacy","on":fa
 
 Attendu : `Caméra débranchée.` puis `Caméra branchée.` dans le journal, un tilt de `-69.0°` ou `-70.0°`, les mêmes PID qu'à l'étape 2, puis `"privacy":false`.
 
-- [ ] **Étape 6 : Arrêter ptzd et lire ses traces**
+- [x] **Étape 6 : Arrêter ptzd et lire ses traces**
 
 ```bash
 kill $PTZD_PID
@@ -4410,7 +4410,7 @@ cat "$SUP/ptzd.log"; echo "---"; cat "$SUP/state.json"; echo "---"; tail -1 "$SU
 
 Attendu : le journal de `ptzd` ne contient que ses propres lignes (aucune ligne `d-d:` du SDK) ; `state.json` contient `"privacy" : false` ; la dernière ligne de `obsbot-ai-off.log` est `d-i: destroy devices object successfully`.
 
-- [ ] **Étape 7 : Rétablir la position et le zoom, vérifier la santé du système**
+- [x] **Étape 7 : Rétablir la position et le zoom, vérifier la santé du système**
 
 ```bash
 mac/ptzd/.build/debug/ptzd uvc pt <pan noté> <tilt noté>
@@ -4420,7 +4420,7 @@ echo "go2rtc=$(pgrep -x go2rtc) coreaudiod=$(pgrep -x coreaudiod)"
 
 Attendu : les mêmes PID qu'à l'étape 2. Si l'un a changé, s'arrêter et prévenir Majid (voir les incidents coreaudiod dans les notes du projet).
 
-- [ ] **Étape 8 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 8 : Vérifier l'absence de données locales, commiter, pousser**
 
 ```bash
 git add mac/tools/nacelle-ws.swift
@@ -4452,7 +4452,7 @@ Spec § 6.7 et § 6.8. Le script compile, installe dans `~/Library/Application S
 - Utilise : `mac/ptzd` (tâches 2 à 11), `mac/ai-off/build.sh` (tâche 12), `mac/tools/nacelle-ws.swift` (tâche 13).
 - Produit : l'agent launchd `io.github.djoko-cli.obsbot-nacelle.ptzd` ; journaux dans `~/Library/Logs/obsbot-nacelle/` (`ptzd.log`, `obsbot-ai-off.log`).
 
-- [ ] **Étape 1 : Écrire le modèle de plist, le script et le README**
+- [x] **Étape 1 : Écrire le modèle de plist, le script et le README**
 
 `mac/launchd/io.github.djoko-cli.obsbot-nacelle.ptzd.plist` :
 
@@ -4674,7 +4674,7 @@ rm -r ~/Library/Application\ Support/ObsbotNacelle ~/Library/Logs/obsbot-nacelle
 MIT. Voir [LICENSE](LICENSE).
 ````
 
-- [ ] **Étape 2 : Vérifier la syntaxe**
+- [x] **Étape 2 : Vérifier la syntaxe**
 
 ```bash
 bash -n scripts/install-mac.sh && echo "script OK"
@@ -4683,7 +4683,7 @@ sed -e 's#__SUPPORT__#/tmp/a#' -e 's#__LOGS__#/tmp/b#' mac/launchd/io.github.djo
 
 Attendu : `script OK`, puis `…/ptzd-test.plist: OK`.
 
-- [ ] **Étape 3 : Installer à blanc, dans un dossier personnel factice**
+- [x] **Étape 3 : Installer à blanc, dans un dossier personnel factice**
 
 ```bash
 FAKE=$(mktemp -d) && HOME="$FAKE" scripts/install-mac.sh --no-load && ls -R "$FAKE/Library" | head -30
@@ -4691,7 +4691,7 @@ FAKE=$(mktemp -d) && HOME="$FAKE" scripts/install-mac.sh --no-load && ls -R "$FA
 
 Attendu : `Fichiers installés ; agent non chargé (--no-load).`, et dans l'arborescence `bin/ptzd`, `bin/obsbot-ai-off`, `lib/libdev.dylib`, `config.json` et le plist dans `LaunchAgents/`. Rien n'est chargé ni installé dans le vrai dossier personnel.
 
-- [ ] **Étape 4 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 4 : Vérifier l'absence de données locales, commiter, pousser**
 
 ```bash
 git add mac/launchd/io.github.djoko-cli.obsbot-nacelle.ptzd.plist \
@@ -4709,11 +4709,11 @@ EOF
 git push
 ```
 
-- [ ] **Étape 5 : S'arrêter et demander l'accord de Majid**
+- [x] **Étape 5 : S'arrêter et demander l'accord de Majid**
 
 L'installation réelle crée un agent launchd qui démarre à chaque ouverture de session : c'est une configuration persistante. Présenter à Majid ce qui va être installé (les chemins de l'étape 3) et la commande de désinstallation du README, puis **attendre son accord explicite** dans la conversation.
 
-- [ ] **Étape 6 : Installer (après accord)**
+- [x] **Étape 6 : Installer (après accord)**
 
 ```bash
 scripts/install-mac.sh
@@ -4721,7 +4721,7 @@ scripts/install-mac.sh
 
 Attendu : `config.json créé (écoute sur l'adresse Tailscale du Mac, port 1985).`, puis `state = running` et une ligne `pid = …`.
 
-- [ ] **Étape 7 : Appliquer l'étalonnage, si la tâche 11 l'a demandé**
+- [x] **Étape 7 : Appliquer l'étalonnage, si la tâche 11 l'a demandé**
 
 Seulement si un axe allait dans l'autre sens à la tâche 11 (étape 5) : ajouter `"panDirection": -1` ou `"tiltDirection": -1` dans `~/Library/Application Support/ObsbotNacelle/config.json`, puis :
 
@@ -4729,7 +4729,7 @@ Seulement si un axe allait dans l'autre sens à la tâche 11 (étape 5) : ajoute
 launchctl kickstart -k gui/$(id -u)/io.github.djoko-cli.obsbot-nacelle.ptzd
 ```
 
-- [ ] **Étape 8 : Vérifier le service installé**
+- [x] **Étape 8 : Vérifier le service installé**
 
 ```bash
 tail -5 ~/Library/Logs/obsbot-nacelle/ptzd.log
@@ -4745,7 +4745,7 @@ swift mac/tools/nacelle-ws.swift ws://127.0.0.1:1985 '{"type":"takeControl"}' wa
 
 Attendu : `"control":"taking"` puis `"control":"ready"`. Si `"control":"failed"` : lire `tail -20 ~/Library/Logs/obsbot-nacelle/obsbot-ai-off.log` et chercher un refus d'autorisation (`log show --last 5m --predicate 'subsystem == "com.apple.TCC"' | grep -i -E "obsbot|ptzd"`) ; le SDK ouvre un fil Bluetooth et des sockets mDNS, qu'un agent launchd peut se voir refuser. Rapporter à Majid sans contourner.
 
-- [ ] **Étape 9 : Vérifier la santé du système**
+- [x] **Étape 9 : Vérifier la santé du système**
 
 ```bash
 echo "go2rtc=$(pgrep -x go2rtc) coreaudiod=$(pgrep -x coreaudiod)"
@@ -4754,6 +4754,6 @@ log show --last 10m --predicate 'process == "arkaudiod" AND eventMessage CONTAIN
 
 Attendu : les mêmes PID qu'avant l'installation, et `0` erreur `locking failed`.
 
-- [ ] **Étape 10 : Rendre compte à Majid**
+- [x] **Étape 10 : Rendre compte à Majid**
 
 Lui indiquer : le service tourne ; à la première connexion de l'iPhone (plan de l'app iOS), macOS pourra demander d'autoriser `ptzd` à accepter des connexions entrantes, à accepter ; la question peut revenir après une réinstallation. Rappeler la désinstallation (README).

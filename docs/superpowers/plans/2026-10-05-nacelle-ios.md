@@ -77,7 +77,7 @@ Voir « Amendement A3 » plus haut. `ControlTaker` reçoit l'horloge du contrôl
 - Utilise : `Scheduler`, `AIOffRunner`, `AIOffResult`, `ControlState` (côté Mac, déjà livrés).
 - Produit : `ControlTaker(runner:scheduler:isObsbotCenterRunning:log:)`, `ControlTaker.retryDelay = 3`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Remplacer tout le contenu de `mac/ptzd/Tests/PTZCoreTests/ControlTakerTests.swift` :
 
@@ -190,7 +190,7 @@ par :
         #expect(camera.absoluteCommands.count == 3)
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd mac/ptzd && swift test --filter "ControlTakerTests|PTZControllerTests"
@@ -198,7 +198,7 @@ cd mac/ptzd && swift test --filter "ControlTakerTests|PTZControllerTests"
 
 Échec attendu : la compilation échoue (`extra argument 'scheduler' in call`, ou `type 'ControlTaker' has no member 'retryDelay'`).
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 Remplacer tout le contenu de `mac/ptzd/Sources/PTZCore/ControlTaker.swift` :
 
@@ -337,7 +337,7 @@ int main() {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès ; recompiler l'utilitaire**
+- [x] **Étape 4 : Lancer les tests, constater le succès ; recompiler l'utilitaire**
 
 ```bash
 cd mac/ptzd && swift build 2>&1 | grep -c "warning:" ; swift test 2>&1 | grep -E "Test run with|✘"
@@ -351,7 +351,7 @@ mac/ai-off/build.sh && otool -l mac/ai-off/build/bin/obsbot-ai-off | grep -A2 LC
 
 Attendu : le chemin du binaire, puis `path @executable_path/../lib`.
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 ```bash
 git add mac/ptzd/Sources/PTZCore/ControlTaker.swift \
@@ -371,7 +371,7 @@ EOF
 git push
 ```
 
-- [ ] **Étape 6 : Réinstaller le service (annoncer à Majid : `ptzd` redémarre)**
+- [x] **Étape 6 : Réinstaller le service (annoncer à Majid : `ptzd` redémarre)**
 
 ```bash
 echo "go2rtc=$(pgrep -x go2rtc) coreaudiod=$(pgrep -x coreaudiod)"; scripts/install-mac.sh
@@ -407,7 +407,7 @@ Crée le projet de l'app, décrit pour xcodegen dans `ios/project.yml` (le `.xco
   - `struct SettingsStore(defaults:)` : `load()`, `save(_:)` (clé `connectionSettings`)
   - `protocol Cancellable`, `@MainActor protocol Scheduler` (`schedule(after:_:)`) et `MainScheduler`
 
-- [ ] **Étape 1 : Écrire les tests et le projet**
+- [x] **Étape 1 : Écrire les tests et le projet**
 
 Ajouter à la fin de `.gitignore` :
 
@@ -557,7 +557,7 @@ struct ConnectionSettingsTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E "error:|Test run with|\*\* TEST"
@@ -565,7 +565,7 @@ cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nace
 
 Échec attendu : la compilation des tests échoue : `cannot find 'ConnectionSettings' in scope`. Le premier lancement télécharge d'abord WebRTC.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `ios/Nacelle/App/Scheduler.swift` :
 
@@ -683,7 +683,7 @@ struct SettingsStore {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E "error:|Test run with|\*\* TEST"
@@ -691,7 +691,7 @@ cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nace
 
 Attendu : `Test run with 3 tests` … `passed`, puis `** TEST SUCCEEDED **`, sans ligne `error:`. Vérifier aussi qu'il n'y a aucun avertissement Swift : la même commande avec `| grep -c "warning:"` à la place du dernier filtre doit donner `0`.
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 ```bash
 git add .gitignore \
@@ -729,7 +729,7 @@ Spec § 7.2 : le geste devient un vecteur de -1 à 1, borné au cercle, avec une
   - `struct JoystickVector(pan: Double, tilt: Double)`, `JoystickVector.zero`
   - `JoystickMath.deadZone = 0.1`, `JoystickMath.vector(translation:radius:) -> JoystickVector`, `JoystickMath.knobOffset(translation:radius:) -> CGSize`
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 `ios/NacelleTests/JoystickMathTests.swift` :
 
@@ -772,7 +772,7 @@ struct JoystickMathTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E "error:|Test run with|\*\* TEST"
@@ -780,7 +780,7 @@ cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nace
 
 Échec attendu : la compilation des tests échoue : `cannot find 'JoystickMath' in scope`.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `ios/Nacelle/Control/JoystickMath.swift` :
 
@@ -822,7 +822,7 @@ enum JoystickMath {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E "error:|Test run with|\*\* TEST"
@@ -830,7 +830,7 @@ cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nace
 
 Attendu : `Test run with 8 tests` … `passed`, puis `** TEST SUCCEEDED **`, sans ligne `error:`. Vérifier aussi qu'il n'y a aucun avertissement Swift : la même commande avec `| grep -c "warning:"` à la place du dernier filtre doit donner `0`.
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 ```bash
 git add ios/NacelleTests/JoystickMathTests.swift \
@@ -868,7 +868,7 @@ Spec § 7.2. `PTZClient` envoie `takeControl` à chaque connexion ; tant que le 
   - `start(url:)`, `stop()`, `setJoystick(_:)`, `setZoom(_:)`, `setPrivacy(_:)`, `takeControl()` ; `repeatInterval = 0.1`, `retryDelays = [1, 2, 4, 8]`
   - Faux pour les tests : `FakeScheduler` (`advance(by:)`, `pendingCount`), `FakeTransport` (`openedURLs`, `sent`, `closeCount`, `emit(_:)`)
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 `ios/NacelleTests/FakeScheduler.swift` :
 
@@ -1111,7 +1111,7 @@ struct PTZClientTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E "error:|Test run with|\*\* TEST"
@@ -1119,7 +1119,7 @@ cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nace
 
 Échec attendu : la compilation des tests échoue : `cannot find type 'WebSocketTransport' in scope`.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `ios/Nacelle/PTZ/WebSocketTransport.swift` :
 
@@ -1386,7 +1386,7 @@ final class PTZClient {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E "error:|Test run with|\*\* TEST"
@@ -1394,7 +1394,7 @@ cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nace
 
 Attendu : `Test run with 19 tests` … `passed`, puis `** TEST SUCCEEDED **`, sans ligne `error:`. Vérifier aussi qu'il n'y a aucun avertissement Swift : la même commande avec `| grep -c "warning:"` à la place du dernier filtre doit donner `0`.
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 ```bash
 git add ios/NacelleTests/FakeScheduler.swift \
@@ -1433,7 +1433,7 @@ Spec § 7.2. `Signaling` construit la requête `POST …/api/webrtc?src=<flux>` 
   - `@MainActor @Observable final class VideoSession(scheduler:)` : `phase` (`.idle`, `.connecting`, `.playing`, `.lost`), `attach(renderer:)`, `start(url:)`, `stop()`
   - `struct VideoView(session:)` (UIViewRepresentable autour de `RTCMTLVideoView`)
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 `ios/NacelleTests/SignalingTests.swift` :
 
@@ -1478,7 +1478,7 @@ struct SignalingTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E "error:|Test run with|\*\* TEST"
@@ -1486,7 +1486,7 @@ cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nace
 
 Échec attendu : la compilation des tests échoue : `cannot find 'Signaling' in scope`.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `ios/Nacelle/Video/Signaling.swift` :
 
@@ -1769,7 +1769,7 @@ struct VideoView: UIViewRepresentable {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E "error:|Test run with|\*\* TEST"
@@ -1777,7 +1777,7 @@ cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nace
 
 Attendu : `Test run with 22 tests` … `passed`, puis `** TEST SUCCEEDED **`, sans ligne `error:`. Vérifier aussi qu'il n'y a aucun avertissement Swift : la même commande avec `| grep -c "warning:"` à la place du dernier filtre doit donner `0`.
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 ```bash
 git add ios/NacelleTests/SignalingTests.swift \
@@ -1819,7 +1819,7 @@ Assemble l'app (spec § 7.2 à 7.4). `StatusBanner` applique l'ordre de priorit�
   - `@MainActor @Observable final class AppModel(store:ptz:video:)`, `AppModel.live()`, `activate()`, `deactivate()`, `bannerText`, `controlsEnabled`, `privacyToggleEnabled`
   - Vues : `JoystickView`, `ZoomSlider`, `SettingsView`, `ControlScreen` ; point d'entrée final `NacelleApp`
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 `ios/NacelleTests/StatusBannerTests.swift` :
 
@@ -1865,7 +1865,7 @@ struct StatusBannerTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests, constater l'échec**
+- [x] **Étape 2 : Lancer les tests, constater l'échec**
 
 ```bash
 cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E "error:|Test run with|\*\* TEST"
@@ -1873,7 +1873,7 @@ cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nace
 
 Échec attendu : la compilation des tests échoue : `cannot find 'StatusBanner' in scope`.
 
-- [ ] **Étape 3 : Écrire l'implémentation**
+- [x] **Étape 3 : Écrire l'implémentation**
 
 `ios/Nacelle/Control/StatusBanner.swift` :
 
@@ -2322,7 +2322,7 @@ struct NacelleApp: App {
 }
 ```
 
-- [ ] **Étape 4 : Lancer les tests, constater le succès**
+- [x] **Étape 4 : Lancer les tests, constater le succès**
 
 ```bash
 cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E "error:|Test run with|\*\* TEST"
@@ -2330,7 +2330,7 @@ cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nace
 
 Attendu : `Test run with 24 tests` … `passed`, puis `** TEST SUCCEEDED **`, sans ligne `error:`. Vérifier aussi qu'il n'y a aucun avertissement Swift : la même commande avec `| grep -c "warning:"` à la place du dernier filtre doit donner `0`.
 
-- [ ] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 5 : Vérifier l'absence de données locales, commiter, pousser**
 
 ```bash
 git add ios/NacelleTests/StatusBannerTests.swift \
@@ -2361,7 +2361,7 @@ L'app assemblée, dans le simulateur, parle au `ptzd` installé (127.0.0.1:1985)
 
 Les gestes passent par l'outil de contrôle du simulateur (`touch_path`, `tap`, `button HOME`) s'il est disponible ; sinon, demander à Majid de les faire à la souris dans l'app Simulator. Coordonnées en points pour un iPhone 17 (402 × 874) : centre du joystick (95, 745), curseur de zoom x = 360 de y = 812 (bas) à y = 620 (haut), bouton vie privée (360, 104).
 
-- [ ] **Étape 1 : Compiler pour le simulateur et démarrer l'iPhone 17 sous iOS 27**
+- [x] **Étape 1 : Compiler pour le simulateur et démarrer l'iPhone 17 sous iOS 27**
 
 ```bash
 cd ios && xcodegen -q && xcodebuild build -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | tail -1
@@ -2373,7 +2373,7 @@ UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=j
 
 Attendu : `** BUILD SUCCEEDED **`, puis le simulateur démarré.
 
-- [ ] **Étape 2 : Installer, précharger les réglages locaux, lancer**
+- [x] **Étape 2 : Installer, précharger les réglages locaux, lancer**
 
 ```bash
 UDID=$(cat ios/.build/simulator-udid); xcrun simctl install "$UDID" ios/.build/Build/Products/Debug-iphonesimulator/Nacelle.app && HEX=$(printf '%s' '{"host":"127.0.0.1","go2rtcPort":1984,"streamName":"obsbot","ptzdPort":1985}' | xxd -p | tr -d '\n') && xcrun simctl spawn "$UDID" defaults write io.github.djoko-cli.nacelle connectionSettings -data "$HEX" && echo "go2rtc=$(pgrep -x go2rtc) coreaudiod=$(pgrep -x coreaudiod)" && xcrun simctl launch "$UDID" io.github.djoko-cli.nacelle
@@ -2381,7 +2381,7 @@ UDID=$(cat ios/.build/simulator-udid); xcrun simctl install "$UDID" ios/.build/B
 
 Attendu, au bout de 10 s environ (capture d'écran) : l'image en direct de la caméra, sans rognage ; aucun bandeau, ou « Prise en main… » pendant quelques secondes. `tail -3 ~/Library/Logs/obsbot-nacelle/ptzd.log` ne montre pas d'échec de `obsbot-ai-off` (ou bien un seul échec suivi du nouvel essai réussi).
 
-- [ ] **Étape 3 : Joystick et zoom (prévenir Majid : la caméra bouge 1 à 2 s)**
+- [x] **Étape 3 : Joystick et zoom (prévenir Majid : la caméra bouge 1 à 2 s)**
 
 Glisser le joystick du centre vers la droite (de (95, 745) à (140, 745)), tenir environ 1 s, relâcher. Puis glisser le curseur de zoom de (360, 812) à (360, 730).
 
@@ -2391,13 +2391,13 @@ sleep 2; ~/Library/Application\ Support/ObsbotNacelle/bin/ptzd uvc get
 
 Attendu : l'image a tourné vers la droite et s'est arrêtée au relâchement (le pan relu a diminué) ; le bouton du joystick est revenu au centre ; le zoom relu vaut environ 45.
 
-- [ ] **Étape 4 : Vie privée (la caméra bouge)**
+- [x] **Étape 4 : Vie privée (la caméra bouge)**
 
 Toucher le bouton vie privée (360, 104), attendre 4 s, capture d'écran ; puis le toucher de nouveau et attendre 4 s.
 
 Attendu, en vie privée : image réduite à un aplat sans rien d'identifiable, bandeau « Vie privée », bouton rouge, joystick et zoom grisés ; `ptzd uvc get` relit un tilt de -69 ou -70°. Après la sortie : l'image et la position d'avant reviennent, plus de bandeau.
 
-- [ ] **Étape 5 : Arrière-plan puis retour**
+- [x] **Étape 5 : Arrière-plan puis retour**
 
 Appuyer sur Accueil, attendre 3 s :
 
@@ -2407,7 +2407,7 @@ echo "ptzd: $(lsof -nP -iTCP:1985 -sTCP:ESTABLISHED 2>/dev/null | grep -c ptzd) 
 
 Attendu : `0` et `0`. Puis relancer l'app (`xcrun simctl launch "$(cat ios/.build/simulator-udid)" io.github.djoko-cli.nacelle`), attendre 10 s, relancer la même commande : `1` et `1`, l'image revient.
 
-- [ ] **Étape 6 : Santé et remise en place**
+- [x] **Étape 6 : Santé et remise en place**
 
 ```bash
 echo "go2rtc=$(pgrep -x go2rtc) coreaudiod=$(pgrep -x coreaudiod)"
@@ -2425,7 +2425,7 @@ Spec § 8, « De bout en bout sur l'iPhone en 4G ». Plusieurs étapes demandent
 - Créer (non versionné) : `ios/Config/Local.xcconfig`
 - Remplacer : `README.md`
 
-- [ ] **Étape 1 : Régler l'équipe de signature (fichier local, jamais commité)**
+- [x] **Étape 1 : Régler l'équipe de signature (fichier local, jamais commité)**
 
 ```bash
 security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject -nameopt multiline | grep organizationalUnitName
@@ -2439,7 +2439,7 @@ printf 'DEVELOPMENT_TEAM = %s\n' <identifiant> > ios/Config/Local.xcconfig && gi
 
 Attendu : la ligne de `.gitignore` qui ignore le fichier.
 
-- [ ] **Étape 2 : Compiler, installer et lancer sur l'iPhone**
+- [x] **Étape 2 : Compiler, installer et lancer sur l'iPhone**
 
 `<UDID>` : l'identifiant de l'iPhone de Majid dans `xcrun devicectl list devices` (« iPhone 14 Pro », état `available (paired)`).
 
@@ -2453,7 +2453,7 @@ xcrun devicectl device install app --device <UDID> ios/.build/Build/Products/Deb
 
 Si la compilation se plaint de la signature, ouvrir une fois `ios/Nacelle.xcodeproj` dans Xcode, onglet « Signing & Capabilities », et vérifier l'équipe (Majid). Si le lancement est refusé : **Majid** fait confiance au développeur sur l'iPhone (Réglages › Général › VPN et gestion de l'appareil), puis relancer.
 
-- [ ] **Étape 3 : Premier lancement (Majid)**
+- [x] **Étape 3 : Premier lancement (Majid)**
 
 Sur l'iPhone, **Majid** : Tailscale actif, **Wi-Fi coupé** (4G/5G). Dans les réglages de l'app, saisir le nom Tailscale du Mac, que donne cette commande sur le Mac (à lui communiquer dans la conversation, jamais dans le dépôt) :
 
@@ -2463,7 +2463,7 @@ tailscale status --self --json | python3 -c "import json,sys; print(json.load(sy
 
 À la première connexion, le Mac peut demander s'il faut autoriser `ptzd` à accepter des connexions entrantes : **Majid** répond « Autoriser ». L'iPhone peut demander l'accès au réseau local : réponse au choix de Majid (sans effet en 4G).
 
-- [ ] **Étape 4 : Essai de bout en bout en 4G (Majid, la caméra bouge)**
+- [x] **Étape 4 : Essai de bout en bout en 4G (Majid, la caméra bouge)**
 
 Cocher avec Majid, en notant le résultat de chaque point :
 1. la vidéo s'affiche en moins de 10 s, avec un retard faible ;
@@ -2476,7 +2476,7 @@ Cocher avec Majid, en notant le résultat de chaque point :
 
 Pendant l'essai, sur le Mac : `tail -f ~/Library/Logs/obsbot-nacelle/ptzd.log` ; à la fin, les PID de go2rtc et de coreaudiod doivent être inchangés.
 
-- [ ] **Étape 5 : README**
+- [x] **Étape 5 : README**
 
 Remplacer tout le contenu de `README.md` :
 
@@ -2635,7 +2635,7 @@ rm -r ~/Library/Application\ Support/ObsbotNacelle ~/Library/Logs/obsbot-nacelle
 MIT. Voir [LICENSE](LICENSE).
 ````
 
-- [ ] **Étape 6 : Vérifier l'absence de données locales, commiter, pousser**
+- [x] **Étape 6 : Vérifier l'absence de données locales, commiter, pousser**
 
 ```bash
 git add README.md
@@ -2651,6 +2651,6 @@ EOF
 git push
 ```
 
-- [ ] **Étape 7 : Rendre compte à Majid**
+- [x] **Étape 7 : Rendre compte à Majid**
 
 Le résultat de chaque point de l'étape 4, les éventuelles autorisations accordées, et le rappel : avec un compte gratuit, réinstaller l'app tous les 7 jours (README, « App iOS », étape 2). Proposer de valider l'amendement A3 pour mettre la spec à jour.

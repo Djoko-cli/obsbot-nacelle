@@ -105,7 +105,7 @@ Elles sont toutes reportées dans la spec, § 11 :
 - Sorties : 0 quand le parent est parti, 64 pour des arguments refusés, 75 si le verrou ou le port est pris, 78 si `config.json` est invalide (inchangé).
 - Journal : « PTZBot s'est arrêté : ptzd s'arrête. ».
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `mac/ptzd/Tests/PTZCoreTests/AIRunnerTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -452,7 +452,7 @@ index 1ecc0df..dc8606a 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -460,7 +460,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `DaemonOptions`, `ParentWatcher`, `ServiceLock` et le paramètre `environment` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `mac/ptzd/Sources/PTZCore/AIRunner.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -844,7 +844,7 @@ index 6852004..f450039 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -852,7 +852,7 @@ PATCH
 
 Attendu : tout passe (Mac : 201 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/ptzd/Sources/PTZCore/AIRunner.swift \
@@ -904,7 +904,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 - `Scheduler` gagne `now`.
 - Aucun initialiseur n'a de valeur par défaut qui touche le vrai système : seules les fabriques `system(...)` le font.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Remplacer tout le contenu de `mac/app/PTZBotKit/Tests/PTZBotKitTests/Fakes.swift` par :
 
@@ -1406,7 +1406,7 @@ struct FoundationProcessLauncherTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -1414,7 +1414,7 @@ struct FoundationProcessLauncherTests {
 
 Attendu : échec — la compilation des tests échoue : `ServiceSupervisor`, `ProcessLauncher` et `SettingsStore` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Créer `mac/app/PTZBotKit/Sources/PTZBotKit/ProcessLauncher.swift` :
 
@@ -1839,7 +1839,7 @@ public final class UserDefaultsSettingsStore: SettingsStore {
 }
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -1847,7 +1847,7 @@ public final class UserDefaultsSettingsStore: SettingsStore {
 
 Attendu : tout passe (PTZBotKit : 38 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/app/PTZBotKit/Sources/PTZBotKit/ProcessLauncher.swift \
@@ -1885,7 +1885,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
   - `SDKInstallError` ;
   - `SDKInstaller(sdkDirectory:verifier:)` : `install(_:) throws(SDKInstallError)`, `status()`, `isInstalling`, `libraryURL`, `obsbotAIVerifier(...)` (sortie 3 d'`obsbot-ai` sans argument, avec `DYLD_LIBRARY_PATH`).
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `mac/app/PTZBotKit/Tests/PTZBotKitTests/SDKTests.swift` :
 
@@ -2310,7 +2310,7 @@ struct SDKInstallerTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -2318,7 +2318,7 @@ struct SDKInstallerTests {
 
 Attendu : échec — la compilation des tests échoue : `SDKInspector`, `SDKInstaller` et `SDKCandidate` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Créer `mac/app/PTZBotKit/Sources/PTZBotKit/SDKInspector.swift` :
 
@@ -2863,7 +2863,7 @@ public struct SDKInstaller: Sendable {
 }
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -2871,7 +2871,7 @@ public struct SDKInstaller: Sendable {
 
 Attendu : tout passe (PTZBotKit : 56 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/app/PTZBotKit/Sources/PTZBotKit/SDKInspector.swift \
@@ -2909,7 +2909,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
     - `init(...)` sans valeur par défaut, et fabrique `system(supportDirectory:)` ;
     - `detect()`, `migrate()`, `plistURL`, `backupURL`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `mac/app/PTZBotKit/Tests/PTZBotKitTests/MigrationTests.swift` :
 
@@ -3227,7 +3227,7 @@ struct ConfigBootstrapTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -3235,7 +3235,7 @@ struct ConfigBootstrapTests {
 
 Attendu : échec — la compilation des tests échoue : `LegacyAgent`, `ConfigBootstrap` et `Launchctl` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Créer `mac/app/PTZBotKit/Sources/PTZBotKit/ConfigBootstrap.swift` :
 
@@ -3533,7 +3533,7 @@ public struct LegacyAgent: Sendable {
 }
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -3541,7 +3541,7 @@ public struct LegacyAgent: Sendable {
 
 Attendu : tout passe (PTZBotKit : 69 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/app/PTZBotKit/Sources/PTZBotKit/ConfigBootstrap.swift \
@@ -3601,7 +3601,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
   - `SDKView`.
 - Prérequis de construction : le SDK dans `vendor/obsbot-sdk/` (en-têtes) ; il n'est jamais copié dans l'app.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `mac/app/PTZBotKit/Tests/PTZBotKitTests/AppControllerTests.swift` :
 
@@ -4140,7 +4140,7 @@ index f608fd4..9a438ef 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -4149,7 +4149,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `AppController`, `AppPaths` et `PanelModel.iPhoneClients` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Remplacer tout le contenu de `mac/app/PTZBot/PTZBotApp.swift` par :
 
@@ -5479,7 +5479,7 @@ index 6ab4874..3b7d460 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -5488,7 +5488,7 @@ PATCH
 
 Attendu : tout passe (PTZBotKit : 95 tests, « ** BUILD SUCCEEDED ** » pour l'app, puis les trois lignes « ok : » de `check-bundle.sh`), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/app/PTZBot/PTZBotApp.swift \
@@ -5531,7 +5531,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 - Consomme : la tâche 5.
 - Le script exige les en-têtes du SDK (`vendor/`) et `xcodegen`. Il ne lance plus `launchctl`, et la migration est faite par l'app.
 
-- [ ] **Étape 1 : Écrire les fichiers**
+- [x] **Étape 1 : Écrire les fichiers**
 
 Modifier `README.md` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -5803,7 +5803,7 @@ echo "Le SDK OBSBOT s'installe depuis son panneau : SDK OBSBOT › Installer le 
 echo "Journal : tail -f \"$HOME/Library/Logs/obsbot-nacelle/ptzd.log\""
 ```
 
-- [ ] **Étape 2 : Vérifier**
+- [x] **Étape 2 : Vérifier**
 
 ```bash
 bash -n scripts/install-mac.sh && echo 'Syntaxe du script : OK'
@@ -5811,7 +5811,7 @@ bash -n scripts/install-mac.sh && echo 'Syntaxe du script : OK'
 
 Attendu : « Syntaxe du script : OK ».
 
-- [ ] **Étape 3 : Commiter et pousser**
+- [x] **Étape 3 : Commiter et pousser**
 
 ```bash
 git add README.md \
@@ -5833,7 +5833,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 
 **Fichiers :** aucun dans le dépôt.
 
-- [ ] **Étape 1 : Prévenir Majid, noter les PID, installer**
+- [x] **Étape 1 : Prévenir Majid, noter les PID, installer**
 
 Prévenir Majid : PTZBot et `ptzd` redémarrent, et l'iPhone perd la main quelques secondes.
 
@@ -5858,7 +5858,7 @@ Attendu :
 
 Si macOS redemande le pare-feu pour le nouveau `ptzd`, c'est Majid qui accepte.
 
-- [ ] **Étape 2 : Panneau et iPhone (Majid)**
+- [x] **Étape 2 : Panneau et iPhone (Majid)**
 
 1. Le panneau en sections montre :
    - « Actif » ;
@@ -5869,7 +5869,7 @@ Si macOS redemande le pare-feu pour le nouveau `ptzd`, c'est Majid qui accepte.
 2. L'iPhone en Wi-Fi : vidéo, joystick et son ; puis en 4G.
 3. Le suivi IA, allumé puis coupé depuis le panneau.
 
-- [ ] **Étape 3 : Cycle de vie (Majid ; l'iPhone perd la main)**
+- [x] **Étape 3 : Cycle de vie (Majid ; l'iPhone perd la main)**
 
 1. Éteindre « Service ptzd » : l'iPhone affiche « Mac injoignable ». Le rallumer.
 2. « Quitter » : l'icône disparaît en quelques secondes et `ptzd` s'arrête. Relancer PTZBot.
@@ -5879,7 +5879,7 @@ Si macOS redemande le pare-feu pour le nouveau `ptzd`, c'est Majid qui accepte.
 A=$(pgrep -x PTZBot); D=$(pgrep -f 'Helpers/ptzd'); kill -9 $A; sleep 1; kill -0 $D 2>/dev/null && echo "ptzd ENCORE vivant" || echo "ptzd arrêté"; open ~/Applications/PTZBot.app
 ```
 
-- [ ] **Étape 4 : Bilan**
+- [x] **Étape 4 : Bilan**
 
 ```bash
 pgrep -x go2rtc; pgrep -x coreaudiod

@@ -110,7 +110,7 @@ Elles sont reportées dans la spec, § 12 :
   - `AppPaths.obsbotAI` vaut `<support>/sdk/obsbot-ai`.
 - Vues : la ligne SDK du panneau affiche un état court à droite et le détail dessous ; `SDKView` montre le bouton des outils.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `mac/app/PTZBotKit/Tests/PTZBotKitTests/AppControllerTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -1656,7 +1656,7 @@ struct SDKInspectorTests {
 
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -1665,7 +1665,7 @@ struct SDKInspectorTests {
 
 Attendu : échec — la compilation des tests échoue : `Toolchain`, les nouveaux états et `recompileIfNeeded` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `mac/app/PTZBot/PanelView.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -3228,7 +3228,7 @@ private final class WaitStatus: @unchecked Sendable {
 }
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -3237,7 +3237,7 @@ private final class WaitStatus: @unchecked Sendable {
 
 Attendu : tout passe (PTZBotKit : 145 tests, « ** BUILD SUCCEEDED ** » pour l'app, puis les trois lignes « ok : » de `check-bundle.sh`), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/app/PTZBot/PanelView.swift \
@@ -3313,7 +3313,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 - `Package.swift` de PTZBotKit : `defaultLocalization: "fr"` et la ressource `Resources/Localizable.xcstrings`.
 - Les tests fixent la langue eux-mêmes (`LanguageTrait`) : ils ne dépendent pas de la langue du Mac.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `Packages/NacelleProtocol/Tests/NacelleProtocolTests/CodecTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -4017,7 +4017,7 @@ index 28d9649..e1c19bd 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd Packages/NacelleProtocol && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -4028,7 +4028,7 @@ PATCH
 
 Attendu : échec — les tests ne compilent pas : `Localization`, `AppLanguage`, `ErrorTexts` et `AIFailureText` n'existent pas encore, et le catalogue manque.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `Packages/NacelleProtocol/Sources/NacelleProtocol/Messages.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -7095,7 +7095,7 @@ index 8b8ca7d..d44d62c 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd Packages/NacelleProtocol && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -7106,7 +7106,7 @@ PATCH
 
 Attendu : tout passe (protocole : 39 tests, Mac : 204 tests, PTZBotKit : 157 tests, « ** BUILD SUCCEEDED ** » pour l'app, puis les trois lignes « ok : » de `check-bundle.sh`), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add Packages/NacelleProtocol/Sources/NacelleProtocol/Messages.swift \
@@ -7190,7 +7190,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 - `build-helpers.sh` copie `mac/ai/main.cpp` dans `Contents/Resources/obsbot-ai.cpp` et ne compile plus `obsbot-ai`.
 - `check-bundle.sh` refuse `libdev*`, tout binaire `obsbot-ai`, les en-têtes du SDK et tout Mach-O lié à libdev (`otool -L`).
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `mac/app/PTZBotKit/Tests/PTZBotKitTests/AppCatalogTests.swift` :
 
@@ -7430,7 +7430,7 @@ struct UpdaterTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -7439,7 +7439,7 @@ struct UpdaterTests {
 
 Attendu : échec — la compilation des tests échoue : `Updater`, `SettingsModel` et `UpdaterPolicy` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Créer `mac/app/PTZBot/AppText.swift` :
 
@@ -9520,7 +9520,7 @@ schemes:
         PTZBot: all
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/app/PTZBotKit && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -9529,7 +9529,7 @@ schemes:
 
 Attendu : tout passe (PTZBotKit : 165 tests, « ** BUILD SUCCEEDED ** » pour l'app, puis les trois lignes « ok : » de `check-bundle.sh`), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/app/PTZBot/AppText.swift \
@@ -9580,7 +9580,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 - Produits : `mac/app/build/publication/X.Y.Z/`, avec `gestes.txt` pour la reprise.
 - Tests : `/usr/bin/python3 -m unittest discover -s outils/tests`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `outils/tests/test_publication.py` :
 
@@ -11237,7 +11237,7 @@ if __name__ == '__main__':
     unittest.main()
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd outils/tests && /usr/bin/python3 -m unittest discover -s . 2>&1 | tail -4)
@@ -11246,7 +11246,7 @@ if __name__ == '__main__':
 
 Attendu : échec — les tests ne se chargent pas : `outils/publication.py` n'existe pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `.gitignore` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -12649,7 +12649,7 @@ exec /usr/bin/python3 ../../outils/publication.py publier "$@" --identite "$IDEN
   --textes PTZBotKit/Sources/PTZBotKit/Resources/Localizable.xcstrings
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd outils/tests && /usr/bin/python3 -m unittest discover -s . 2>&1 | tail -4)
@@ -12658,7 +12658,7 @@ exec /usr/bin/python3 ../../outils/publication.py publier "$@" --identite "$IDEN
 
 Attendu : tout passe (publication : 110 tests, « OK », « ** BUILD SUCCEEDED ** » pour l'app, puis les trois lignes « ok : » de `check-bundle.sh`), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add .gitignore \
@@ -12691,7 +12691,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 **Interfaces :**
 - Aucune nouvelle interface.
 
-- [ ] **Étape 1 : Écrire les fichiers**
+- [x] **Étape 1 : Écrire les fichiers**
 
 Remplacer tout le contenu de `README.md` par :
 
@@ -13313,7 +13313,7 @@ index 6d1ae6f..85745b1 100755
 PATCH
 ```
 
-- [ ] **Étape 2 : Vérifier**
+- [x] **Étape 2 : Vérifier**
 
 ```bash
 bash -n scripts/install-mac.sh && echo 'Syntaxe du script : OK'
@@ -13321,7 +13321,7 @@ bash -n scripts/install-mac.sh && echo 'Syntaxe du script : OK'
 
 Attendu : « Syntaxe du script : OK ».
 
-- [ ] **Étape 3 : Commiter et pousser**
+- [x] **Étape 3 : Commiter et pousser**
 
 ```bash
 git add README.md \
@@ -13344,11 +13344,11 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 
 **Fichiers :** `mac/app/appcast.xml`, créé et commité par la publication.
 
-- [ ] **Étape 1 : Fusion (accord de Majid)**
+- [x] **Étape 1 : Fusion (accord de Majid)**
 
 Fusionner la branche dans `main`, avec l'accord de Majid, puis pousser.
 
-- [ ] **Étape 2 : Publication de la 1.0.0 (Majid présent ; geste public)**
+- [x] **Étape 2 : Publication de la 1.0.0 (Majid présent ; geste public)**
 
 Depuis un clone neuf de GitHub, hors d'iCloud, le SDK relié :
 
@@ -13364,7 +13364,7 @@ outils/publier.sh 1.0.0
    - `mac/app/appcast.xml` commité sur `main` ;
    - le DMG sur le Bureau.
 
-- [ ] **Étape 3 : Installation depuis le DMG (Majid)**
+- [x] **Étape 3 : Installation depuis le DMG (Majid)**
 
 1. Quitter la compilation de travail (`~/Applications/PTZBot.app`), puis la mettre à la corbeille.
 2. Ouvrir le DMG du Bureau et glisser PTZBot dans Applications.
@@ -13378,16 +13378,16 @@ outils/publier.sh 1.0.0
 pgrep -lf 'Helpers/ptzd' | sed -E 's#/Users/[^ ]*/#~/#g'; codesign -dv /Applications/PTZBot.app 2>&1 | grep -E 'Authority|flags'
 ```
 
-- [ ] **Étape 4 : SDK et suivi IA (Majid)**
+- [x] **Étape 4 : SDK et suivi IA (Majid)**
 
 L'installation existante garde son `sdk/`. Si la source livrée a changé, la recompilation se fait seule (« Recompilation… », puis « Prêt »). Ensuite, le suivi IA : l'allumer, puis le couper.
 
-- [ ] **Étape 5 : Mises à jour (Majid)**
+- [x] **Étape 5 : Mises à jour (Majid)**
 
 1. « Rechercher les mises à jour… » : la fenêtre de Sparkle dit qu'il n'y a rien de nouveau.
 2. **Plus tard, dans une autre session :** publier une 1.0.1, puis éprouver « Installer et relancer » et l'installation à la fermeture. Vérifier que l'ancien `ptzd` disparaît avant le remplacement, que le nouveau `ptzd` vient de la nouvelle app, et que les accents des notes s'affichent bien.
 
-- [ ] **Étape 6 : Bilan**
+- [x] **Étape 6 : Bilan**
 
 ```bash
 pgrep -x go2rtc; pgrep -x coreaudiod
