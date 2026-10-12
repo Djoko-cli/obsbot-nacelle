@@ -69,7 +69,7 @@
   - `NacelleAuth.nonceLength` (32), `NacelleAuth.deviceID(publicKeyX963:) -> String`, `NacelleAuth.signedPayload(nonce:deviceID:) -> Data`, `NacelleAuth.verify(signature:nonce:deviceID:publicKeyX963:) -> Bool`.
 - Les octets (`Data`) passent en base64 dans le JSON, comme le fait `JSONEncoder` par défaut.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `Packages/NacelleProtocol/Tests/NacelleProtocolTests/CodecTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -221,7 +221,7 @@ index 78007bd..4695ca1 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd Packages/NacelleProtocol && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -231,7 +231,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : les nouveaux cas (`pair`, `auth`, `challenge`…) et `NacelleAuth` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -480,7 +480,7 @@ index 3fdd50a..d3b03ef 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd Packages/NacelleProtocol && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -490,7 +490,7 @@ PATCH
 
 Attendu : tout passe (protocole : 15 tests, Mac : 94 tests, iOS : 37 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift \
@@ -532,7 +532,7 @@ Attendu : « Aucune donnée locale. » avant le commit.
   - `PairingCode(url:now:)` avec `open() -> String`, `attempt(_:) -> PairingAttempt` (`.accepted`, `.wrong`, `.closed`), `close()` ; `PairingCode.lifetime` (300 s), `PairingCode.maxFailures` (3) ;
   - `DeviceAuthority(directory:)` avec `devices`, `pairing`, `check(deviceID:signature:nonce:) -> AuthCheck` (`.accepted(PairedDevice)`, `.unknownDevice`, `.badSignature`, `.registryUnreadable`), `pair(code:publicKey:name:) -> PairResult` (`.paired(deviceID:)`, `.badCode`, `.closed`, `.invalidKey`), `DeviceAuthority.makeNonce() -> Data`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `mac/ptzd/Package.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -782,7 +782,7 @@ final class TestClock: @unchecked Sendable {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -790,7 +790,7 @@ final class TestClock: @unchecked Sendable {
 
 Attendu : échec — la compilation échoue : la cible `PTZAuth` n'a pas encore de sources.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Créer `mac/ptzd/Sources/PTZAuth/DeviceAuthority.swift` :
 
@@ -1055,7 +1055,7 @@ public struct PairingCode: Sendable {
 }
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -1063,7 +1063,7 @@ public struct PairingCode: Sendable {
 
 Attendu : tout passe (Mac : 109 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/ptzd/Package.swift \
@@ -1098,7 +1098,7 @@ Attendu : « Aucune donnée locale. » avant le commit.
 - Consomme : `DeviceAuthority`, `PairedDevices`, `PairingCode` (tâche 2).
 - Produit : `AuthCommand.names` (`pair`, `devices`, `revoke`), `AuthCommand.usage`, `AuthCommand.run(_ arguments: [String], authority: DeviceAuthority) -> (status: Int32, output: String)`. `PTZDaemon` les appelle avant de lire `config.json`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `mac/ptzd/Package.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -1175,7 +1175,7 @@ struct AuthCommandTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -1183,7 +1183,7 @@ struct AuthCommandTests {
 
 Attendu : échec — la compilation échoue : `AuthCommand` n'existe pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Créer `mac/ptzd/Sources/PTZAuth/AuthCommand.swift` :
 
@@ -1276,7 +1276,7 @@ index d27871e..7e0ddbf 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -1284,7 +1284,7 @@ PATCH
 
 Attendu : tout passe (Mac : 113 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Essai à la main, dans un dossier temporaire**
+- [x] **Étape 5 : Essai à la main, dans un dossier temporaire**
 
 ```bash
 D=$(mktemp -d); (cd mac/ptzd && swift build -q && PTZD_SUPPORT_DIR=$D .build/debug/ptzd pair && PTZD_SUPPORT_DIR=$D .build/debug/ptzd devices; ls -l $D); rm -rf $D
@@ -1292,7 +1292,7 @@ D=$(mktemp -d); (cd mac/ptzd && swift build -q && PTZD_SUPPORT_DIR=$D .build/deb
 
 Attendu : « Code d'appairage : » suivi de 6 chiffres, puis « Aucun appareil appairé. », et `pairing.json` en `-rw-------`.
 
-- [ ] **Étape 6 : Commiter et pousser**
+- [x] **Étape 6 : Commiter et pousser**
 
 ```bash
 git add mac/ptzd/Package.swift \
@@ -1325,7 +1325,7 @@ Attendu : « Aucune donnée locale. » avant le commit.
 - Produit : `WebSocketServer(hosts:port:controller:authority:scheduler:log:trustLoopback:)` ; `WebSocketServer.authTimeout` (10 s) remplace `handshakeTimeout`. `trustLoopback` vaut vrai par défaut ; les tests le mettent à faux pour exercer l'authentification sur 127.0.0.1.
 - Journal : « Client N authentifié : <nom> (<début d'identifiant>). », « Client N refusé : <raison> (<adresse>). », « Appareil appairé : … », « Client N : code d'appairage faux (…). », « Client N libéré : pas authentifié en 10 s. »
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `mac/ptzd/Package.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -1616,7 +1616,7 @@ index 4b30b33..7675561 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -1624,7 +1624,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `WebSocketServer` ne prend pas encore `authority:` ni `trustLoopback:`.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `mac/ptzd/Sources/PTZServer/WebSocketServer.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -1902,7 +1902,7 @@ index 7e0ddbf..69441b7 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -1910,7 +1910,7 @@ PATCH
 
 Attendu : tout passe (Mac : 121 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/ptzd/Package.swift \
@@ -1945,7 +1945,7 @@ Attendu : « Aucune donnée locale. » avant le commit.
 - Consomme : serveur de la tâche 4.
 - Produit : protocole `WebRTCRelay` (`answer(offer:) async throws -> String`), `Go2rtcRelay(api:stream:session:)` (nil si l'adresse ne donne pas d'URL), `Go2rtcRelay.timeout` (10 s), `RelayError.badResponse(status:)` ; `WebSocketServer(…, relay:, …)` ; `PTZConfig.go2rtcAPI`, `PTZConfig.streamName`, `ConfigError.invalidGo2rtcAPI`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `mac/ptzd/Tests/PTZCoreTests/PTZConfigTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -2197,7 +2197,7 @@ index 7675561..9e9c15e 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -2205,7 +2205,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `WebRTCRelay`, `Go2rtcRelay` et les nouveaux réglages n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `mac/ptzd/Sources/PTZCore/PTZConfig.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -2457,7 +2457,7 @@ index 69441b7..4ca033a 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -2465,7 +2465,7 @@ PATCH
 
 Attendu : tout passe (Mac : 129 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/ptzd/Sources/PTZCore/PTZConfig.swift \
@@ -2503,7 +2503,7 @@ Attendu : « Aucune donnée locale. » avant le commit.
 - Produit : `LocalNetworkListeners` (interne à `PTZServer`) ; `WebSocketServer(…, localNetwork: Bool = false)` ; `PTZConfig.localNetwork`. Les connexions du réseau local ne sont jamais de confiance : elles passent par le défi.
 - Faits vérifiés sur ce Mac (macOS 27) et repris dans le code : sans `allowLocalEndpointReuse`, la deuxième écoute sur le même port échoue (EADDRINUSE) ; une écoute liée à l'interface seule ou filtrée par types d'interface s'ouvre aussi sur Tailscale et les ponts de machines virtuelles ; une même adresse ne se relie qu'après `.cancelled`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `mac/ptzd/Tests/PTZCoreTests/PTZConfigTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -2580,7 +2580,7 @@ struct LocalNetworkListenersTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -2588,7 +2588,7 @@ struct LocalNetworkListenersTests {
 
 Attendu : échec — la compilation des tests échoue : `LocalNetworkListeners` et `localNetwork` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `mac/ptzd/Sources/PTZCore/PTZConfig.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -2955,7 +2955,7 @@ index 4ca033a..94a6c1d 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -2963,7 +2963,7 @@ PATCH
 
 Attendu : tout passe (Mac : 133 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Essai à la main sur un port libre, sans toucher au service installé**
+- [x] **Étape 5 : Essai à la main sur un port libre, sans toucher au service installé**
 
 La prise en main est remplacée par `/usr/bin/true` : aucun appel au SDK, et la caméra ne bouge pas tant qu'aucun client ne l'ordonne.
 
@@ -2976,7 +2976,7 @@ kill $(cat $D/pid); rm -rf $D
 
 Attendu : « En écoute sur 127.0.0.1:19870. », une ligne « Écoute locale sur <interface> (<ip>):19870. » par interface Wi-Fi ou Ethernet active, « Annonce Bonjour _nacelle._tcp sur <interface>. », puis au moins une ligne `Nacelle` vue par `dns-sd`. Si macOS demande d'autoriser `ptzd` sur le réseau, la réponse importe peu pour cet essai : le noter dans le rapport.
 
-- [ ] **Étape 6 : Commiter et pousser**
+- [x] **Étape 6 : Commiter et pousser**
 
 ```bash
 git add mac/ptzd/Sources/PTZCore/PTZConfig.swift \
@@ -3009,7 +3009,7 @@ Attendu : « Aucune donnée locale. » avant le commit.
 - Produit : protocole `DeviceKey` (`publicKeyX963`, `sign(_:)`, et en extension `deviceID`, `signChallenge(_:)`), `SecureEnclaveDeviceKey`, `SoftwareDeviceKey`, protocole `DeviceKeyStoring` (`load()`, `loadOrCreate()`, `delete()`), `KeychainDeviceKeyStore(useSecureEnclave:)`.
 - Constaté : le simulateur iOS 27 a une Secure Enclave ; le test qui force la clé logicielle couvre l'autre branche.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `ios/NacelleTests/DeviceKeyTests.swift` :
 
@@ -3062,7 +3062,7 @@ struct DeviceKeyTests {
 }
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -3070,7 +3070,7 @@ struct DeviceKeyTests {
 
 Attendu : échec — la compilation des tests échoue : `KeychainDeviceKeyStore` et `DeviceKey` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Créer `ios/Nacelle/Pairing/DeviceKey.swift` :
 
@@ -3214,7 +3214,7 @@ final class KeychainDeviceKeyStore: DeviceKeyStoring {
 }
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -3222,7 +3222,7 @@ final class KeychainDeviceKeyStore: DeviceKeyStoring {
 
 Attendu : tout passe (iOS : 40 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add ios/Nacelle/Pairing/DeviceKey.swift \
@@ -3262,7 +3262,7 @@ Attendu : « Aucune donnée locale. » avant le commit.
 - Info.plist : `NSBonjourServices` = `_nacelle._tcp`.
 - Faits vérifiés dans le simulateur : `NWConnection` avec WebSocket joint directement un `NWEndpoint.service` ; une `NWConnection` vers un hôte introuvable reste `.waiting` sans jamais passer `.failed`, d'où la fermeture sur `.waiting` et la fenêtre de découverte bornée.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `ios/NacelleTests/AppModelTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -3932,7 +3932,7 @@ index 0a10790..947053d 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -3940,7 +3940,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `WebSocketEndpoint`, `ServiceBrowser` et le nouvel initialiseur de `PTZClient` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `ios/Nacelle/App/AppModel.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -4814,7 +4814,7 @@ index db26b30..3755120 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -4822,7 +4822,7 @@ PATCH
 
 Attendu : tout passe (iOS : 57 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add ios/Nacelle/App/AppModel.swift \
@@ -4861,7 +4861,7 @@ Attendu : « Aucune donnée locale. » avant le commit.
 - Consomme : `PTZClient.authIssue`, `isPaired`, `pair(code:)`, `forgetPairing()` (tâche 8).
 - Produit : `SettingsView(settings:isPaired:onPair:onForget:)`, `PairingCodeInput.isValid(_:)`, `BannerInputs.authIssue`, `AppModel.pair(code:)`, `AppModel.forgetPairing()`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `ios/NacelleTests/ConnectionSettingsTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -4920,7 +4920,7 @@ index 6d5c09d..ea0a887 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -4928,7 +4928,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `PairingCodeInput` et `BannerInputs.authIssue` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `ios/Nacelle/App/AppModel.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -5140,7 +5140,7 @@ enum PairingCodeInput {
 }
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -5148,7 +5148,7 @@ enum PairingCodeInput {
 
 Attendu : tout passe (iOS : 60 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add ios/Nacelle/App/AppModel.swift \
@@ -5198,7 +5198,7 @@ Décidé par Majid le 2026-10-06 (spec accès local § 14), après la relecture 
   - `PairedDevice.lanKey: Data?` (absent pour un appareil appairé avant le canal chiffré) ; `PairResult.paired(deviceID:lanKey:)` et `PairResult.deviceID` ; `DeviceAuthority.lanKeys() -> [String: Data]`, `DeviceAuthority.lanKey(for:) -> Data?`.
 - Faits vérifiés (macOS 27, simulateur iOS 27) : TLS 1.3 n'accepte pas les clés pré-partagées ; sans couper la reprise de session, une mauvaise clé ou un appareil retiré peut reprendre une session ; sans aucune clé, le serveur n'offre aucune suite PSK, d'où la clé factice ; les API utilisées ne sont pas dépréciées.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `Packages/NacelleProtocol/Tests/NacelleProtocolTests/CodecTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -5510,7 +5510,7 @@ index 4059906..e0b1b5c 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd Packages/NacelleProtocol && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -5520,7 +5520,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `NacelleTLS` et le champ `lanKey` de `paired` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -5777,7 +5777,7 @@ index 59a01a6..8fa71ff 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd Packages/NacelleProtocol && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -5787,7 +5787,7 @@ PATCH
 
 Attendu : tout passe (protocole : 19 tests, Mac : 140 tests, iOS : 68 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift \
@@ -5828,7 +5828,7 @@ Attendu : « Aucune donnée locale. » avant le commit.
 - Produit : `WebSocketServer(…, localHosts: Set<String> = [])` — adresses écoutées comme le réseau local, pour les tests seulement (le vrai réseau local passe par `LocalNetworkListeners`) ; `LocalNetworkListeners.rebuild()`.
 - Les tests ouvrent un vrai canal TLS sur ::1 avec `TLSClient` (fichier de test) : bonne clé, mauvaise clé, sans TLS, appairage refusé, écoute relancée après un appairage par la voie « Tailscale » (127.0.0.1 sans confiance), appareil retiré.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `mac/ptzd/Tests/PTZServerTests/TLSClient.swift` :
 
@@ -6070,7 +6070,7 @@ index e0b1b5c..8a97972 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -6078,7 +6078,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `WebSocketServer` ne prend pas encore `localHosts:`.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `mac/ptzd/Sources/PTZServer/LocalNetworkListeners.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -6293,7 +6293,7 @@ index 8fa71ff..4a5e03e 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -6301,7 +6301,7 @@ PATCH
 
 Attendu : tout passe (Mac : 145 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/ptzd/Sources/PTZServer/LocalNetworkListeners.swift \
@@ -6336,7 +6336,7 @@ Attendu : « Aucune donnée locale. » avant le commit.
 - Consomme : `NacelleTLS.client(identity:key:)` (tâche 13), `PTZClient` et `NWWebSocketTransport` (tâche 8 et ses correctifs).
 - Produit : `LANCredentials(identity:key:)` ; `WebSocketEndpoint.service(NWEndpoint, LANCredentials)` ; `DeviceKeyStoring.lanKey() -> Data?` et `saveLANKey(_:) throws` ; `KeychainDeviceKeyStore` garde le secret sous le compte `lan-key` et l'efface avec la clé.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `ios/NacelleTests/DeviceKeyTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -6553,7 +6553,7 @@ index 2351d9e..ed7267c 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -6561,7 +6561,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `LANCredentials`, `lanKey()` et `saveLANKey(_:)` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `ios/Nacelle/PTZ/LocalNetwork.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -6726,7 +6726,7 @@ index e37a534..1256414 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -6734,7 +6734,7 @@ PATCH
 
 Attendu : tout passe (iOS : 72 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add ios/Nacelle/PTZ/LocalNetwork.swift \
@@ -6761,7 +6761,7 @@ Attendu : « Aucune donnée locale. » avant le commit.
 
 **Fichiers :** aucun dans le dépôt. Réglages locaux seulement (`ios/Config/Local.xcconfig`, déjà présent).
 
-- [ ] **Étape 1 : Prévenir Majid, puis installer le côté Mac**
+- [x] **Étape 1 : Prévenir Majid, puis installer le côté Mac**
 
 Prévenir Majid : le service redémarre (l'app actuelle de l'iPhone perd la main jusqu'à l'étape 3), et macOS peut demander d'autoriser `ptzd` à accepter des connexions entrantes ou à accéder au réseau local : il répond **Autoriser**.
 
@@ -6775,7 +6775,7 @@ sleep 5; tail -6 ~/Library/Logs/obsbot-nacelle/ptzd.log | sed -E 's/([0-9]{1,3}\
 
 Attendu : « ptzd démarre. », l'écoute Tailscale et 127.0.0.1, une ligne « Écoute locale sur … » par interface Wi-Fi ou Ethernet active, et « Annonce Bonjour _nacelle._tcp sur … ».
 
-- [ ] **Étape 2 : Vérifier le diagnostic local et le refus d'un client anonyme**
+- [x] **Étape 2 : Vérifier le diagnostic local et le refus d'un client anonyme**
 
 ```bash
 swift mac/tools/nacelle-ws.swift ws://127.0.0.1:1985 wait 2 | head -2
@@ -6789,7 +6789,7 @@ L=$(ipconfig getifaddr en0 || ipconfig getifaddr en1); swift mac/tools/nacelle-w
 
 Attendu : aucun échange — le réseau local exige TLS (spec accès local § 14) : le client reste sans réponse puis s'arrête, et aucune commande n'atteint la caméra.
 
-- [ ] **Étape 3 : Compiler et installer l'app sur l'iPhone (déverrouillé)**
+- [x] **Étape 3 : Compiler et installer l'app sur l'iPhone (déverrouillé)**
 
 `<UDID>` : l'identifiant de l'iPhone de Majid dans `xcrun devicectl list devices` (attention : un iPad est aussi appairé).
 
@@ -6801,7 +6801,7 @@ Attendu : aucun échange — le réseau local exige TLS (spec accès local § 14
 xcrun devicectl device install app --device <UDID> ios/.build/Build/Products/Debug-iphoneos/Nacelle.app
 ```
 
-- [ ] **Étape 4 : Appairer (Majid)**
+- [x] **Étape 4 : Appairer (Majid)**
 
 1. Majid ouvre l'app : le bandeau affiche « iPhone non appairé : lance ptzd pair sur le Mac ».
 2. Ouvrir un code et le donner à Majid dans la conversation :
@@ -6819,7 +6819,7 @@ xcrun devicectl device install app --device <UDID> ios/.build/Build/Products/Deb
 
 Attendu : une ligne pour l'iPhone, « Appareil appairé : … », « Écoutes locales relancées (nouvel appareil appairé). » et « Client N authentifié : iPhone (…). »
 
-- [ ] **Étape 5 : Essais (Majid ; la caméra bouge)**
+- [x] **Étape 5 : Essais (Majid ; la caméra bouge)**
 
 Noter le résultat de chaque point dans le rapport :
 1. **Wi-Fi, Tailscale coupé sur l'iPhone** : vidéo en moins de 10 s, joystick, zoom, vie privée (la connexion passe par le canal TLS du réseau local).
@@ -6836,7 +6836,7 @@ Noter le résultat de chaque point dans le rapport :
 
 Faits déjà vérifiés sur go2rtc 1.9.14 (instance de test, 2026-10-06) : les sources `exec:` publient toujours sur `{output}` quand RTSP demande un mot de passe, car go2rtc dispense les clients locaux (127.0.0.1) ; un client RTSP du réseau sans mot de passe reçoit 401 ; l'API liée à 127.0.0.1 n'est plus joignable par le réseau local ni par Tailscale ; l'offre WebRTC envoyée sur l'API locale renvoie les candidats réseau local et Tailscale. Les scripts de surveillance de go2rtc du Mac (`go2rtc-lib.sh`) interrogent l'API sur 127.0.0.1 : ils continuent de marcher.
 
-- [ ] **Étape 1 : Revérifier sur une instance de test (sans la caméra)**
+- [x] **Étape 1 : Revérifier sur une instance de test (sans la caméra)**
 
 ```bash
 T=$(mktemp -d); P=$(openssl rand -hex 8); cat > $T/test.yaml <<EOF
@@ -6863,7 +6863,7 @@ kill $(cat $T/pid); sleep 1; pkill -f "testsrc2=size=640x360"; rm -rf $T
 
 Attendu : `h264` et « avec mot de passe : 0 » ; `1` (401 sans mot de passe) ; « API locale : 200 » ; « API par le réseau : 000 ». Vérifier ensuite que le vrai go2rtc a gardé son PID (`pgrep -x go2rtc`). Sinon, s'arrêter et faire un rapport.
 
-- [ ] **Étape 2 : Avec Majid, sauvegarder et modifier la configuration**
+- [x] **Étape 2 : Avec Majid, sauvegarder et modifier la configuration**
 
 Prévenir Majid : go2rtc redémarre une fois, HomeKit est coupé quelques secondes, et la caméra n'apparaîtra plus dans HomeKit tant que Homebridge n'aura pas le mot de passe (étape 4).
 
@@ -6889,7 +6889,7 @@ PY
 
 Si l'une des vérifications échoue, la configuration n'est pas celle attendue : ne rien modifier, faire un rapport.
 
-- [ ] **Étape 3 : Redémarrer go2rtc et vérifier**
+- [x] **Étape 3 : Redémarrer go2rtc et vérifier**
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.majid.go2rtc; sleep 4; echo "go2rtc $(pgrep -x go2rtc)"; curl -s -o /dev/null -w "API locale : %{http_code}\n" http://127.0.0.1:1984/api/streams
@@ -6901,11 +6901,11 @@ L=$(ipconfig getifaddr en0 || ipconfig getifaddr en1); curl -s -m 3 -o /dev/null
 
 Attendu : un nouveau PID, « API locale : 200 », « API par le réseau : 000 », et `1` (RTSP sans mot de passe refusé).
 
-- [ ] **Étape 4 : Homebridge (Majid)**
+- [x] **Étape 4 : Homebridge (Majid)**
 
 Majid remplace, dans la configuration de la caméra de Homebridge sur le NAS, l'adresse du flux par `rtsp://homebridge:<mot de passe>@<adresse du Mac>:8554/obsbot` (ainsi que l'adresse d'image fixe, si elle pointe vers go2rtc), puis redémarre Homebridge.
 
-- [ ] **Étape 5 : Vérifier avec Majid**
+- [x] **Étape 5 : Vérifier avec Majid**
 
 1. HomeKit affiche la caméra (vidéo en direct).
 2. L'app : vidéo et pilotage en Wi-Fi sans Tailscale, puis en 4G.
@@ -6936,7 +6936,7 @@ Puis Majid remet l'ancienne adresse dans Homebridge.
 - Consomme : `PTZClient.negotiate(offer:)` (tâche 8).
 - Retire : `Signaling`, `SignalingError`, `ConnectionSettings.go2rtcPort`, `.streamName`, `.webRTCURL`.
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `ios/NacelleTests/ConnectionSettingsTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -7009,7 +7009,7 @@ Supprimer `ios/NacelleTests/SignalingTests.swift` :
 git rm ios/NacelleTests/SignalingTests.swift
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -7017,7 +7017,7 @@ git rm ios/NacelleTests/SignalingTests.swift
 
 Attendu : les tests passent déjà ou échouent à la compilation selon l'ordre ; c'est un retrait, l'étape sert de point de contrôle.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `ios/Nacelle/App/AppModel.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -7180,7 +7180,7 @@ index 3755120..0cf36a4 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -7188,7 +7188,7 @@ PATCH
 
 Attendu : tout passe (iOS : 70 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Mettre à jour le README**
+- [x] **Étape 5 : Mettre à jour le README**
 
 Modifier `README.md` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -7309,7 +7309,7 @@ index bc830e2..c11dddb 100644
 PATCH
 ````
 
-- [ ] **Étape 6 : Réinstaller l'app sur l'iPhone (déverrouillé) et vérifier avec Majid**
+- [x] **Étape 6 : Réinstaller l'app sur l'iPhone (déverrouillé) et vérifier avec Majid**
 
 ```bash
 (cd ios && xcodegen -q) && xcodebuild build -project ios/Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS,id=<UDID>' -derivedDataPath ios/.build -allowProvisioningUpdates | tail -1
@@ -7321,7 +7321,7 @@ xcrun devicectl device install app --device <UDID> ios/.build/Build/Products/Deb
 
 Attendu : l'iPhone reste appairé (la clé est dans le trousseau) ; vidéo et pilotage en Wi-Fi sans Tailscale, puis en 4G.
 
-- [ ] **Étape 7 : Commiter et pousser**
+- [x] **Étape 7 : Commiter et pousser**
 
 ```bash
 git add README.md \

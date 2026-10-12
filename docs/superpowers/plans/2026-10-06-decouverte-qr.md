@@ -88,7 +88,7 @@
   - `NacelleTLS.pairingIdentity(_ pairingID: String) -> String` (`pair-<pairingID>`) ;
   - `PairingLink(pairingID:secret:hosts:port:)`, `PairingLink(_ invitation:)`, `PairingLink.url`, `PairingLink(url:)` et `PairingLink(string:)` (nil si ce n'est pas un lien `v=1` complet : identifiant hexadécimal, secret de 32 octets en base64url, au moins une adresse, port 1 à 65535).
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `Packages/NacelleProtocol/Tests/NacelleProtocolTests/CodecTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -349,7 +349,7 @@ index 7c241df..fd8e339 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd Packages/NacelleProtocol && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -359,7 +359,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `openPairing`, `pairingOpened`, `PairingLink` et la preuve n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -738,7 +738,7 @@ index b3572bf..4f5633e 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd Packages/NacelleProtocol && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -748,7 +748,7 @@ PATCH
 
 Attendu : tout passe (protocole : 28 tests, Mac : 148 tests, iOS : 71 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add Packages/NacelleProtocol/Sources/NacelleProtocol/Codec.swift \
@@ -804,7 +804,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 - Messages : `notLocal` « Ouverture d'appairage depuis le Mac seulement. » et « Appairage par QR code sur le réseau local seulement. » ; `badCode` « QR code refusé. » ; `pairingClosed` « QR code expiré ou déjà utilisé : relancer ptzd pair. ».
 - Journal : « Appairage ouvert (<id>), valable 5 min. », « Appairage <id> : preuve fausse (<adresse>). », « Appairage <id> expiré. ».
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `mac/ptzd/Tests/PTZAuthTests/AuthCommandTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -1270,7 +1270,7 @@ index fd8e339..b64e310 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -1278,7 +1278,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `PairingWindow`, la nouvelle signature de `DeviceAuthority.pair` et `tlsIdentities` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Remplacer tout le contenu de `mac/ptzd/Sources/PTZAuth/AuthCommand.swift` par :
 
@@ -1676,7 +1676,7 @@ index 4f5633e..8c90f93 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -1684,7 +1684,7 @@ PATCH
 
 Attendu : tout passe (Mac : 148 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/ptzd/Sources/PTZAuth/AuthCommand.swift \
@@ -1724,7 +1724,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 - Sorties : service absent, « ptzd ne répond pas : le service est-il lancé ? » ; refus, « ptzd refuse l'appairage : <message> » ; aucune adresse locale, « Aucune adresse sur le réseau local : relier le Mac au Wi-Fi ou à l'Ethernet, puis relancer ptzd pair. » ; code de sortie 1 dans ces trois cas, 2 pour un argument en trop.
 - Fait vérifié : le texte produit, redessiné en image, est relu par Vision (test).
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Créer `mac/ptzd/Tests/PTZServerTests/QRCodeTextTests.swift` :
 
@@ -1859,7 +1859,7 @@ index b64e310..15229e2 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -1867,7 +1867,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `QRCodeText` et `PairCommand` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Créer `mac/ptzd/Sources/PTZServer/PairCommand.swift` :
 
@@ -2033,7 +2033,7 @@ index 94a6c1d..d9f7729 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd mac/ptzd && swift test 2>&1 | grep -E 'error:|warning:|Test run with|✘')
@@ -2041,7 +2041,7 @@ PATCH
 
 Attendu : tout passe (Mac : 152 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add mac/ptzd/Sources/PTZServer/PairCommand.swift \
@@ -2088,7 +2088,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
   - `AppModel.pair(with:)` ; `SettingsView` sans le champ du code.
 - Textes : « iPhone non appairé : scanne le QR code de ptzd pair », « QR code refusé : relance ptzd pair ».
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `ios/NacelleTests/AppModelTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -2992,7 +2992,7 @@ index c1806e4..3cc6fa6 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -3000,7 +3000,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `start(settings:)`, `pair(with:)`, `.tls` et `remoteAddress` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `ios/Nacelle/App/AppModel.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -3845,7 +3845,7 @@ struct SettingsView: View {
 }
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -3853,7 +3853,7 @@ struct SettingsView: View {
 
 Attendu : tout passe (iOS : 75 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add ios/Nacelle/App/AppModel.swift \
@@ -3905,7 +3905,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 - `project.yml` : `CFBundleDisplayName` PTZBot, `NSCameraUsageDescription` « Pour scanner le QR code affiché par ptzd pair sur le Mac. ».
 - Faits vérifiés dans le simulateur iOS 27 : l'écran liste le `ptzd` du Mac ; la demande d'accès à l'appareil photo nomme « PTZBot » ; `DataScannerViewController.isSupported` est faux dans le simulateur, d'où « Lecteur indisponible ».
 
-- [ ] **Étape 1 : Écrire les tests**
+- [x] **Étape 1 : Écrire les tests**
 
 Modifier `ios/NacelleTests/AppModelTests.swift` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -4074,7 +4074,7 @@ index 21d857f..34aa83a 100644
 PATCH
 ```
 
-- [ ] **Étape 2 : Lancer les tests**
+- [x] **Étape 2 : Lancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -4082,7 +4082,7 @@ PATCH
 
 Attendu : échec — la compilation des tests échoue : `Discovery`, `ServiceListing`, `isPairing` et `pairingStatus` n'existent pas encore.
 
-- [ ] **Étape 3 : Écrire le code**
+- [x] **Étape 3 : Écrire le code**
 
 Modifier `README.md` en appliquant ce correctif depuis la racine du dépôt (il échoue si le fichier ne correspond pas : ne pas forcer, comparer avec le contexte du correctif) :
 
@@ -4642,7 +4642,7 @@ index 4ae6b65..6f0506c 100644
 PATCH
 ```
 
-- [ ] **Étape 4 : Relancer les tests**
+- [x] **Étape 4 : Relancer les tests**
 
 ```bash
 (cd ios && xcodegen -q && xcodebuild test -project Nacelle.xcodeproj -scheme Nacelle -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' -derivedDataPath .build 2>&1 | grep -E 'error:|warning:|Test run with|TEST (SUCCEEDED|FAILED)' | grep -v -E 'ld: warning|appintents')
@@ -4650,7 +4650,7 @@ PATCH
 
 Attendu : tout passe (iOS : 78 tests), aucun avertissement ni erreur.
 
-- [ ] **Étape 5 : Commiter et pousser**
+- [x] **Étape 5 : Commiter et pousser**
 
 ```bash
 git add README.md \
@@ -4683,7 +4683,7 @@ Attendu : « Aucune donnée locale. » avant le commit. Les fichiers supprimés 
 
 **Fichiers :** aucun dans le dépôt.
 
-- [ ] **Étape 1 : Prévenir Majid, puis installer le côté Mac**
+- [x] **Étape 1 : Prévenir Majid, puis installer le côté Mac**
 
 Prévenir Majid : le service redémarre, l'app actuelle perd la main jusqu'à l'étape 3.
 
@@ -4707,7 +4707,7 @@ L'ancien code à 6 chiffres n'existe plus : retirer son fichier, devenu inutile.
 rm -f ~/Library/Application\ Support/ObsbotNacelle/pairing.json
 ```
 
-- [ ] **Étape 2 : Compiler et installer PTZBot sur l'iPhone (déverrouillé, en Wi-Fi)**
+- [x] **Étape 2 : Compiler et installer PTZBot sur l'iPhone (déverrouillé, en Wi-Fi)**
 
 `<UDID>` : l'identifiant de l'iPhone de Majid dans `xcrun devicectl list devices`.
 
@@ -4719,11 +4719,11 @@ rm -f ~/Library/Application\ Support/ObsbotNacelle/pairing.json
 xcrun devicectl device install app --device <UDID> ios/.build/Build/Products/Debug-iphoneos/Nacelle.app
 ```
 
-- [ ] **Étape 3 : L'appairage existant tient (Majid ; la caméra peut bouger à la prise en main)**
+- [x] **Étape 3 : L'appairage existant tient (Majid ; la caméra peut bouger à la prise en main)**
 
 Majid ouvre PTZBot (nouveau nom sur l'écran d'accueil) : l'écran de pilotage s'affiche directement, avec la vidéo et le joystick en Wi-Fi.
 
-- [ ] **Étape 4 : Nouvel appairage par QR code (Majid)**
+- [x] **Étape 4 : Nouvel appairage par QR code (Majid)**
 
 1. Majid ouvre Réglages : le champ « Adresse du Mac (repli) » contient sans doute l'ancien nom Tailscale. Il le **vide** et touche **Enregistrer** (sinon l'essai en 4G passerait par l'écoute Tailscale et ne prouverait pas la route du NAS). Puis Réglages › **Oublier cet appairage** : la feuille se ferme, l'écran « Recherche du Mac à proximité… » apparaît et liste « PTZBot sur <nom du Mac> ».
 2. Retirer l'ancienne entrée de l'iPhone :
@@ -4745,7 +4745,7 @@ Majid ouvre PTZBot (nouveau nom sur l'écran d'accueil) : l'écran de pilotage s
 
 Attendu : une seule ligne pour l'iPhone ; « Appairage ouvert (…) », « Écoutes locales relancées. » suivi d'une ligne « Écoute locale sur … » par interface, « Appareil appairé : … », « Client N authentifié : … ». Une ligne « trop de connexions anonymes » est possible et normale : l'app essaie en même temps chaque adresse du QR et Bonjour depuis la même adresse, et `ptzd` n'en admet que 2 en attente par adresse. Dans PTZBot, Réglages › Adresse du Mac (repli) contient l'**adresse IPv4 locale** du Mac.
 
-- [ ] **Étape 5 : Essais (Majid ; la caméra bouge)**
+- [x] **Étape 5 : Essais (Majid ; la caméra bouge)**
 
 Noter le résultat de chaque point dans le rapport :
 1. **QR déjà utilisé** : Majid scanne de nouveau le même QR depuis Réglages : « QR code refusé : relance ptzd pair » ; un passage en arrière-plan puis le retour rétablissent la connexion.
