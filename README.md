@@ -52,7 +52,7 @@ Requirements:
 Then:
 
 1. Download `PTZBot-X.Y.Z.dmg` from the [releases page](https://github.com/Djoko-cli/obsbot-nacelle/releases), open it and drag **PTZBot** into **Applications**.
-2. **First launch (Gatekeeper).** PTZBot is signed but not notarized: the first time, macOS refuses to open it. Open **System Settings › Privacy & Security**, click **Open Anyway** next to the message about PTZBot, and confirm. This is needed only once.
+2. **First launch.** The app is signed with a Developer ID and notarized by Apple: macOS opens it without a Gatekeeper warning.
 3. On first launch:
    - **Previous installation.** If the launchd agent `io.github.djoko-cli.obsbot-nacelle.ptzd` from an earlier version is there, PTZBot offers to replace it. **Replace** stops it, renames its plist to `.plist.bak`, moves the old binaries in `bin/` to the Trash and takes over the SDK in `lib/`. Paired iPhones and settings are kept. **Later** keeps the old `ptzd` (the panel shows "Previous installation"); the question comes back at the next launch.
    - **`config.json`.** If it is missing, PTZBot creates it with the Mac's Tailscale address, or on 127.0.0.1 only without Tailscale (the panel says so).
@@ -328,7 +328,7 @@ Prérequis :
 Puis :
 
 1. Télécharger `PTZBot-X.Y.Z.dmg` sur la [page des versions](https://github.com/Djoko-cli/obsbot-nacelle/releases), l'ouvrir et glisser **PTZBot** dans **Applications**.
-2. **Première ouverture (Gatekeeper).** PTZBot est signé mais pas notarisé : la première fois, macOS refuse de l'ouvrir. Ouvrir **Réglages Système › Confidentialité et sécurité**, cliquer sur **Ouvrir quand même** à côté du message sur PTZBot, puis confirmer. Ce n'est demandé qu'une fois.
+2. **Première ouverture.** L'app est signée Developer ID et notarisée par Apple : macOS l'ouvre sans avertissement de Gatekeeper.
 3. Au premier lancement :
    - **Ancienne installation.** Si l'agent launchd `io.github.djoko-cli.obsbot-nacelle.ptzd` d'une version précédente est là, PTZBot propose de le remplacer. **Remplacer** l'arrête, renomme sa plist en `.plist.bak`, met les anciens binaires de `bin/` à la corbeille et reprend le SDK de `lib/`. Les iPhone appairés et les réglages sont conservés. **Plus tard** garde l'ancien `ptzd` (le panneau affiche « Ancienne installation ») ; la question revient au lancement suivant.
    - **`config.json`.** S'il manque, PTZBot le crée avec l'adresse Tailscale du Mac, ou sur 127.0.0.1 seulement sans Tailscale (le panneau le signale).

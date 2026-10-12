@@ -23,7 +23,7 @@ Dans le périmètre :
 Hors périmètre :
 - La traduction de l'app iOS : une petite étape juste après B2.
 - go2rtc dans l'app : c'est B3.
-- La notarisation (Developer ID).
+- La notarisation (Developer ID) : faite depuis, voir le § 13.
 - Le journal et la ligne de commande de `ptzd`, qui restent en français.
 
 ## 3. Choix de Majid
@@ -98,7 +98,7 @@ Ils sont repris de maillage-thread avec leurs tests, puis adaptés de trois faç
 - **README :**
   - en anglais, puis en français, avec des liens vers chaque langue en tête ;
   - l'installation par le DMG ;
-  - la première ouverture : Gatekeeper, puis « Ouvrir quand même » dans Réglages ;
+  - la première ouverture (avec la notarisation du § 13, plus d'avertissement de Gatekeeper) ;
   - la mise à jour automatique ;
   - l'installation du SDK et des outils d'Apple.
 
@@ -195,7 +195,7 @@ Au lancement, si l'empreinte de `Resources/obsbot-ai.cpp` diffère de `sdk/obsbo
 
 ## 11. Limites connues
 
-- Sans notarisation, la première ouverture demande « Ouvrir quand même » dans Réglages.
+- Avant le § 13 (sans notarisation), la première ouverture demandait « Ouvrir quand même » dans Réglages.
 - L'app est pour Apple Silicon seulement.
 - Le suivi IA demande les outils de développement d'Apple.
 - L'app iOS n'est pas distribuée ainsi : elle est signée avec le compte de chacun.
@@ -244,3 +244,54 @@ Le prototype (branche `proto/b2`) a été relu par Opus le 08/10. Ces points pr�
   - xcodegen n'accepte qu'une exigence par paquet : `project.yml` garde `exactVersion`.
 - **`strip -S` de `ptzd`** dans une compilation de publication : ses symboles de débogage nommaient `.build` sous le dossier personnel.
 - **`sparkle-cli`** n'est pas dans les artefacts du paquet. La répétition le compile depuis la source 2.10.0.
+
+## 13. Developer ID et notarisation (12/10)
+
+Le mainteneur a un compte Apple Developer, et un certificat « Developer ID Application » est dans son trousseau. La publication signe avec lui et notarise, sans plus d'avertissement de Gatekeeper au premier lancement. Le certificat auto-signé « Djoko-cli Code Signing » reste utilisable (`IDENTITE_SIGNATURE`, ou les tests et la répétition), sans notarisation.
+
+### 13.1 Choix de l'identité
+
+- **`IDENTITE_SIGNATURE` donnée :** elle est prise telle quelle, comme avant.
+- **Sinon :** l'unique identité valide dont le nom commence par `Developer ID Application: `, dans `security find-identity -p codesigning -v`. Zéro ou plusieurs : refus, qui demande `IDENTITE_SIGNATURE`. L'extraction est en Python (`choisir_identite`, testée), et `publier.sh` ne passe `--identite` que si la variable est donnée. L'identité listée dans deux trousseaux compte pour une.
+- **Le nom complet** (« Developer ID Application: <nom> (<ÉQUIPE>) ») porte le nom du mainteneur et son identifiant d'équipe. Il n'est écrit dans aucun fichier versionné, ni dans le flux, ni dans les notes, ni dans un message de commit.
+  - La publication le contrôle : avec un Developer ID, ni le nom de l'identité, ni le nom de la personne (l'organisation du certificat), ni l'identifiant d'équipe ne figurent dans les notes, le flux, `notes.md`, le message du commit du flux ni les textes de l'app (`--textes`). Sinon, refus avant tout geste public.
+  - Le journal local, `exigence.txt`, `notarisation.log` et `gestes.txt` du dossier de build ne sont pas publiés : l'identité peut y figurer.
+
+### 13.2 Contrôle du certificat
+
+Le chemin du certificat auto-signé est inchangé (`CN=<nom>`, au plus un pays). Pour un Developer ID, le sujet, relu dans le trousseau puis dans la signature de l'app (certificat feuille), doit être :
+- le CN exactement le nom de l'identité, de la forme `Developer ID Application: <nom> (<ÉQUIPE>)`, l'équipe sur dix caractères `A-Z0-9` ;
+- `OU` et `UID`, s'ils sont là, égaux à l'identifiant d'équipe ;
+- `O` présent (le nom de la personne) ; un pays sur deux lettres est permis ;
+- l'**émetteur** : CN `Developer ID Certification Authority`, O `Apple Inc.` (son OU, G2 ou autre, et son pays sont libres) ;
+- toujours refusés : `emailAddress`, `subjectAltName`, un « @ » n'importe où, tout autre attribut.
+
+Le sujet est lu en RFC 2253 par un analyseur qui décode les échappements d'openssl (virgule, paires hexadécimales UTF-8 d'un nom accentué) et compare en NFC. Les messages de refus ne recopient pas le sujet.
+
+### 13.3 Validation des bibliothèques
+
+Avec un Developer ID, **`com.apple.security.cs.disable-library-validation` n'est plus posé** : Sparkle et l'app sont signés par la même équipe. La relecture des droits le refuse s'il est présent, notarisation ou non. Avec un certificat auto-signé, le comportement est inchangé (la levée est posée sans notarisation, refusée avec).
+
+### 13.4 Notarisation par défaut
+
+- **Avec un Developer ID,** `NOTARISER` vaut 1 par défaut ; `NOTARISER=0` la coupe, `NOTARISER=1` l'impose aussi à un certificat auto-signé. Toute autre valeur est refusée. `publier.sh` fixe `PROFIL_NOTARISATION` à `ptzbot-notarisation` par défaut (le profil de `notarytool store-credentials`, dans le trousseau).
+- **La répétition suit la même chaîne,** sauf `NOTARISER=0`.
+- **La chaîne,** sur le .dmg, avant la signature Ed25519 de Sparkle (l'agrafe change le fichier) :
+  1. `codesign --timestamp` du .dmg ;
+  2. `xcrun notarytool submit --keychain-profile … --wait` (la réponse va dans `notarisation.log`) ;
+  3. `xcrun stapler staple` ;
+  4. `xcrun stapler validate` (ajouté : l'agrafe est relue) ;
+  5. `spctl --assess --type open --context context:primary-signature` : Gatekeeper évalue le .dmg.
+- Les signatures sont horodatées (`--timestamp`) avec la notarisation, sans (`--timestamp=none`) sinon.
+
+### 13.5 Exigence de signature
+
+`exigence.txt` reflète le Developer ID. Pour un Developer ID, la publication exige `anchor apple generic` et `certificate leaf[subject.OU]` égal à l'identifiant d'équipe de l'identité, avant de faire le .dmg. Pour un certificat auto-signé, aucun contrôle de plus.
+
+### 13.6 Chemins personnels et certificat de la personne
+
+La signature d'une app Developer ID embarque le certificat de la personne, donc son nom, public par nature. Le contrôle des chemins personnels du .dmg cherche entre autres le nom du compte macOS, qui peut être un prénom : le certificat serait alors pris pour une fuite. Le contrôle retire donc du contenu des fichiers, avant la recherche, le nom de l'identité, celui de la personne et l'identifiant d'équipe. Le même nom ailleurs dans l'app reste un refus.
+
+### 13.7 Tests
+
+Les tests de `publication.py` n'utilisent que des données inventées (« Jean Exemple », `ABCDE12345`) : sujets acceptés et refusés (adresse, SAN, mauvais émetteur, OU ou UID différents du Team ID, CN différent, accent et virgule), choix de l'identité (zéro, une, deux, listée deux fois), droits sans la levée, notarisation par défaut et coupée, répétition, absence du nom dans ce qui est publié. Seule une répétition réelle vérifie le trousseau, `notarytool`, `stapler` et Gatekeeper.
