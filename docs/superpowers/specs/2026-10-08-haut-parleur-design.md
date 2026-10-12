@@ -287,3 +287,51 @@ Ajoutés le 2026-10-09, après les essais sur le Mac de Majid et pendant le prot
 
 - Constat : la build de banc (203) installée à la place de la 1.0.3, Talkback éteint, puis allumé par l'interrupteur. L'inscription réussit en 0,1 s, mais BTM **reprend la fiche qu'il gardait de l'ancien `talkd`** (désactivée, pas supprimée par la désinscription) : launchd refuse le nouveau binaire (`Launch Constraint Violation`). BTM recrée ensuite une fiche, mais sans Team ID il ignore l'identifiant de l'app et garde le chemin relatif `Contents/Helpers/talkd` : launchd retente toutes les 10 s sans jamais trouver le programme. Éteindre puis rallumer fait démarrer talkd en 0,2 s. La panne vient donc de **tout changement du binaire talkd**, pas seulement d'une mise à jour avec l'agent inscrit : la réinscription au lancement ne la couvre pas quand Talkback était éteint.
 - **Relance automatique** : après toute inscription réussie (interrupteur ou réinscription de mise à jour), `TalkbackModel` vérifie au bout de 4 s (`launchCheckDelay`) que talkd tourne. Si l'agent est inscrit sans talkd vivant (ni accord en attente, ni échec écrit par talkd), il désinscrit l'agent, attend, puis le réinscrit, **une seule fois** : la relance n'arme pas de nouvelle vérification. Pendant la relance, l'interrupteur est grisé et le panneau garde « Démarrage… » (jamais « Désactivé »). Éteindre ou rallumer annule la vérification en attente. Le délai de 15 s de « talkd ne démarre pas » repart de la fin de la relance, et pendant la relance le panneau reste sur « Démarrage… » quelle que soit sa durée (relecture finale, M3) ; l'avis « éteignez puis rallumez » ne vient donc qu'après ces 15 s.
+
+## 15. Agent launchd classique (12/10)
+
+Ajouté le 2026-10-12 (PTZBot 1.0.5), après le banc du 12/10. **Cette section remplace le § 7 (plist embarquée et `BundleProgram`), l'inscription par `SMAppService` du § 14, la réinscription à chaque version et la relance automatique de 4 s du « Banc du 12/10 ».** Le reste du § 14 (statuts, fichier d'état, journal…) est inchangé.
+
+### 15.1 Pourquoi
+
+L'app est signée par un certificat auto-signé, **sans Team ID**. Avec `SMAppService.agent(plistName:)`, le banc du 12/10 a montré que :
+- BTM épingle le binaire `talkd` inscrit ;
+- après tout changement du binaire (une mise à jour), launchd refuse le nouveau (`Launch Constraint Violation`) ;
+- BTM recrée ensuite une fiche inutilisable ;
+- trois rustines successives (réinscription à chaque version, relance de 4 s, avis « éteignez puis rallumez ») n'en sont pas venues à bout.
+
+Un essai a montré qu'un **agent classique**, une plist dans `~/Library/LaunchAgents` avec un `ProgramArguments` absolu, fonctionne sans aucun refus : au chargement, après remplacement du bundle par une autre build suivi de `kickstart -k`, après `kill -9`, après `bootout` puis `bootstrap`. BTM le classe `legacy agent`, sans contrainte de lancement, et aucune notification n'a été vue. **Décision de Majid (12/10) : remplacer `SMAppService` par cet agent classique.**
+
+### 15.2 Conception
+
+- **Label** : inchangé, `io.github.djoko-cli.obsbot-nacelle.talkd`. **Plist** : `~/Library/LaunchAgents/<label>.plist`, générée par le code (`PropertyListSerialization`, XML), écrite de façon atomique en 0644, avec `Label`, `ProgramArguments` (le **chemin absolu** de `Contents/Helpers/talkd` de l'app qui tourne), `RunAtLoad`, `KeepAlive`, `ThrottleInterval` à 10 et `ProcessType` à `Interactive` (mêmes raisons qu'au § 7). Pas de `AssociatedBundleIdentifiers`.
+- **Allumer** : écrire la plist, puis `launchctl bootstrap gui/<uid> <plist>` ; si le job est déjà chargé, `bootout` d'abord, en attendant le déchargement (10 s au plus, sondage tous les 0,25 s). Si le `bootstrap` échoue, la plist est retirée : l'interrupteur revient à « Désactivé » avec l'erreur.
+- **Éteindre** : `launchctl bootout gui/<uid>/<label>`, attente bornée du déchargement, puis suppression de la plist. Si l'agent ne se décharge pas, la plist reste et l'erreur est montrée.
+- **Lecture de l'état** : pas de plist, « Désactivé » ; plist présente et `SMAppService.statusForLegacyPlist(at:)` répond `.requiresApproval` (l'utilisateur a coupé l'élément dans Réglages › Général › Ouverture), « Autorisation requise » et le bouton qui ouvre Réglages ; sinon, comme avant, le fichier d'état et la sonde de processus (« Démarrage… », « Prêt », « En lecture », « Arrêté… », « talkd ne démarre pas »). Le statut « Indisponible » disparaît : un échec d'écriture ou de `bootstrap` laisse l'interrupteur éteint avec l'erreur dans `lastError`.
+- **Hors du fil de l'interface** : tout appel à `launchctl` et toute attente (`Blocking`, types non isolés `ClassicAgent` et `SMAgentRegistry`). Le panneau garde `isBusy`, « Démarrage… », « Arrêt… », la surveillance du fichier d'état et la relecture chaque seconde.
+
+### 15.3 Au lancement de l'app (une fois, hors du fil de l'interface)
+
+L'interrupteur est grisé pendant ce temps (`TalkbackModel.isPreparing`, à la place de `isReregistering`).
+
+1. **Migration depuis la 1.0.4.** Si `SMAppService.agent(plistName:)` dit `.enabled` ou `.requiresApproval`, il est désinscrit en **attendant** la fin (`unregister()` asynchrone), puis l'agent classique est installé : Talkback était allumé, il le reste ; éteint, rien. Le réglage `talkbackRegisteredBuild` est effacé. **La plist embarquée est gardée** (`mac/app/LaunchAgents`, copiée dans `Contents/Library/LaunchAgents`) : `SMAppService` en a besoin pour désinscrire l'ancien agent. Elle ne sert plus qu'à cela et n'est jamais inscrite.
+2. **Mise à jour.** Si la plist classique existe : si son contenu diffère de celui attendu (l'app a changé de chemin, ou les clés ont changé), elle est réécrite, puis `bootout` et `bootstrap` ; sinon, si le numéro de compilation (`CFBundleVersion`) diffère de celui retenu au dernier passage (réglage `talkbackAgentBuild`, aussi écrit à chaque allumage par l'interrupteur et effacé à l'extinction), `launchctl kickstart -k gui/<uid>/<label>` fait remplacer l'ancien talkd encore en mémoire par le nouveau. Le numéro est retenu.
+3. **Compilation de travail** (`CFBundleVersion` égal à 1) : ni migration ni mise à jour automatique, sinon l'agent de l'app installée pointerait vers la copie de travail.
+4. Une seule tentative par lancement : en cas d'échec l'erreur est montrée, le numéro reste, rien n'est retenté.
+
+### 15.4 Ce qui est retiré
+
+`TalkbackAgent` (le `LoginItemService` de `SMAppService.agent`) comme service de l'interrupteur, `reregisterIfUpdated`, `registeredBuildKey` (sauf son effacement), la relance de 4 s (`launchCheckDelay`, `armLaunchCheck`, `retryLaunchIfNeeded`, `retryLaunch`), l'avis `talkbackRestartAdvice` (et sa traduction), le statut « Indisponible » et le traitement `notFound` / `registerFailed`.
+
+### 15.5 Limite connue
+
+Si l'on jette l'app avec Talkback allumé, la plist reste dans `~/Library/LaunchAgents` et launchd échoue en silence. Le README donne les deux commandes pour l'enlever (`launchctl bootout …` et `rm …`).
+
+### 15.6 À vérifier au banc
+
+- **La migration depuis la 1.0.4**, Talkback allumé puis éteint, et le cas où l'utilisateur avait coupé l'élément dans Réglages (`.requiresApproval`) : ce que fait `bootstrap` après la désinscription.
+- **Plus aucun `Launch Constraint Violation`** après une mise à jour par Sparkle (nouveau binaire, `kickstart -k`), et talkd qui repart tout seul en moins de 15 s.
+- **La fiche dans Réglages › Général › Ouverture** : son nom (sans `AssociatedBundleIdentifiers`, elle peut s'afficher sous « talkd »), aucune notification, et l'état « Autorisation requise » quand on coupe l'élément (`statusForLegacyPlist`).
+- **Un service désactivé dans la base de launchd** (`launchctl print-disabled`) : un `bootstrap` peut échouer avec « Service is disabled » après que l'utilisateur a coupé l'élément dans Réglages.
+- **L'app lancée depuis un dossier « translocalisé »** par Gatekeeper : la plist garderait alors un chemin temporaire (`ProgramArguments`) ; elle est réécrite au lancement suivant depuis l'emplacement définitif.
+- **Les temps réels** : `bootout` jusqu'au déchargement, `bootstrap`, `kickstart -k`, hors du fil de l'interface (interrupteur grisé, pas de gel).

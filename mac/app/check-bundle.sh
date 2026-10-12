@@ -1,6 +1,7 @@
 #!/bin/bash
 # Vérifie le paquet Release de PTZBot (spec distribution § 5.1 et § 10) : ptzd et talkd dans Contents/Helpers, la plist
-# de l'agent de talkd dans Contents/Library/LaunchAgents (spec haut-parleur § 7), la source d'obsbot-ai dans
+# embarquée de l'ancien agent de talkd dans Contents/Library/LaunchAgents (spec haut-parleur § 7 et § 15 : elle ne sert
+# plus qu'à désinscrire l'agent de la 1.0.4), la source d'obsbot-ai dans
 # Contents/Resources, Sparkle dans Contents/Frameworks ; ni le SDK OBSBOT (libdev*.dylib), ni ses
 # en-têtes (devs.hpp, dev.hpp), ni aucun binaire obsbot-ai, ni aucun binaire Mach-O qui dépende de libdev (otool -L).
 # Usage : mac/app/check-bundle.sh [chemin de PTZBot.app]
@@ -28,11 +29,11 @@ require -f Contents/Library/LaunchAgents/io.github.djoko-cli.obsbot-nacelle.talk
 require -f Contents/Resources/obsbot-ai.cpp
 require -d Contents/Frameworks/Sparkle.framework
 
-# La plist de l'agent est valide, son label est celui que l'app inscrit, son programme est celui du paquet.
+# La plist embarquée est valide, son label est celui de l'agent de l'app, son programme est celui du paquet.
 AGENT="$APP/Contents/Library/LaunchAgents/io.github.djoko-cli.obsbot-nacelle.talkd.plist"
 if [ -f "$AGENT" ]; then
     if ! /usr/bin/plutil -lint "$AGENT" >/dev/null; then
-        echo "plist de l'agent de talkd invalide : $AGENT" >&2
+        echo "plist embarquée de l'agent de talkd invalide : $AGENT" >&2
         STATUS=1
     elif [ "$(/usr/bin/plutil -extract Label raw "$AGENT")" != "io.github.djoko-cli.obsbot-nacelle.talkd" ]; then
         echo "label inattendu dans la plist de l'agent de talkd" >&2

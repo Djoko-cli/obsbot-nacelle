@@ -83,10 +83,12 @@ targets:
         # La phase des utilitaires compile mac/ptzd et copie la source d'obsbot-ai.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
     postBuildScripts:
-      # ptzd et talkd dans Contents/Helpers, la plist de l'agent de talkd dans Contents/Library/LaunchAgents, la
-      # source d'obsbot-ai dans Contents/Resources ; jamais le SDK ni un binaire obsbot-ai dans le paquet (spec
-      # distribution § 5.1). Toujours exécutée : swift build sait ce qui a changé dans mac/ptzd et mac/talkd.
-      - name: Utilitaires ptzd et talkd, agent de talkd et source d'obsbot-ai
+      # ptzd et talkd dans Contents/Helpers, la plist embarquée de l'ancien agent de talkd dans Contents/Library/LaunchAgents
+      # (depuis la 1.0.5 elle ne sert plus qu'à désinscrire l'agent inscrit par la 1.0.4 : l'agent de Talkback est
+      # maintenant une plist classique que l'app écrit dans ~/Library/LaunchAgents, spec haut-parleur § 15), la source
+      # d'obsbot-ai dans Contents/Resources ; jamais le SDK ni un binaire obsbot-ai dans le paquet (spec distribution
+      # § 5.1). Toujours exécutée : swift build sait ce qui a changé dans mac/ptzd et mac/talkd.
+      - name: Utilitaires ptzd et talkd, plist embarquée de l'ancien agent de talkd et source d'obsbot-ai
         script: '"$SRCROOT/build-helpers.sh"'
         basedOnDependencyAnalysis: false
         inputFiles:

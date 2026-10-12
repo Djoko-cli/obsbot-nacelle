@@ -2,8 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- L'agent de Talkback (spec haut-parleur § 7), embarqué dans PTZBot.app/Contents/Library/LaunchAgents et inscrit
-	     par SMAppService.agent(plistName:) depuis l'interrupteur du panneau. Il tourne aussi quand PTZBot est fermé. -->
+	<!-- Plist embarquée dans PTZBot.app/Contents/Library/LaunchAgents. Depuis la 1.0.5 elle ne sert plus à lancer talkd :
+	     l'agent de Talkback est un agent launchd classique que l'app écrit dans ~/Library/LaunchAgents et charge par
+	     launchctl (ClassicAgent, spec haut-parleur § 15). Elle ne reste que pour que SMAppService.agent(plistName:) puisse
+	     désinscrire l'agent inscrit par la 1.0.4 (migration au lancement) ; elle n'est jamais inscrite. -->
 	<key>Label</key>
 	<string>io.github.djoko-cli.obsbot-nacelle.talkd</string>
 	<!-- Relatif à l'app : le binaire reste celui de la version installée, et suit les mises à jour. -->
