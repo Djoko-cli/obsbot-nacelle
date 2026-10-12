@@ -154,17 +154,17 @@ struct ClassicTalkbackServiceTests {
         #expect(model.status == .starting)
     }
 
-    @Test("De bout en bout, migration d'un agent « Autorisation requise » : le refus est respecté (pas d'enable), la plist est gardée")
-    func fullMigrationRespectsRefusal() async {
+    @Test("De bout en bout, migration d'un agent « Autorisation requise » : désinscrit, rien d'écrit, aucun appel à launchctl")
+    func fullMigrationLeavesRefusalOff() async {
         defer { try? FileManager.default.removeItem(at: root) }
-        registry.state.withLock { $0.registered = .requiresApproval; $0.plistStatus = .requiresApproval }
+        registry.state.withLock { $0.registered = .requiresApproval }
         launchctl.state.withLock { $0.disabled = true }
         let model = model(bundleVersion: "9")
         await model.prepareAtLaunch()
         #expect(registry.state.withLock { $0.unregisters } == 1)
-        #expect(calls() == ["bootstrap"])
-        #expect(FileManager.default.fileExists(atPath: plistURL.path))
-        #expect(model.status == .requiresApproval)
+        #expect(calls() == [])
+        #expect(!FileManager.default.fileExists(atPath: plistURL.path))
+        #expect(model.status == .disabled)
         #expect(model.lastError == nil)
         #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
         #expect(launchctl.state.withLock { $0.disabled && !$0.loaded })

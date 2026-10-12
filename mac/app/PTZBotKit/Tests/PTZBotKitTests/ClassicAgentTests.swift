@@ -114,6 +114,8 @@ struct ClassicAgentTests {
         let agent = agent()
         #expect(throws: ClassicAgentError.bootoutFailed("code 5")) { try agent.install() }
         #expect(calls() == ["bootout"])
+        // Un échec du déchargement retire aussi la plist neuve : l'interrupteur revient à « Désactivé ».
+        #expect(!exists(agent.plistURL))
     }
 
     @Test("bootout en échec mais agent parti : on continue jusqu'au bootstrap")
@@ -132,6 +134,7 @@ struct ClassicAgentTests {
         let agent = agent()
         #expect(throws: ClassicAgentError.stillLoaded) { try agent.install() }
         #expect(calls() == ["bootout"])
+        #expect(!exists(agent.plistURL))
         let waited = sleeper.slept.withLock { $0 }
         #expect(waited >= ClassicAgent.stopTimeout)
         #expect(waited <= ClassicAgent.stopTimeout + ClassicAgent.pollInterval)
@@ -166,26 +169,6 @@ struct ClassicAgentTests {
         #expect(throws: (any Error).self) { try agent.install() }
         #expect(!exists(agent.plistURL))
         #expect(calls() == ["enable"])
-    }
-
-    @Test("Refus respecté (migration d'un agent « Autorisation requise ») : pas d'enable ; bootstrap refusé, la plist est gardée")
-    func installRespectingRefusal() throws {
-        defer { try? FileManager.default.removeItem(at: root) }
-        launchctl.state.withLock { $0.disabled = true }
-        let agent = agent()
-        #expect(throws: (any Error).self) { try agent.install(respectingRefusal: true) }
-        #expect(calls() == ["bootstrap"])
-        #expect(exists(agent.plistURL))
-        #expect(launchctl.state.withLock { $0.disabled && !$0.loaded })
-    }
-
-    @Test("Refus respecté mais service non désactivé : l'agent est simplement chargé, sans enable")
-    func installRespectingRefusalNotDisabled() throws {
-        defer { try? FileManager.default.removeItem(at: root) }
-        let agent = agent()
-        try agent.install(respectingRefusal: true)
-        #expect(calls() == ["bootstrap"])
-        #expect(launchctl.state.withLock { $0.loaded })
     }
 
     @Test("Écriture impossible (le dossier est un fichier) : erreur, aucun appel à launchctl")

@@ -212,7 +212,7 @@ final class FakeTalkbackService: TalkbackService {
     let disableGate = Gate()
     let unregisterLegacyGate = Gate()
     let reconcileGate = Gate()
-    /// Les opérations appelées, dans l'ordre : « enable » ou « enable(respectingRefusal) », « disable »,
+    /// Les opérations appelées, dans l'ordre : « enable », « disable »,
     /// « unregisterLegacy », « reconcile(restart: …) ».
     private(set) var calls: [String] = []
     /// Pour chaque opération hors du MainActor : tournait-elle sur le fil principal ?
@@ -228,13 +228,13 @@ final class FakeTalkbackService: TalkbackService {
         backgroundCallsOnMainThread.append(onMain)
     }
 
-    nonisolated func enable(respectingRefusal: Bool) async throws {
+    nonisolated func enable() async throws {
         let onMain = pthread_main_np() != 0
-        try await enableOnMain(respectingRefusal: respectingRefusal, calledOnMainThread: onMain)
+        try await enableOnMain(calledOnMainThread: onMain)
     }
 
-    private func enableOnMain(respectingRefusal: Bool, calledOnMainThread: Bool) async throws {
-        record(respectingRefusal ? "enable(respectingRefusal)" : "enable", onMain: calledOnMainThread)
+    private func enableOnMain(calledOnMainThread: Bool) async throws {
+        record("enable", onMain: calledOnMainThread)
         await enableGate.wait()
         if let enableFailure { throw enableFailure }
         agentState = stateAfterEnable

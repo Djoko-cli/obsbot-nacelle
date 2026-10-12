@@ -146,31 +146,24 @@ public struct ClassicAgent: Sendable {
     }
 
     /// Allume : écrit la plist, décharge un agent déjà chargé (un `bootstrap` échoue sur un agent chargé), puis le
-    /// charge. Si le `bootstrap` échoue, la plist est retirée : l'interrupteur revient à « Désactivé » avec l'erreur,
-    /// et non à un agent « installé » qui ne tourne pas.
+    /// charge. Si le déchargement, le `enable` ou le `bootstrap` échoue, la plist est retirée : l'interrupteur revient à
+    /// « Désactivé » avec l'erreur, et non à un agent « installé » qui ne tourne pas.
     ///
-    /// Allumé par l'interrupteur (geste explicite de l'utilisateur), `launchctl enable` précède le `bootstrap` : si
-    /// l'utilisateur a coupé l'élément dans Réglages › Ouverture, launchd garde le service « désactivé » sous ce label,
-    /// même plist supprimée, et le `bootstrap` échouerait sans cela (« Service is disabled »).
-    ///
-    /// `respectingRefusal` (migration d'un ancien agent « Autorisation requise ») : le refus de l'utilisateur est
-    /// respecté, pas d'`enable`. Si le `bootstrap` échoue, la plist est **gardée** : l'état affiche « Autorisation
-    /// requise » et le bouton ouvre Réglages ; elle sera chargée au lancement suivant une fois l'élément autorisé.
+    /// `launchctl enable` précède le `bootstrap` : si l'utilisateur a coupé l'élément dans Réglages › Ouverture, launchd
+    /// garde le service « désactivé » sous ce label, même plist supprimée, et le `bootstrap` échouerait sans cela
+    /// (« Service is disabled »). C'est un geste explicite de l'utilisateur (l'interrupteur) ; la migration d'un ancien
+    /// agent coupé n'installe rien.
     ///
     /// Refusé depuis un emplacement temporaire (`isTransient`), avant d'écrire quoi que ce soit.
-    public func install(respectingRefusal: Bool = false) throws {
+    public func install() throws {
         guard !isTransient else { throw ClassicAgentError.transientLocation }
         try writePlist()
-        try unload()
         do {
-            if !respectingRefusal {
-                try launchctl.enable(label: label)
-            }
+            try unload()
+            try launchctl.enable(label: label)
             try launchctl.bootstrap(plist: plistURL)
         } catch {
-            if !respectingRefusal {
-                try? FileManager.default.removeItem(at: plistURL)
-            }
+            try? FileManager.default.removeItem(at: plistURL)
             throw error
         }
     }

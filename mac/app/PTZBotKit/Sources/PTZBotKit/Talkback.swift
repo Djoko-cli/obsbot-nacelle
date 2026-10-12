@@ -14,13 +14,6 @@ public enum Talkback {
     }
 }
 
-extension TalkbackService {
-    /// Allumage par l'interrupteur.
-    nonisolated func enable() async throws {
-        try await enable(respectingRefusal: false)
-    }
-}
-
 /// Ce que dit la plist de l'agent classique.
 public enum TalkbackAgentState: Equatable, Sendable {
     /// Pas de plist : Talkback est éteint.
@@ -41,13 +34,11 @@ public protocol TalkbackService: AnyObject, Sendable {
     var installBlocker: (any Error)? { get }
     /// L'ancien agent de la 1.0.4, inscrit par `SMAppService.agent(plistName:)`, existe encore (`.enabled` ou `.requiresApproval`).
     var hasLegacyRegistration: Bool { get }
-    /// L'ancien agent de la 1.0.4 attend l'accord de l'utilisateur (`.requiresApproval`) : il a coupé l'élément. À lire
-    /// avant `unregisterLegacy()`.
+    /// L'ancien agent de la 1.0.4 attend l'accord de l'utilisateur (`.requiresApproval`) : il a coupé l'élément, la
+    /// migration le désinscrit sans rien installer. À lire avant `unregisterLegacy()`.
     var legacyRequiresApproval: Bool { get }
-    /// Écrit la plist et charge l'agent. Par défaut (l'interrupteur), le service est d'abord réactivé dans launchd
-    /// (`launchctl enable`) ; `respectingRefusal` (migration d'un agent « Autorisation requise ») respecte le refus de
-    /// l'utilisateur : pas de réactivation, et la plist est gardée si le chargement échoue.
-    nonisolated func enable(respectingRefusal: Bool) async throws
+    /// Écrit la plist et charge l'agent ; le service est d'abord réactivé dans launchd (`launchctl enable`).
+    nonisolated func enable() async throws
     /// Décharge l'agent (attente bornée) et supprime la plist.
     nonisolated func disable() async throws
     /// Désinscrit l'ancien agent de la 1.0.4, en attendant la fin (`unregister()` asynchrone).
@@ -209,11 +200,9 @@ public final class TalkbackModel {
     /// au lancement.
     public static let obsoleteRegisteredBuildKey = "talkbackRegisteredBuild"
     /// L'installation à retenter au lancement suivant : la migration a désinscrit l'ancien agent mais l'installation du
-    /// nouveau a échoué, il ne reste ni l'un ni l'autre. « enable » (Talkback était allumé) ou « respectRefusal »
-    /// (l'utilisateur avait coupé l'élément : son refus reste respecté).
+    /// nouveau a échoué, il ne reste ni l'un ni l'autre. Une seule intention : « enable » (Talkback était allumé).
     public static let pendingInstallKey = "talkbackPendingInstall"
     private static let pendingEnable = "enable"
-    private static let pendingRespectRefusal = "respectRefusal"
 
     public init(
         service: any TalkbackService, state: any TalkbackStateSource, process: any ProcessProbe, scheduler: any Scheduler,
@@ -309,15 +298,17 @@ public final class TalkbackModel {
     private func apply(_ enabled: Bool) async {
         do {
             if enabled {
-                try await service.enable(respectingRefusal: false)
+                try await service.enable()
                 settings.set(bundleVersion, forKey: Self.agentBuildKey)
-                settings.set(nil as String?, forKey: Self.pendingInstallKey)
             } else {
                 try await service.disable()
                 settings.set(nil as String?, forKey: Self.agentBuildKey)
-                settings.set(nil as String?, forKey: Self.pendingInstallKey)
             }
+            settings.set(nil as String?, forKey: Self.pendingInstallKey)
         } catch {
+            // Le geste explicite remplace l'intention retenue, qu'il réussisse ou non : sans cela, un allumage qui échoue
+            // toujours laisserait la nouvelle tentative du lancement suivant afficher la même erreur, sans issue.
+            settings.set(nil as String?, forKey: Self.pendingInstallKey)
             lastError = Localization.text("Talkback impossible : \(error.localizedDescription)")
         }
         isBusy = false
@@ -332,9 +323,10 @@ public final class TalkbackModel {
     /// **Migration depuis la 1.0.4.** La 1.0.4 inscrivait talkd par `SMAppService.agent(plistName:)`. Si cet agent est
     /// encore inscrit, il est désinscrit en attendant la fin, puis l'agent classique est installé : Talkback était
     /// allumé, il le reste. Éteint, rien n'est installé. L'ancien réglage du numéro d'inscription est effacé. Si
-    /// l'utilisateur avait coupé l'élément (« Autorisation requise »), son refus est respecté : pas de `launchctl enable`,
-    /// la plist est gardée même si le chargement échoue. Si l'installation échoue après la désinscription et que rien
-    /// n'est installé, l'intention est retenue (`pendingInstallKey`) et retentée au lancement suivant, une fois par lancement.
+    /// l'utilisateur avait coupé l'élément (« Autorisation requise »), l'ancien agent est désinscrit et rien n'est
+    /// installé : Talkback reste éteint, l'utilisateur le rallume par l'interrupteur s'il le veut. L'intention « allumer »
+    /// est retenue (`pendingInstallKey`) avant la désinscription ; si l'installation échoue et que rien n'est installé,
+    /// elle est retentée au lancement suivant, une fois par lancement.
     ///
     /// **Mise à jour.** Si la plist de l'agent classique existe, elle est réécrite quand son contenu diffère de celui
     /// attendu (l'app a changé de chemin), sinon l'agent est chargé s'il ne l'est pas, sinon talkd est redémarré (`kickstart -k`) quand le numéro de compilation
@@ -363,23 +355,29 @@ public final class TalkbackModel {
         do {
             if migrating {
                 // Lu avant la désinscription : l'ancien agent « Autorisation requise » dit que l'utilisateur l'a coupé.
-                let respectRefusal = service.legacyRequiresApproval
+                let wasEnabled = !service.legacyRequiresApproval
+                // L'intention est retenue avant la désinscription : une app tuée entre les deux ne doit pas la perdre
+                // (l'ancien agent n'existerait plus). Si la désinscription échoue, l'ancien agent reste inscrit et la
+                // migration repart au lancement suivant.
+                settings.set(wasEnabled ? Self.pendingEnable : nil, forKey: Self.pendingInstallKey)
                 try await service.unregisterLegacy()
-                // L'intention tient jusqu'à ce que l'installation réussisse : un échec ou une fermeture de l'app ici ne
-                // doit pas la perdre (l'ancien agent n'existe plus).
-                settings.set(respectRefusal ? Self.pendingRespectRefusal : Self.pendingEnable, forKey: Self.pendingInstallKey)
-                try await service.enable(respectingRefusal: respectRefusal)
+                // Coupé par l'utilisateur : rien à installer, Talkback reste éteint.
+                if wasEnabled {
+                    try await service.enable()
+                    settings.set(bundleVersion, forKey: Self.agentBuildKey)
+                }
             } else if retrying {
-                try await service.enable(respectingRefusal: pending == Self.pendingRespectRefusal)
+                try await service.enable()
+                settings.set(bundleVersion, forKey: Self.agentBuildKey)
             } else {
                 settings.set(nil as String?, forKey: Self.pendingInstallKey)
                 try await service.reconcile(restart: settings.string(forKey: Self.agentBuildKey) != bundleVersion)
+                settings.set(bundleVersion, forKey: Self.agentBuildKey)
             }
             settings.set(nil as String?, forKey: Self.pendingInstallKey)
-            settings.set(bundleVersion, forKey: Self.agentBuildKey)
         } catch {
             lastError = Localization.text("Talkback impossible : \(error.localizedDescription)")
-            // Une plist gardée (refus respecté) sera remise en ordre au lancement suivant : rien à retenir de plus.
+            // Une plist restée en place sera remise en ordre au lancement suivant : rien à retenir de plus.
             if service.agentState != .absent {
                 settings.set(nil as String?, forKey: Self.pendingInstallKey)
             }
