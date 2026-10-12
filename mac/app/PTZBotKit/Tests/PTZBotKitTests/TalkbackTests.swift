@@ -261,7 +261,23 @@ struct TalkbackTests {
         await model.prepareAtLaunch()
         #expect(service.calls == ["unregisterLegacy"])
         #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
-        #expect(model.lastError == "Talkback impossible : refusé")
+        // L'ancien agent était coupé : rien à protéger, la migration est retenue faite, sans erreur à chaque lancement.
+        #expect(model.lastError == nil)
+        #expect(settings.values[TalkbackModel.migrationDoneKey] == true)
+    }
+
+    @Test("Migration, l'ancien agent n'est plus celui de SMAppService (erreur 144) : retenue faite, rien n'est allumé, aucune erreur")
+    func migrationAlreadyClassic() async {
+        // Utilisateur de la 1.0.5 qui avait éteint Talkback : plus de plist, mais la fiche fondue de BTM se dit inscrite.
+        service.hasLegacyRegistration = true
+        service.unregisterLegacyFailure = LegacyAlreadyMigrated()
+        await model.prepareAtLaunch()
+        #expect(service.calls == ["unregisterLegacy"])
+        #expect(settings.values[TalkbackModel.migrationDoneKey] == true)
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+        #expect(settings.strings[TalkbackModel.agentBuildKey] == nil)
+        #expect(model.lastError == nil)
+        #expect(model.status == .disabled)
     }
 
     @Test("Migration d'un agent actif : l'intention est retenue avant la désinscription, pas après")

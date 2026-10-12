@@ -384,3 +384,8 @@ Relecture du prototype (12/10), défaut I1. Si la plist est à jour mais que l'a
     plist classique existe au lancement, après une migration réussie, ou quand on allume par l'interrupteur ;
   - une fois posé, `SMAppService` n'est plus jamais consulté ;
   - l'erreur 144 d'une désinscription est ignorée : il n'y a alors plus d'ancien agent à retirer.
+- **Relecture finale de la 1.0.6** : cas d'un utilisateur de la 1.0.5 qui avait éteint Talkback avant la mise à jour.
+  Il n'a plus de plist et le réglage n'est pas encore posé, alors que la fiche fondue de BTM se dit encore inscrite.
+  - L'erreur 144 signifie désormais « déjà migré » (`LegacyAlreadyMigrated`) : la migration est retenue faite, et
+    rien n'est allumé contre son choix.
+  - Un ancien agent coupé dont la désinscription échoue compte aussi comme migré, sans erreur affichée.

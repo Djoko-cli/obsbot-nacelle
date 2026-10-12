@@ -131,11 +131,11 @@ struct ClassicTalkbackServiceTests {
         #expect(calls() == [])
     }
 
-    @Test("Désinscrire l'ancien agent : l'erreur 144 de launchd (job chargé par launchctl, pas par SMAppService) est ignorée")
-    func unregisterLegacyIgnoresForeignJob() async throws {
+    @Test("Désinscrire l'ancien agent : l'erreur 144 de launchd (job chargé par launchctl, pas par SMAppService) dit la migration déjà faite")
+    func unregisterLegacyForeignJob() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         registry.state.withLock { $0.registered = .requiresApproval; $0.unregisterError = NSError(domain: "SMAppServiceErrorDomain", code: 144) }
-        try await service.unregisterLegacy()
+        await #expect(throws: LegacyAlreadyMigrated.self) { try await service.unregisterLegacy() }
         registry.state.withLock { $0.unregisterError = NSError(domain: "SMAppServiceErrorDomain", code: 1) }
         await #expect(throws: NSError.self) { try await service.unregisterLegacy() }
     }

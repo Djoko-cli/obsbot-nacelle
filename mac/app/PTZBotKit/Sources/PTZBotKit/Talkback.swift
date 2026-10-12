@@ -370,9 +370,9 @@ public final class TalkbackModel {
                 // (l'ancien agent n'existerait plus). Si la désinscription échoue, l'ancien agent reste inscrit et la
                 // migration repart au lancement suivant.
                 settings.set(wasEnabled ? Self.pendingEnable : nil, forKey: Self.pendingInstallKey)
-                try await service.unregisterLegacy()
-                // Coupé par l'utilisateur : rien à installer, Talkback reste éteint.
-                if wasEnabled {
+                let removed = try await unregisterLegacyForMigration(wasEnabled: wasEnabled)
+                // Coupé par l'utilisateur, ou déjà migré : rien à installer, Talkback reste tel qu'il est.
+                if wasEnabled, removed {
                     try await service.enable()
                     settings.set(bundleVersion, forKey: Self.agentBuildKey)
                 }
@@ -399,6 +399,21 @@ public final class TalkbackModel {
         startingSince = nil
         refresh()
         clearErrorIfApprovalNeeded()
+    }
+
+    /// Désinscrit l'ancien agent pour la migration. true : il est désinscrit, l'agent classique peut prendre sa place.
+    /// false : rien de plus à faire. Soit l'agent classique est déjà là sous ce label (`LegacyAlreadyMigrated`, fiche BTM
+    /// fondue : relecture finale de la 1.0.6), soit l'ancien agent était coupé et sa désinscription échoue : il n'y a rien
+    /// à protéger, et une erreur à chaque lancement n'aiderait personne.
+    private func unregisterLegacyForMigration(wasEnabled: Bool) async throws -> Bool {
+        do {
+            try await service.unregisterLegacy()
+            return true
+        } catch is LegacyAlreadyMigrated {
+            return false
+        } catch where !wasEnabled {
+            return false
+        }
     }
 
     /// L'invitation à autoriser dit déjà ce qu'il y a à faire.

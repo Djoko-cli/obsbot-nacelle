@@ -84,6 +84,7 @@ public final class ClassicTalkbackService: TalkbackService {
         } catch let error as NSError where error.code == Self.foreignJobErrorCode {
             // Le job de ce label a été chargé par `launchctl` (l'agent classique), pas par SMAppService : il n'y a plus
             // d'ancien agent à désinscrire (banc du 12/10).
+            throw LegacyAlreadyMigrated()
         }
     }
 
@@ -98,4 +99,10 @@ public final class ClassicTalkbackService: TalkbackService {
     public func openSystemSettings() {
         SMAppService.openSystemSettingsLoginItems()
     }
+}
+
+/// La désinscription de l'ancien agent a trouvé l'agent classique à sa place (erreur 144 de launchd) : la migration est
+/// déjà faite, rien n'est à allumer.
+public struct LegacyAlreadyMigrated: Error, Equatable, Sendable {
+    public init() {}
 }
