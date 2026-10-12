@@ -3,6 +3,21 @@
   <channel>
     <title>PTZBot</title>
     <item>
+      <title>1.0.7</title>
+      <pubDate>Mon, 12 Oct 2026 15:51:46 +0000</pubDate>
+      <sparkle:version>231</sparkle:version>
+      <sparkle:shortVersionString>1.0.7</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+<meta charset="utf-8">
+<p><strong>English</strong></p>
+<ul><li>PTZBot is now signed with an Apple Developer ID and notarized by Apple: a freshly downloaded PTZBot opens without "Open Anyway". When updating from an earlier version, macOS says once that the app differs from the versions opened before and asks whether to open it: choose "Open Anyway". It may also ask again for access to the local network, and you may need to turn "Open at login" on again.</li><li>The project moves to github.com/Djoko-cli/ptzbot; old links redirect there.</li><li>Talkback: an update no longer turns Talkback on by itself when you had turned it off.</li></ul>
+<p><strong>Français</strong></p>
+<ul><li>PTZBot est désormais signé avec un Developer ID d'Apple et notarisé par Apple : un PTZBot fraîchement téléchargé s'ouvre sans « Ouvrir quand même ». Depuis une version précédente, macOS dit une seule fois que l'app diffère des versions ouvertes jusque-là et demande s'il faut l'ouvrir : choisissez « Ouvrir quand même ». Il peut aussi redemander l'accès au réseau local, et il faudra peut-être réactiver « Ouvrir à la connexion ».</li><li>Le projet passe à github.com/Djoko-cli/ptzbot ; les anciens liens y redirigent.</li><li>Talkback : une mise à jour ne rallume plus Talkback de lui-même quand vous l'aviez éteint.</li></ul>
+]]></description>
+      <enclosure url="https://github.com/Djoko-cli/ptzbot/releases/download/ptzbot-v1.0.7/PTZBot-1.0.7.dmg" length="3274869" type="application/octet-stream" sparkle:edSignature="zMTWhwTqLriPhmaLsqyMO0IZeHywpQAFtiUIplg/SFrx/25Lko0JrwrXWNM/gknyzKGtJr7flHu/CodFaLuRDw=="/>
+    </item>
+    <item>
       <title>1.0.6</title>
       <pubDate>Mon, 12 Oct 2026 10:29:06 +0000</pubDate>
       <sparkle:version>220</sparkle:version>
