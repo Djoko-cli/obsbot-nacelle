@@ -11,11 +11,21 @@ final class FakeLaunchctl: Launchctl {
 
     struct State {
         var loaded = false
+        /// Un `bootout` a eu lieu et l'agent n'a pas fini de se décharger (un `bootstrap` y met fin).
+        var unloading = false
         var pollsBeforeUnload = 0
         var bootoutFails = false
         /// bootout échoue, mais l'agent s'arrête quand même.
         var unloadsDespiteFailure = false
         var bootouts = 0
+        var bootstrapFails = false
+        var kickstartFails = false
+        /// Les appels qui changent quelque chose, dans l'ordre : « bootout », « bootstrap », « kickstart ».
+        var calls: [String] = []
+        /// Les labels reçus, dans l'ordre des appels.
+        var labels: [String] = []
+        /// Pour chaque `bootstrap` : la plist existait-elle à ce moment ?
+        var plistPresentAtBootstrap: [Bool] = []
     }
 
     let state = Mutex(State())
@@ -23,9 +33,10 @@ final class FakeLaunchctl: Launchctl {
     func isLoaded(label: String) -> Bool {
         state.withLock { state in
             guard state.loaded else { return false }
-            if state.bootouts > 0 {
+            if state.unloading {
                 if state.pollsBeforeUnload == 0 {
                     state.loaded = false
+                    state.unloading = false
                     return false
                 }
                 state.pollsBeforeUnload -= 1
@@ -36,7 +47,8 @@ final class FakeLaunchctl: Launchctl {
 
     func bootout(label: String) throws {
         try state.withLock { state in
-            #expect(label == LegacyAgent.label)
+            state.calls.append("bootout")
+            state.labels.append(label)
             if state.bootoutFails {
                 if state.unloadsDespiteFailure {
                     state.loaded = false
@@ -44,6 +56,25 @@ final class FakeLaunchctl: Launchctl {
                 throw Failure()
             }
             state.bootouts += 1
+            state.unloading = true
+        }
+    }
+
+    func bootstrap(plist: URL) throws {
+        try state.withLock { state in
+            state.calls.append("bootstrap")
+            state.plistPresentAtBootstrap.append(FileManager.default.fileExists(atPath: plist.path))
+            if state.bootstrapFails { throw Failure() }
+            state.loaded = true
+            state.unloading = false
+        }
+    }
+
+    func kickstart(label: String) throws {
+        try state.withLock { state in
+            state.calls.append("kickstart")
+            state.labels.append(label)
+            if state.kickstartFails { throw Failure() }
         }
     }
 }

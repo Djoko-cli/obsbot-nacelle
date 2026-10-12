@@ -1,24 +1,59 @@
 import Foundation
 
-/// `launchctl`, derrière un protocole pour les tests : l'app ne touche à launchd que pour l'ancien agent.
+/// `launchctl`, derrière un protocole pour les tests : l'app ne touche à launchd que pour l'ancien agent de ptzd et pour
+/// l'agent de talkd (`ClassicAgent`).
 public protocol Launchctl: Sendable {
     func isLoaded(label: String) -> Bool
     func bootout(label: String) throws
+    /// `launchctl bootstrap gui/<uid> <plist>` : charge l'agent de cette plist. Échoue s'il est déjà chargé.
+    func bootstrap(plist: URL) throws
+    /// `launchctl kickstart -k gui/<uid>/<label>` : tue l'agent chargé puis le relance, depuis le programme que sa plist
+    /// désigne (le nouveau talkd remplace l'ancien encore en mémoire).
+    func kickstart(label: String) throws
 }
 
-/// Implémentation réelle : `/bin/launchctl print|bootout gui/<uid>/<label>`.
+/// Implémentation réelle : `/bin/launchctl print|bootout|bootstrap|kickstart` sur le domaine `gui/<uid>`.
 public struct SystemLaunchctl: Launchctl {
     public struct Failure: LocalizedError {
+        public var command: String
         public var status: Int32
-        public var errorDescription: String? { Localization.text("launchctl bootout a échoué (code \(String(status))).") }
+        public var errorDescription: String? { Localization.text("launchctl \(command) a échoué (code \(String(status))).") }
+    }
+
+    /// Les appels à `launchctl` que l'app fait.
+    public enum Command: Equatable, Sendable {
+        case print(String)
+        case bootout(String)
+        case bootstrap(URL)
+        case kickstart(String)
+
+        var name: String {
+            switch self {
+            case .print: "print"
+            case .bootout: "bootout"
+            case .bootstrap: "bootstrap"
+            case .kickstart: "kickstart"
+            }
+        }
     }
 
     public init() {}
 
-    private func run(_ arguments: [String]) -> Int32 {
+    /// Les arguments de `launchctl`, pour l'utilisateur `uid`. Séparés de l'exécution pour être testés sans lancer le
+    /// vrai `launchctl`.
+    public static func arguments(_ command: Command, uid: uid_t) -> [String] {
+        switch command {
+        case let .print(label): ["print", "gui/\(uid)/\(label)"]
+        case let .bootout(label): ["bootout", "gui/\(uid)/\(label)"]
+        case let .bootstrap(plist): ["bootstrap", "gui/\(uid)", plist.path]
+        case let .kickstart(label): ["kickstart", "-k", "gui/\(uid)/\(label)"]
+        }
+    }
+
+    private func run(_ command: Command) -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = arguments
+        process.arguments = Self.arguments(command, uid: getuid())
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         do {
@@ -30,17 +65,25 @@ public struct SystemLaunchctl: Launchctl {
         return process.terminationStatus
     }
 
-    private func target(_ label: String) -> String {
-        "gui/\(getuid())/\(label)"
+    private func check(_ command: Command) throws {
+        let status = run(command)
+        guard status == 0 else { throw Failure(command: command.name, status: status) }
     }
 
     public func isLoaded(label: String) -> Bool {
-        run(["print", target(label)]) == 0
+        run(.print(label)) == 0
     }
 
     public func bootout(label: String) throws {
-        let status = run(["bootout", target(label)])
-        guard status == 0 else { throw Failure(status: status) }
+        try check(.bootout(label))
+    }
+
+    public func bootstrap(plist: URL) throws {
+        try check(.bootstrap(plist))
+    }
+
+    public func kickstart(label: String) throws {
+        try check(.kickstart(label))
     }
 }
 
