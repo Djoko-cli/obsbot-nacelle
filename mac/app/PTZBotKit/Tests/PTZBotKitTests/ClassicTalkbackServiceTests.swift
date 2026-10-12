@@ -156,6 +156,7 @@ struct ClassicTalkbackServiceTests {
     func fullMigration() async {
         defer { try? FileManager.default.removeItem(at: root) }
         registry.state.withLock { $0.registered = .enabled }
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "8"
         let model = model(bundleVersion: "9")
         await model.prepareAtLaunch()
         #expect(registry.state.withLock { $0.unregisters } == 1)
@@ -170,6 +171,7 @@ struct ClassicTalkbackServiceTests {
     func fullMigrationLeavesRefusalOff() async {
         defer { try? FileManager.default.removeItem(at: root) }
         registry.state.withLock { $0.registered = .requiresApproval }
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "8"
         launchctl.state.withLock { $0.disabled = true }
         let model = model(bundleVersion: "9")
         await model.prepareAtLaunch()
@@ -186,6 +188,7 @@ struct ClassicTalkbackServiceTests {
     func fullMigrationEnabledButDisabledService() async {
         defer { try? FileManager.default.removeItem(at: root) }
         registry.state.withLock { $0.registered = .enabled }
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "8"
         launchctl.state.withLock { $0.disabled = true }
         let model = model(bundleVersion: "9")
         await model.prepareAtLaunch()
@@ -198,6 +201,7 @@ struct ClassicTalkbackServiceTests {
     func fullMigrationRetried() async {
         defer { try? FileManager.default.removeItem(at: root) }
         registry.state.withLock { $0.registered = .enabled }
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "8"
         launchctl.state.withLock { $0.bootstrapFails = true }
         await model(bundleVersion: "9").prepareAtLaunch()
         #expect(!FileManager.default.fileExists(atPath: plistURL.path))
@@ -217,11 +221,26 @@ struct ClassicTalkbackServiceTests {
     func fullMigrationRefused() async {
         defer { try? FileManager.default.removeItem(at: root) }
         registry.state.withLock { $0.registered = .enabled; $0.unregisterFails = true }
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "8"
         let model = model(bundleVersion: "9")
         await model.prepareAtLaunch()
         #expect(calls() == [])
         #expect(!FileManager.default.fileExists(atPath: plistURL.path))
         #expect(model.lastError == "Talkback impossible : refusé")
+    }
+
+    @Test("De bout en bout, sans le réglage de la 1.0.4 et SMAppService qui répond « inscrit » (banc du 12/10) : rien n'est désinscrit, installé ni chargé")
+    func fullNoMigrationWithoutOldSetting() async {
+        defer { try? FileManager.default.removeItem(at: root) }
+        registry.state.withLock { $0.registered = .enabled }
+        let model = model(bundleVersion: "9")
+        await model.prepareAtLaunch()
+        #expect(registry.state.withLock { $0.unregisters } == 0)
+        #expect(calls() == [])
+        #expect(!FileManager.default.fileExists(atPath: plistURL.path))
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+        #expect(model.lastError == nil)
+        #expect(model.status == .disabled)
     }
 
     @Test("De bout en bout, migration avec Talkback éteint : aucune plist, aucun appel à launchctl")

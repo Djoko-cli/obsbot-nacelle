@@ -389,3 +389,4 @@ Relecture du prototype (12/10), défaut I1. Si la plist est à jour mais que l'a
   - L'erreur 144 signifie désormais « déjà migré » (`LegacyAlreadyMigrated`) : la migration est retenue faite, et
     rien n'est allumé contre son choix.
   - Un ancien agent coupé dont la désinscription échoue compte aussi comme migré, sans erreur affichée.
+- **Migration fondée sur le réglage de la 1.0.4 (banc du 12/10)** : la migration n'a lieu que si le réglage `talkbackRegisteredBuild`, posé quand Talkback était allumé sous la 1.0.3/1.0.4, existe (lu avant son effacement) et que `SMAppService` dit l'ancien agent inscrit ; son statut seul n'est plus fiable une fois l'agent classique fondu dans la fiche de l'ancien, et avait rallumé Talkback contre le choix d'un utilisateur de la 1.0.5 qui l'avait éteint (pire cas accepté : un utilisateur de la 1.0.2 retrouve Talkback éteint).

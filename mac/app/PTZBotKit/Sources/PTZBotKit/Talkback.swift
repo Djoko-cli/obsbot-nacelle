@@ -196,8 +196,10 @@ public final class TalkbackModel {
     /// La clé du réglage qui retient le numéro de compilation de l'app qui a, la dernière fois, installé ou mis en ordre
     /// l'agent classique : un autre numéro fait redémarrer talkd au lancement.
     public static let agentBuildKey = "talkbackAgentBuild"
-    /// L'ancien réglage de la 1.0.4 (numéro de compilation de l'inscription par `SMAppService`) : plus utilisé, effacé
-    /// au lancement.
+    /// L'ancien réglage de la 1.0.3/1.0.4 (numéro de compilation de l'inscription par `SMAppService`), posé quand Talkback
+    /// était allumé et effacé à l'extinction. Il n'est plus écrit : au lancement, sa seule présence (lue avant son
+    /// effacement) dit qu'il y a une inscription de la 1.0.4 à migrer, car le statut de `SMAppService` n'est plus
+    /// fiable une fois l'agent classique installé (banc du 12/10).
     public static let obsoleteRegisteredBuildKey = "talkbackRegisteredBuild"
     /// L'installation à retenter au lancement suivant : la migration a désinscrit l'ancien agent mais l'installation du
     /// nouveau a échoué, il ne reste ni l'un ni l'autre. Une seule intention : « enable » (Talkback était allumé).
@@ -328,11 +330,14 @@ public final class TalkbackModel {
     ///
     /// **Migration depuis la 1.0.4.** La 1.0.4 inscrivait talkd par `SMAppService.agent(plistName:)`. Si cet agent est
     /// encore inscrit, il est désinscrit en attendant la fin, puis l'agent classique est installé : Talkback était
-    /// allumé, il le reste. Éteint, rien n'est installé. L'ancien réglage du numéro d'inscription est effacé. Si
-    /// l'utilisateur avait coupé l'élément (« Autorisation requise »), l'ancien agent est désinscrit et rien n'est
-    /// installé : Talkback reste éteint, l'utilisateur le rallume par l'interrupteur s'il le veut. L'intention « allumer »
-    /// est retenue (`pendingInstallKey`) avant la désinscription ; si l'installation échoue et que rien n'est installé,
-    /// elle est retentée au lancement suivant, une fois par lancement.
+    /// allumé, il le reste. Éteint, rien n'est installé. La migration n'a lieu que si l'ancien réglage du numéro
+    /// d'inscription (`obsoleteRegisteredBuildKey`) existe, lu avant d'être effacé : le statut de `SMAppService` seul ne
+    /// suffit pas (BTM fond l'agent classique dans la fiche de l'ancien, qui se dit alors encore inscrit, même Talkback
+    /// éteint : sans le réglage, rien n'est désinscrit ni installé). Un utilisateur de la 1.0.2 retrouve Talkback éteint
+    /// (pire cas accepté). Si l'utilisateur avait coupé l'élément (« Autorisation requise »), l'ancien agent est
+    /// désinscrit et rien n'est installé : Talkback reste éteint, l'utilisateur le rallume par l'interrupteur s'il le
+    /// veut. L'intention « allumer » est retenue (`pendingInstallKey`) avant la désinscription ; si l'installation
+    /// échoue et que rien n'est installé, elle est retentée au lancement suivant, une fois par lancement.
     ///
     /// **Mise à jour.** Si la plist de l'agent classique existe, elle est réécrite quand son contenu diffère de celui
     /// attendu (l'app a changé de chemin), sinon l'agent est chargé s'il ne l'est pas, sinon talkd est redémarré (`kickstart -k`) quand le numéro de compilation
@@ -349,12 +354,15 @@ public final class TalkbackModel {
         // PTZBot lancé depuis un emplacement temporaire (app translocalisée, image disque) : rien du tout, ni migration, ni
         // réécriture de la plist, ni redémarrage, ni numéro retenu. L'installation en place reste telle qu'elle est.
         guard service.installBlocker == nil else { return }
+        // Lu avant d'être effacé : il dit que Talkback était allumé sous la 1.0.3/1.0.4.
+        let hadOldRegistration = settings.string(forKey: Self.obsoleteRegisteredBuildKey) != nil
         settings.set(nil as String?, forKey: Self.obsoleteRegisteredBuildKey)
         // Une plist classique en place : la migration est faite, quoi que dise SMAppService de l'ancien agent.
         if service.agentState != .absent {
             settings.set(true, forKey: Self.migrationDoneKey)
         }
-        let migrating = settings.bool(forKey: Self.migrationDoneKey) != true && service.hasLegacyRegistration
+        let migrating = hadOldRegistration && settings.bool(forKey: Self.migrationDoneKey) != true
+            && service.hasLegacyRegistration
         let pending = settings.string(forKey: Self.pendingInstallKey)
         // Une installation retenue ne se retente que si rien n'est installé ; sinon la plist en place passe d'abord.
         let retrying = !migrating && pending != nil && service.agentState == .absent

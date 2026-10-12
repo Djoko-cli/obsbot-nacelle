@@ -146,9 +146,50 @@ struct TalkbackTests {
         #expect(model.status == .disabled)
     }
 
+    // Banc du 12/10 : après la migration, SMAppService répond `.enabled` pour l'ancien agent même si Talkback est éteint
+    // (BTM a fondu l'agent classique dans sa fiche). Seul le réglage de la 1.0.3/1.0.4, posé quand Talkback était
+    // allumé, dit qu'il y a eu une inscription à migrer.
+
+    @Test("Sans le réglage de la 1.0.4, même si SMAppService dit l'ancien agent inscrit : ni migration ni installation, Talkback reste éteint")
+    func noMigrationWithoutOldSetting() async {
+        service.hasLegacyRegistration = true
+        await model.prepareAtLaunch()
+        #expect(service.calls == [])
+        #expect(settings.strings[TalkbackModel.pendingInstallKey] == nil)
+        #expect(settings.strings[TalkbackModel.agentBuildKey] == nil)
+        #expect(settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] == nil)
+        #expect(model.lastError == nil)
+        #expect(!model.isPreparing)
+        #expect(!model.isEnabled)
+        #expect(model.status == .disabled)
+        // Au lancement suivant non plus.
+        await makeModel(bundleVersion: "8").prepareAtLaunch()
+        #expect(service.calls == [])
+    }
+
+    @Test("Sans le réglage de la 1.0.4, l'ancien agent « Autorisation requise » n'est pas non plus désinscrit")
+    func noMigrationWithoutOldSettingRequiresApproval() async {
+        service.hasLegacyRegistration = true
+        service.legacyRequiresApproval = true
+        await model.prepareAtLaunch()
+        #expect(service.calls == [])
+        #expect(model.lastError == nil)
+        #expect(model.status == .disabled)
+    }
+
+    @Test("Le réglage de la 1.0.4 est lu avant d'être effacé : la migration a lieu, puis le réglage a disparu")
+    func oldSettingReadBeforeErased() async {
+        service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "5"
+        await model.prepareAtLaunch()
+        #expect(service.calls == ["unregisterLegacy", "enable"])
+        #expect(settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] == nil)
+    }
+
     @Test("Migration : la désinscription est attendue avant d'installer, et l'interrupteur reste grisé sur « Démarrage… » pendant ce temps")
     func migrationWaitsForUnregister() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.unregisterLegacyGate.isHeld = true
         let task = Task { await model.prepareAtLaunch() }
         await waitUntil { service.unregisterLegacyGate.isPending }
@@ -171,6 +212,7 @@ struct TalkbackTests {
     @Test("Migration, désinscription refusée : erreur affichée, rien d'installé, numéro non retenu")
     func migrationUnregisterRefused() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.unregisterLegacyFailure = Refused()
         await model.prepareAtLaunch()
         #expect(service.calls == ["unregisterLegacy"])
@@ -188,6 +230,7 @@ struct TalkbackTests {
     func noMigrationOnceClassicAgentExists() async {
         service.agentState = .installed
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.legacyRequiresApproval = true
         settings.strings[TalkbackModel.agentBuildKey] = "7"
         await model.prepareAtLaunch()
@@ -201,6 +244,7 @@ struct TalkbackTests {
     func noMigrationAfterDisableOnceDone() async {
         settings.values[TalkbackModel.migrationDoneKey] = true
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.legacyRequiresApproval = true
         await model.prepareAtLaunch()
         #expect(service.calls == [])
@@ -211,12 +255,14 @@ struct TalkbackTests {
     @Test("Migration réussie : retenue faite ; refusée : pas retenue, elle repart au lancement suivant")
     func migrationDoneRemembered() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         await model.prepareAtLaunch()
         #expect(service.calls == ["unregisterLegacy", "enable"])
         #expect(settings.values[TalkbackModel.migrationDoneKey] == true)
         let other = FakeSettings()
         let refused = FakeTalkbackService()
         refused.hasLegacyRegistration = true
+        other.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         refused.unregisterLegacyFailure = Refused()
         let second = TalkbackModel(service: refused, state: state, process: process, scheduler: scheduler, settings: other, bundleVersion: "7")
         await second.prepareAtLaunch()
@@ -232,6 +278,7 @@ struct TalkbackTests {
     @Test("Migration, installation refusée après la désinscription : erreur affichée, numéro non retenu")
     func migrationInstallRefused() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.enableFailure = Refused()
         await model.prepareAtLaunch()
         #expect(service.calls == ["unregisterLegacy", "enable"])
@@ -243,6 +290,7 @@ struct TalkbackTests {
     @Test("Migration d'un agent « Autorisation requise » : désinscrit en attendant la fin, rien n'est installé, Talkback reste éteint")
     func migrationLeavesRefusalOff() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.legacyRequiresApproval = true
         await model.prepareAtLaunch()
         #expect(service.calls == ["unregisterLegacy"])
@@ -256,6 +304,7 @@ struct TalkbackTests {
     @Test("Migration d'un agent « Autorisation requise », désinscription refusée : erreur affichée, rien d'installé ni retenu")
     func migrationRefusalUnregisterRefused() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.legacyRequiresApproval = true
         service.unregisterLegacyFailure = Refused()
         await model.prepareAtLaunch()
@@ -270,6 +319,7 @@ struct TalkbackTests {
     func migrationAlreadyClassic() async {
         // Utilisateur de la 1.0.5 qui avait éteint Talkback : plus de plist, mais la fiche fondue de BTM se dit inscrite.
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.unregisterLegacyFailure = LegacyAlreadyMigrated()
         await model.prepareAtLaunch()
         #expect(service.calls == ["unregisterLegacy"])
@@ -283,6 +333,7 @@ struct TalkbackTests {
     @Test("Migration d'un agent actif : l'intention est retenue avant la désinscription, pas après")
     func migrationRetainsIntentionBeforeUnregister() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.unregisterLegacyGate.isHeld = true
         let task = Task { await model.prepareAtLaunch() }
         await waitUntil { service.unregisterLegacyGate.isPending }
@@ -296,6 +347,7 @@ struct TalkbackTests {
     @Test("Migration, installation refusée alors que rien n'est installé : l'intention est retenue, sans numéro")
     func migrationRetainsIntention() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.enableFailure = Refused()
         await model.prepareAtLaunch()
         #expect(settings.strings[TalkbackModel.pendingInstallKey] == "enable")
@@ -306,6 +358,7 @@ struct TalkbackTests {
     @Test("Migration, échec mais plist en place malgré tout : rien à retenir, la mise en ordre du lancement suivant s'en charge")
     func migrationKeptPlist() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.enableFailure = Refused()
         service.stateAfterFailedEnable = .installed
         await model.prepareAtLaunch()
@@ -423,6 +476,7 @@ struct TalkbackTests {
     func launchTransient() async {
         service.installBlocker = ClassicAgentError.transientLocation
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.agentState = .installed
         settings.strings[TalkbackModel.agentBuildKey] = "6"
         settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
@@ -439,6 +493,7 @@ struct TalkbackTests {
     @Test("Compilation de travail (numéro 1) : ni migration ni mise à jour, même avec un ancien agent et une plist")
     func workingBuild() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.agentState = .installed
         settings.strings[TalkbackModel.agentBuildKey] = "42"
         settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "42"
@@ -451,6 +506,7 @@ struct TalkbackTests {
     @Test("Numéro de compilation inconnu : rien")
     func unknownBuild() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         service.agentState = .installed
         await makeModel(bundleVersion: nil).prepareAtLaunch()
         #expect(service.calls == [])
@@ -467,6 +523,7 @@ struct TalkbackTests {
     @Test("Au lancement, tout se fait hors du fil principal")
     func prepareOffMainThread() async {
         service.hasLegacyRegistration = true
+        settings.strings[TalkbackModel.obsoleteRegisteredBuildKey] = "6"
         await model.prepareAtLaunch()
         service.agentState = .installed
         await makeModel(bundleVersion: "8").prepareAtLaunch()
