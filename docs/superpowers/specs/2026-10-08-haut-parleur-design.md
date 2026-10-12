@@ -305,7 +305,7 @@ Un essai a montré qu'un **agent classique**, une plist dans `~/Library/LaunchAg
 ### 15.2 Conception
 
 - **Label** : inchangé, `io.github.djoko-cli.obsbot-nacelle.talkd`. **Plist** : `~/Library/LaunchAgents/<label>.plist`, générée par le code (`PropertyListSerialization`, XML), écrite de façon atomique en 0644, avec `Label`, `ProgramArguments` (le **chemin absolu** de `Contents/Helpers/talkd` de l'app qui tourne), `RunAtLoad`, `KeepAlive`, `ThrottleInterval` à 10 et `ProcessType` à `Interactive` (mêmes raisons qu'au § 7). Pas de `AssociatedBundleIdentifiers`.
-- **Allumer** : écrire la plist, puis `launchctl bootstrap gui/<uid> <plist>` ; si le job est déjà chargé, `bootout` d'abord, en attendant le déchargement (10 s au plus, sondage tous les 0,25 s). Si le `bootstrap` échoue, la plist est retirée : l'interrupteur revient à « Désactivé » avec l'erreur.
+- **Allumer** : écrire la plist, puis `launchctl enable gui/<uid>/<label>` (voir 15.7), puis `launchctl bootstrap gui/<uid> <plist>` ; si le job est déjà chargé, `bootout` d'abord, en attendant le déchargement (10 s au plus, sondage tous les 0,25 s). Si l'`enable` ou le `bootstrap` échoue, la plist est retirée : l'interrupteur revient à « Désactivé » avec l'erreur. **Refusé depuis un emplacement temporaire** (15.8).
 - **Éteindre** : `launchctl bootout gui/<uid>/<label>`, attente bornée du déchargement, puis suppression de la plist. Si l'agent ne se décharge pas, la plist reste et l'erreur est montrée.
 - **Lecture de l'état** : pas de plist, « Désactivé » ; plist présente et `SMAppService.statusForLegacyPlist(at:)` répond `.requiresApproval` (l'utilisateur a coupé l'élément dans Réglages › Général › Ouverture), « Autorisation requise » et le bouton qui ouvre Réglages ; sinon, comme avant, le fichier d'état et la sonde de processus (« Démarrage… », « Prêt », « En lecture », « Arrêté… », « talkd ne démarre pas »). Le statut « Indisponible » disparaît : un échec d'écriture ou de `bootstrap` laisse l'interrupteur éteint avec l'erreur dans `lastError`.
 - **Hors du fil de l'interface** : tout appel à `launchctl` et toute attente (`Blocking`, types non isolés `ClassicAgent` et `SMAgentRegistry`). Le panneau garde `isBusy`, « Démarrage… », « Arrêt… », la surveillance du fichier d'état et la relecture chaque seconde.
@@ -315,9 +315,10 @@ Un essai a montré qu'un **agent classique**, une plist dans `~/Library/LaunchAg
 L'interrupteur est grisé pendant ce temps (`TalkbackModel.isPreparing`, à la place de `isReregistering`).
 
 1. **Migration depuis la 1.0.4.** Si `SMAppService.agent(plistName:)` dit `.enabled` ou `.requiresApproval`, il est désinscrit en **attendant** la fin (`unregister()` asynchrone), puis l'agent classique est installé : Talkback était allumé, il le reste ; éteint, rien. Le réglage `talkbackRegisteredBuild` est effacé. **La plist embarquée est gardée** (`mac/app/LaunchAgents`, copiée dans `Contents/Library/LaunchAgents`) : `SMAppService` en a besoin pour désinscrire l'ancien agent. Elle ne sert plus qu'à cela et n'est jamais inscrite.
-2. **Mise à jour.** Si la plist classique existe : si son contenu diffère de celui attendu (l'app a changé de chemin, ou les clés ont changé), elle est réécrite, puis `bootout` et `bootstrap` ; sinon, si le numéro de compilation (`CFBundleVersion`) diffère de celui retenu au dernier passage (réglage `talkbackAgentBuild`, aussi écrit à chaque allumage par l'interrupteur et effacé à l'extinction), `launchctl kickstart -k gui/<uid>/<label>` fait remplacer l'ancien talkd encore en mémoire par le nouveau. Le numéro est retenu.
+2. **Mise à jour.** Si la plist classique existe : si son contenu diffère de celui attendu (l'app a changé de chemin, ou les clés ont changé), elle est réécrite, puis `bootout` et `bootstrap` ; sinon, **si l'agent n'est pas chargé, `bootstrap`** (15.9) ; sinon, si le numéro de compilation (`CFBundleVersion`) diffère de celui retenu au dernier passage (réglage `talkbackAgentBuild`, aussi écrit à chaque allumage par l'interrupteur et effacé à l'extinction), `launchctl kickstart -k gui/<uid>/<label>` fait remplacer l'ancien talkd encore en mémoire par le nouveau. Le numéro est retenu.
 3. **Compilation de travail** (`CFBundleVersion` égal à 1) : ni migration ni mise à jour automatique, sinon l'agent de l'app installée pointerait vers la copie de travail.
-4. Une seule tentative par lancement : en cas d'échec l'erreur est montrée, le numéro reste, rien n'est retenté.
+4. **Emplacement temporaire** (15.8) : rien du tout, ni migration, ni mise à jour.
+5. Une seule tentative par lancement : en cas d'échec l'erreur est montrée, le numéro reste, rien n'est retenté (sauf l'installation retenue après une migration, 15.7).
 
 ### 15.4 Ce qui est retiré
 
@@ -333,5 +334,30 @@ Si l'on jette l'app avec Talkback allumé, la plist reste dans `~/Library/Launch
 - **Plus aucun `Launch Constraint Violation`** après une mise à jour par Sparkle (nouveau binaire, `kickstart -k`), et talkd qui repart tout seul en moins de 15 s.
 - **La fiche dans Réglages › Général › Ouverture** : son nom (sans `AssociatedBundleIdentifiers`, elle peut s'afficher sous « talkd »), aucune notification, et l'état « Autorisation requise » quand on coupe l'élément (`statusForLegacyPlist`).
 - **Un service désactivé dans la base de launchd** (`launchctl print-disabled`) : un `bootstrap` peut échouer avec « Service is disabled » après que l'utilisateur a coupé l'élément dans Réglages.
-- **L'app lancée depuis un dossier « translocalisé »** par Gatekeeper : la plist garderait alors un chemin temporaire (`ProgramArguments`) ; elle est réécrite au lancement suivant depuis l'emplacement définitif.
 - **Les temps réels** : `bootout` jusqu'au déchargement, `bootstrap`, `kickstart -k`, hors du fil de l'interface (interrupteur grisé, pas de gel).
+- **`launchctl print-disabled gui/$(id -u)`** avant et après une coupure dans Réglages › Ouverture, puis allumer par l'interrupteur : le label doit passer à `disabled` à la coupure, et à `enabled` après l'allumage (15.7).
+- **Lancement depuis Téléchargements (app translocalisée) et depuis le DMG**, après le correctif de 15.8 : « Désactivé » reste affiché, allumer montre le message, rien n'est écrit dans `~/Library/LaunchAgents`, et une installation saine existante n'est pas touchée.
+- **Quarantaine du `talkd`** d'une app copiée depuis le DMG téléchargé : macOS 27 refuse un plist ou un programme en quarantaine (`bootstrap` répond 5, erreur 155).
+- **Le nom de la fiche dans Ouverture**, avec et sans `AssociatedBundleIdentifiers` (l'ajouter l'afficherait sous le nom de l'app, mais changerait la plist attendue).
+
+### 15.7 Service désactivé dans launchd, refus respecté, installation retenue
+
+Relecture du prototype (12/10), défaut I2. Hypothèse, à confirmer au banc (15.6) : couper l'élément dans Réglages › Ouverture pose un « disabled » dans la base de launchd, clé = le label, qui survit à la suppression de la plist.
+
+- **L'interrupteur réactive le service** : `Launchctl.enable(label:)` (`launchctl enable gui/<uid>/<label>`) est appelé par `install()` avant le `bootstrap`. C'est un geste explicite de l'utilisateur, et l'appel est sans effet si le service n'est pas désactivé. Sans lui, éteindre puis rallumer après une coupure échouait (« Service is disabled »), plist retirée, dans l'impasse. Si l'`enable` échoue, la plist est retirée comme pour un `bootstrap` en échec.
+- **Migration d'un ancien agent « Autorisation requise »** (`SMAppService.Status.requiresApproval`) : le refus de l'utilisateur est respecté. Pas d'`enable` ; la plist est installée, et **gardée** si le `bootstrap` échoue, pour que l'état affiche « Autorisation requise » (bouton qui ouvre Réglages) au lieu de « Désactivé » avec une erreur. L'état de l'ancien agent est lu avant la désinscription (`legacyRequiresApproval`).
+- **Migration d'un agent actif dont l'installation échoue après la désinscription** : l'ancien agent n'existe plus, l'intention de l'utilisateur serait perdue. Elle est retenue dans le réglage `talkbackPendingInstall` (`enable`, ou `respectRefusal` si l'ancien agent était « Autorisation requise »), posé juste après la désinscription et effacé quand l'installation réussit. Au lancement suivant, si rien n'est installé, l'installation est retentée **une fois par lancement** (même règle que 15.3, point 5) ; l'interrupteur, allumé ou éteint, l'oublie. Si une plist est restée en place (refus respecté), il n'y a rien à retenir : le lancement suivant la remet en ordre (15.9).
+
+### 15.8 Emplacement temporaire
+
+Relecture du prototype (12/10), défaut B1. Une app **translocalisée** par Gatekeeper (`.../AppTranslocation/<UUID>/d/PTZBot.app`) ou lancée depuis une **image disque** (volume en lecture seule) a un chemin qui disparaît à la fermeture ou à l'éjection, et qui change à chaque lancement. Y écrire la plist ou la réécrire casserait un Talkback qui marchait.
+
+- `ClassicAgent.isTransientLocation(_:)` : le chemin de `talkd` (liens résolus) contient `/AppTranslocation/`, ou son volume est en lecture seule (`volumeIsReadOnly`).
+- **Allumer est refusé** (`TalkbackService.installBlocker`, `ClassicAgentError.transientLocation`) avec le message, au vouvoiement et traduit : « PTZBot est lancé depuis un emplacement temporaire (Téléchargements ou image disque). Déplacez PTZBot dans le dossier Applications, puis rouvrez-le avant d'allumer Talkback. » Rien n'est appelé, l'interrupteur ne bouge pas.
+- **Au lancement, rien du tout** : ni migration (l'ancienne inscription de la 1.0.4 reste intacte jusqu'à ce que l'app soit à sa place), ni réécriture de la plist, ni `kickstart`, ni numéro retenu, ni installation retenue retentée, ni erreur.
+- **Éteindre reste permis** (il ne dépend pas du chemin).
+- Défense en profondeur : `install()` lève l'erreur avant d'écrire quoi que ce soit, et `reconcile` sort d'emblée.
+
+### 15.9 Agent à jour mais pas chargé
+
+Relecture du prototype (12/10), défaut I1. Si la plist est à jour mais que l'agent n'est pas chargé (un lancement précédent a échoué au `bootstrap`, ou `launchctl bootout` à la main), `reconcile` fait un `bootstrap` ; le `kickstart -k` (nouveau numéro de compilation) n'est fait que si l'agent est chargé. Auparavant, le `kickstart` échouait à chaque lancement sur un service absent. Si l'élément est coupé par l'utilisateur, le `bootstrap` échoue sans dommage et l'erreur est effacée parce que l'état est « Autorisation requise ».
