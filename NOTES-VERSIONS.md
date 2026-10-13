@@ -14,8 +14,9 @@ version GitHub et à la fenêtre de mise à jour.
   HomeKit and to the iPhone app while it is open. Its settings are in the new **Settings › Camera** tab, where an
   existing go2rtc configuration can be imported.
 - go2rtc needs ffmpeg, which PTZBot does not include: install it with Homebrew (`brew install ffmpeg`).
-- The first time, macOS asks for camera access, then microphone access, in the name of "ffmpeg" (not PTZBot): choose
-  "Allow". The request comes back after Homebrew updates ffmpeg.
+- The first time, macOS may ask for camera access in the name of PTZBot (when PTZBot looks for the cameras listed in
+  **Settings › Camera**), then for camera and microphone access in the name of "ffmpeg" (when go2rtc films): choose
+  "Allow" every time, both are needed. The request in the name of "ffmpeg" comes back after Homebrew updates ffmpeg.
 - When go2rtc is on, quitting PTZBot also stops the HomeKit camera; PTZBot asks for confirmation first.
 - In the panel, each service shows a green dot when everything is normal; a status line appears only when something
   needs attention.
@@ -35,8 +36,10 @@ version GitHub et à la fenêtre de mise à jour.
   la caméra vers HomeKit et vers l'app iPhone tant qu'il est ouvert. Ses réglages sont dans le nouvel onglet
   **Réglages › Caméra**, où une configuration go2rtc existante peut être importée.
 - go2rtc a besoin de ffmpeg, que PTZBot ne fournit pas : installez-le avec Homebrew (`brew install ffmpeg`).
-- La première fois, macOS demande l'accès à la caméra, puis au micro, au nom de « ffmpeg » (et non de PTZBot) :
-  choisissez « Autoriser ». La demande revient après une mise à jour de ffmpeg par Homebrew.
+- La première fois, macOS peut demander l'accès à la caméra au nom de PTZBot (quand PTZBot cherche les caméras listées
+  dans **Réglages › Caméra**), puis l'accès à la caméra et au micro au nom de « ffmpeg » (quand go2rtc filme) :
+  choisissez « Autoriser » à chaque fois, les deux sont nécessaires. La demande au nom de « ffmpeg » revient après une
+  mise à jour de ffmpeg par Homebrew.
 - Quand go2rtc est allumé, quitter PTZBot arrête aussi la caméra HomeKit ; PTZBot demande d'abord confirmation.
 - Dans le panneau, chaque service montre une pastille verte quand tout est normal ; une ligne d'état n'apparaît que
   quand il faut y prêter attention.
