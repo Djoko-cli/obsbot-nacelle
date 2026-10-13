@@ -2,7 +2,8 @@ import Foundation
 import Testing
 @testable import PTZBotKit
 
-@Suite("go2rtc : préparation du lancement et ports", .french)
+// Sérialisée : les deux tests « Ports réels » ouvrent de vraies sockets, l'un après l'autre.
+@Suite("go2rtc : préparation du lancement et ports", .french, .serialized)
 struct Go2RTCPreparerTests {
     private func preparer(_ directory: URL, locator: FFmpegLocator = .homebrew, catalog: FakeCatalog = FakeCatalog(),
                           ports: FakePorts = FakePorts()) -> Go2RTCPreparer {
@@ -102,12 +103,12 @@ struct Go2RTCPreparerTests {
         let probe = SystemPortProbe()
         for (type, transport) in [(SOCK_STREAM, PortTransport.tcp), (SOCK_DGRAM, .udp)] {
             for kind in TestServer.Kind.allCases {
-                let server = try #require(TestServer(kind: kind, type: type), "\(kind) \(transport)")
+                let server = try #require(TestServer.onFreePort(kind: kind, type: type), "\(kind) \(transport)")
                 #expect(!probe.isFree(server.port, transport: transport, loopbackOnly: false), "\(kind) \(transport)")
                 #expect(!probe.isFree(server.port, transport: transport, loopbackOnly: true), "\(kind) \(transport)")
                 server.close()
-                #expect(probe.isFree(server.port, transport: transport, loopbackOnly: false), "\(kind) \(transport)")
-                #expect(probe.isFree(server.port, transport: transport, loopbackOnly: true), "\(kind) \(transport)")
+                #expect(TestServer.becomesFree(server.port, transport: transport, loopbackOnly: false), "\(kind) \(transport)")
+                #expect(TestServer.becomesFree(server.port, transport: transport, loopbackOnly: true), "\(kind) \(transport)")
             }
         }
     }
@@ -115,13 +116,13 @@ struct Go2RTCPreparerTests {
     @Test("Ports réels : un port qui n'a que des connexions en TIME_WAIT (après l'arrêt de go2rtc) est libre")
     func timeWaitIsFree() throws {
         let probe = SystemPortProbe()
-        let server = try #require(TestServer(kind: .wildcard, type: SOCK_STREAM))
+        let server = try #require(TestServer.onFreePort(kind: .wildcard, type: SOCK_STREAM))
         try #require(server.leaveTimeWait(), "connexion de test")
         // Le serveur est refermé : seules restent les connexions fermées en premier de son côté (TIME_WAIT).
-        #expect(probe.isFree(server.port, transport: .tcp, loopbackOnly: false))
-        #expect(probe.isFree(server.port, transport: .tcp, loopbackOnly: true))
+        #expect(TestServer.becomesFree(server.port, transport: .tcp, loopbackOnly: false))
+        #expect(TestServer.becomesFree(server.port, transport: .tcp, loopbackOnly: true))
         // Et un serveur qui revient sur ce port est de nouveau vu pris.
-        let again = try #require(TestServer(kind: .wildcard, type: SOCK_STREAM, port: server.port))
+        let again = try #require(TestServer.rebinding(kind: .wildcard, type: SOCK_STREAM, port: server.port))
         #expect(!probe.isFree(server.port, transport: .tcp, loopbackOnly: false))
         again.close()
     }
@@ -202,6 +203,48 @@ struct TestServer {
         }
         self.descriptor = descriptor
         self.port = assigned
+    }
+
+    /// Un serveur sur un port que la sonde voit libre juste avant (TCP ou UDP, IPv4 et IPv6). Le port que choisit le
+    /// système n'est garanti libre que pour l'adresse et la famille de la socket : il peut être tenu ailleurs, en IPv6
+    /// par exemple. Quelques essais bornés, avec un nouveau port à chaque fois ; nil si aucun n'a abouti.
+    static func onFreePort(kind: Kind, type: Int32, attempts: Int = 20) -> TestServer? {
+        let probe = SystemPortProbe()
+        let transport: PortTransport = type == SOCK_STREAM ? .tcp : .udp
+        for _ in 0..<attempts {
+            guard let scout = TestServer(kind: kind, type: type) else { continue }
+            let port = scout.port
+            scout.close()
+            guard probe.isFree(port, transport: transport, loopbackOnly: false) else { continue }
+            if let server = TestServer(kind: kind, type: type, port: port) { return server }
+        }
+        return nil
+    }
+
+    /// Les essais bornés de `becomesFree` et de `rebinding` : 5 ms d'écart, 2 s au plus.
+    private static let pollInterval: useconds_t = 5_000
+    private static let pollCount = 400
+
+    /// Le port est-il vu libre, à 2 s près ? Une socket qu'on vient de fermer peut rester tenue un instant (EADDRINUSE
+    /// moins d'une milliseconde, mesuré) quand un autre test du même processus lance un programme (`Process`) : l'enfant
+    /// copie la table des descripteurs et ne lâche la socket qu'à son `exec` (explication probable, l'effet disparaît
+    /// quand ces suites ne tournent pas en même temps). Une vraie régression de la sonde reste fausse jusqu'au bout.
+    static func becomesFree(_ port: Int, transport: PortTransport, loopbackOnly: Bool) -> Bool {
+        let probe = SystemPortProbe()
+        for _ in 0..<pollCount {
+            if probe.isFree(port, transport: transport, loopbackOnly: loopbackOnly) { return true }
+            usleep(pollInterval)
+        }
+        return false
+    }
+
+    /// Un serveur qui revient sur un port qu'on vient de quitter, avec les mêmes essais bornés que `becomesFree`.
+    static func rebinding(kind: Kind, type: Int32, port: Int) -> TestServer? {
+        for _ in 0..<pollCount {
+            if let server = TestServer(kind: kind, type: type, port: port) { return server }
+            usleep(pollInterval)
+        }
+        return nil
     }
 
     func close() {
