@@ -1,20 +1,75 @@
 import PTZBotKit
 import SwiftUI
 
-/// La fenêtre « Réglages » (spec distribution § 8, spec B3 § 6.2) : deux onglets, « Général » et « Caméra ».
+/// Les onglets de la fenêtre « Réglages ».
+enum SettingsTab: CaseIterable, Hashable {
+    case general
+    case camera
+    case sdk
+
+    /// Le libellé du segment, dans la langue de l'app.
+    var title: String {
+        switch self {
+        case .general: AppText.text("Général")
+        case .camera: AppText.text("Caméra")
+        case .sdk: AppText.text("SDK OBSBOT")
+        }
+    }
+}
+
+/// L'onglet choisi des Réglages, partagé entre la fenêtre et le panneau : le lien « Installer le SDK… » du panneau
+/// ouvre les Réglages directement sur l'onglet « SDK OBSBOT ». Premier onglet : « Général ».
+@MainActor
+@Observable
+final class SettingsTabModel {
+    var tab: SettingsTab = .general
+
+    /// Tout changement d'onglet passe par ici, pour que la hauteur de la fenêtre glisse au lieu de sauter.
+    func select(_ tab: SettingsTab) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            self.tab = tab
+        }
+    }
+}
+
+/// La fenêtre « Réglages » (spec distribution § 8, spec B3 § 6.2) : trois onglets, « Général », « Caméra » et
+/// « SDK OBSBOT ».
+///
+/// Les onglets sont un sélecteur segmenté dans la barre de titre et un `switch`, non un `TabView` : avec
+/// `.windowResizability(.contentSize)`, un `TabView` agrandit la fenêtre quand un onglet grandit (l'encart d'import de
+/// l'onglet « Caméra ») mais ne la rétrécit jamais (banc du 13/10). Ici la fenêtre prend exactement la hauteur de
+/// l'onglet affiché.
 struct SettingsView: View {
     let model: SettingsModel
     let language: AppLanguageModel
     let camera: Go2RTCSettingsModel
+    let app: AppController
+    let sdk: SDKWindowModel
+    let tabs: SettingsTabModel
 
     var body: some View {
-        TabView {
-            GeneralSettingsView(model: model, language: language)
-                .tabItem { Label(AppText.text("Général"), systemImage: "gearshape") }
-            CameraSettingsView(model: camera)
-                .tabItem { Label(AppText.text("Caméra"), systemImage: "video") }
+        Group {
+            switch tabs.tab {
+            case .general:
+                GeneralSettingsView(model: model, language: language)
+            case .camera:
+                CameraSettingsView(model: camera)
+            case .sdk:
+                SDKView(model: sdk, app: app)
+            }
         }
         .frame(width: 460)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker(AppText.text("Réglages"), selection: Binding(get: { tabs.tab }, set: { tabs.select($0) })) {
+                    ForEach(SettingsTab.allCases, id: \.self) { tab in
+                        Text(tab.title).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+        }
     }
 }
 

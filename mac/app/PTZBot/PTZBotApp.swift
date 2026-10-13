@@ -2,7 +2,7 @@ import PTZBotKit
 import SwiftUI
 
 /// PTZBot pour Mac (spec app Mac, spec ptzd dans l'app, spec distribution, spec B3) : une icône dans la barre des menus,
-/// un panneau, quatre fenêtres, ptzd et go2rtc lancés comme processus enfants, Talkback (l'agent talkd, indépendant de
+/// un panneau, trois fenêtres, ptzd et go2rtc lancés comme processus enfants, Talkback (l'agent talkd, indépendant de
 /// l'app) et les mises à jour par Sparkle.
 @main
 struct PTZBotApp: App {
@@ -11,7 +11,8 @@ struct PTZBotApp: App {
     var body: some Scene {
         MenuBarExtra {
             PanelView(model: delegate.panel, talkback: delegate.talkback, settings: delegate.settings, app: delegate.controller,
-                      network: delegate.network, go2rtc: delegate.go2rtc, go2rtcMonitor: delegate.go2rtcMonitor)
+                      network: delegate.network, go2rtc: delegate.go2rtc, go2rtcMonitor: delegate.go2rtcMonitor,
+                      settingsTab: delegate.settingsTab)
                 .followsLanguage(delegate.language)
         } label: {
             Image(nsImage: MenuBarIcon.image())
@@ -34,15 +35,9 @@ struct PTZBotApp: App {
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
 
-        Window("SDK OBSBOT", id: WindowID.sdk) {
-            SDKView(model: delegate.sdkWindow)
-                .followsLanguage(delegate.language, title: "SDK OBSBOT")
-        }
-        .windowResizability(.contentSize)
-        .defaultLaunchBehavior(.suppressed)
-
         Window("Réglages", id: WindowID.settings) {
-            SettingsView(model: delegate.settings, language: delegate.language, camera: delegate.cameraSettings)
+            SettingsView(model: delegate.settings, language: delegate.language, camera: delegate.cameraSettings,
+                         app: delegate.controller, sdk: delegate.sdkWindow, tabs: delegate.settingsTab)
                 .followsLanguage(delegate.language, title: "Réglages")
         }
         .windowResizability(.contentSize)
@@ -61,6 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings: SettingsModel
     let controller: AppController
     let sdkWindow: SDKWindowModel
+    /// L'onglet choisi des Réglages, partagé avec le panneau.
+    let settingsTab = SettingsTabModel()
     let network: LocalNetworkState
     /// go2rtc, processus enfant de l'app (spec B3), sa surveillance et l'onglet « Caméra » des Réglages.
     let go2rtc: Go2RTCSupervisor
@@ -209,7 +206,6 @@ enum QuitConfirmation {
 enum WindowID {
     static let pairing = "pairing"
     static let devices = "devices"
-    static let sdk = "sdk"
     static let settings = "settings"
 }
 

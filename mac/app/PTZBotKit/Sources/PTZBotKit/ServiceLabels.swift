@@ -120,7 +120,7 @@ extension Labels {
         }
     }
 
-    /// Le bouton de la ligne SDK lance `xcode-select --install` plutôt que d'ouvrir la fenêtre « SDK OBSBOT » :
+    /// Le bouton de la ligne SDK lance `xcode-select --install` plutôt que d'ouvrir l'onglet « SDK OBSBOT » des Réglages :
     /// les outils manquent et le SDK est à installer (ou obsbot-ai à compiler). Sur le clic de l'utilisateur seulement.
     public static func sdkActionInstallsTools(_ status: SDKStatus?, toolsAvailable: Bool = true) -> Bool {
         switch status {

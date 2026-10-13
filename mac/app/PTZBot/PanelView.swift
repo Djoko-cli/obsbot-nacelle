@@ -11,6 +11,8 @@ struct PanelView: View {
     let network: LocalNetworkState
     let go2rtc: Go2RTCSupervisor
     let go2rtcMonitor: Go2RTCMonitor
+    /// L'onglet des Réglages : le lien « Installer le SDK… » les ouvre sur « SDK OBSBOT ».
+    let settingsTab: SettingsTabModel
     @Environment(\.openWindow) private var openWindow
 
     private var supervisor: ServiceSupervisor {
@@ -166,37 +168,6 @@ struct PanelView: View {
                     PanelNote(error, color: .red)
                 }
             }
-            Divider()
-            // À droite, l'état court seulement ; l'explication et le bouton vont dessous, sur toute la largeur
-            // (banc du 08/10 : un état long débordait sur six lignes et tronquait le bouton).
-            let sdk = Labels.sdkIndicator(app.sdkStatus)
-            PanelRow(icon: "shippingbox", title: AppText.text("SDK OBSBOT")) {
-                HStack(spacing: 8) {
-                    if let line = sdk.line {
-                        Text(line)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .fixedSize()
-                    }
-                    StatusDot(tone: sdk.tone)
-                }
-            } notes: {
-                let tools = app.toolsAvailable ?? true
-                if let detail = Labels.sdkDetail(app.sdkStatus, toolsAvailable: tools) {
-                    PanelNote(detail)
-                }
-                if let action = Labels.sdkAction(app.sdkStatus, toolsAvailable: tools) {
-                    Button(action) {
-                        if Labels.sdkActionInstallsTools(app.sdkStatus, toolsAvailable: tools) {
-                            app.installDeveloperTools()
-                        } else {
-                            openWindow.front(WindowID.sdk)
-                        }
-                    }
-                    .buttonStyle(.link)
-                    .font(.caption)
-                }
-            }
         }
     }
 
@@ -272,6 +243,15 @@ struct PanelView: View {
             } notes: {
                 if let note = Labels.aiNote(model.state?.aiTracking, needsSDK: aiNeedsSDK) {
                     PanelNote(note)
+                }
+                if aiNeedsSDK {
+                    // L'installation du SDK est dans l'onglet « SDK OBSBOT » des Réglages (banc du 13/10).
+                    Button(AppText.text("Installer le SDK…")) {
+                        settingsTab.select(.sdk)
+                        openWindow.front(WindowID.settings)
+                    }
+                    .buttonStyle(.link)
+                    .font(.caption)
                 }
             }
         } notes: {
@@ -432,7 +412,7 @@ private struct PanelRow<Trailing: View, Notes: View>: View {
 }
 
 /// La pastille d'un service : verte à l'état normal, grise, orange ou rouge sinon (spec B3 § 6.1).
-private struct StatusDot: View {
+struct StatusDot: View {
     let tone: ServiceIndicator.Tone
 
     var body: some View {
