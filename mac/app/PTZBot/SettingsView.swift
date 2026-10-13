@@ -35,10 +35,11 @@ final class SettingsTabModel {
 /// La fenêtre « Réglages » (spec distribution § 8, spec B3 § 6.2) : trois onglets, « Général », « Caméra » et
 /// « SDK OBSBOT ».
 ///
-/// Les onglets sont un sélecteur segmenté dans la barre de titre et un `switch`, non un `TabView` : avec
+/// Les onglets sont un sélecteur segmenté en tête de la fenêtre et un `switch`, non un `TabView` : avec
 /// `.windowResizability(.contentSize)`, un `TabView` agrandit la fenêtre quand un onglet grandit (l'encart d'import de
 /// l'onglet « Caméra ») mais ne la rétrécit jamais (banc du 13/10). Ici la fenêtre prend exactement la hauteur de
-/// l'onglet affiché.
+/// l'onglet affiché. Le sélecteur est dans le contenu, pas dans `.toolbar` : la fenêtre de PTZBot (app de la barre des
+/// menus) n'avait alors aucune barre d'outils, donc aucun onglet (banc du 13/10).
 struct SettingsView: View {
     let model: SettingsModel
     let language: AppLanguageModel
@@ -48,28 +49,28 @@ struct SettingsView: View {
     let tabs: SettingsTabModel
 
     var body: some View {
-        Group {
-            switch tabs.tab {
-            case .general:
-                GeneralSettingsView(model: model, language: language)
-            case .camera:
-                CameraSettingsView(model: camera)
-            case .sdk:
-                SDKView(model: sdk, app: app)
+        VStack(spacing: 0) {
+            Picker(AppText.text("Réglages"), selection: Binding(get: { tabs.tab }, set: { tabs.select($0) })) {
+                ForEach(SettingsTab.allCases, id: \.self) { tab in
+                    Text(tab.title).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .padding(.top, 12)
+            Group {
+                switch tabs.tab {
+                case .general:
+                    GeneralSettingsView(model: model, language: language)
+                case .camera:
+                    CameraSettingsView(model: camera)
+                case .sdk:
+                    SDKView(model: sdk, app: app)
+                }
             }
         }
         .frame(width: 460)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker(AppText.text("Réglages"), selection: Binding(get: { tabs.tab }, set: { tabs.select($0) })) {
-                    ForEach(SettingsTab.allCases, id: \.self) { tab in
-                        Text(tab.title).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
-        }
     }
 }
 
