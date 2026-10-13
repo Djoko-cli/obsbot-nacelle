@@ -314,3 +314,51 @@ Le [plan](../plans/2026-10-12-go2rtc-dans-ptzbot.md) précise la spec sur ces po
   elle revient après chaque mise à jour de ffmpeg par Homebrew. Le README et les notes 1.1.0 le disent. Les droits
   caméra et micro de l'app et ses textes d'explication restent : ils préparent l'utilitaire de capture signé du
   backlog.
+
+## 14. Le gardien est lancé par launchd (13/10/2026)
+
+Ce paragraphe précise le § 2 (cycle de vie) et le § 3.4 (autorisations), sans changer le résultat attendu : go2rtc ne tourne
+que pendant que PTZBot est ouvert.
+
+- **Le défaut constaté au banc.** Quand go2rtc, et donc ses ffmpeg, descendent de PTZBot, macOS affiche dans la barre des
+  menus le bouton vert « Effets vidéo » (portrait, arrière-plans), au nom de PTZBot. Cause : les ffmpeg que go2rtc lance
+  filment dans la **coalition de l'app**.
+- **Les quatre essais du 13/10**, tous avec un ffmpeg qui filme la caméra :
+  - lancé par une app : le bouton apparaît ;
+  - lancé par une app avec `responsibility_spawnattrs_setdisclaim` : le bouton apparaît toujours ;
+  - lancé par launchd (`launchctl bootstrap gui/<uid>` d'une plist rangée hors de `~/Library/LaunchAgents`) : pas de bouton ;
+  - lancé par launchd, par le vrai `gardien --parent <PID de PTZBot>`, qui lance ffmpeg : pas de bouton, pas de demande
+    d'accès, 331 images en 15 s.
+
+  Un travail launchd forme sa propre coalition : c'est la seule voie qui fait disparaître le bouton.
+- **Décision (Majid).** PTZBot lance le **gardien** par launchd, et non plus comme son enfant. Un nouveau lanceur,
+  `LaunchdProcessLauncher`, remplace `FoundationProcessLauncher` pour go2rtc seulement ; ptzd ne change pas, et le superviseur
+  non plus (relances, sonde des ports, SIGTERM puis SIGKILL du gardien après 15 s).
+  - **Une plist de travail** (`go2rtc-launchd.plist`, en 0600) est écrite à côté du yaml, dans le dossier de support de
+    l'app, **hors de `~/Library/LaunchAgents`**, puis chargée par `launchctl bootstrap gui/<uid>`. Label
+    `io.github.djoko-cli.obsbot-nacelle.go2rtc` ; `RunAtLoad` ; `ProcessType` `Interactive` (comme talkd : Standard
+    dégradait le son des enfants de go2rtc, Background faisait saccader la vidéo) ; `ExitTimeOut` 20 ; le PATH qui mène à
+    ffmpeg en `EnvironmentVariables` ; la sortie du gardien ajoutée à `go2rtc.log`.
+  - **Pas de `KeepAlive`** : le travail ne redémarre jamais tout seul, c'est le superviseur qui relance. Un travail resté
+    chargé (app tuée) est déchargé avant le lancement suivant, et au lancement de l'app quand go2rtc est éteint.
+  - **L'exigence B est tenue par `--parent`** : si PTZBot disparaît, même par un plantage, le gardien arrête go2rtc et ses
+    ffmpeg (§ 3.2, § 13), puis sort. launchd ne remplace pas ce lien ; il ne fait que changer de coalition.
+- **Réalisation.**
+  - Le PID du gardien est lu dans `launchctl print gui/<uid>/<label>` (ligne `pid = N` du service, à une tabulation de
+    retrait) : un sondage toutes les 50 ms, 2 s au plus, sur le MainActor et seulement au démarrage de go2rtc. Sans PID dans
+    ce délai : `bootout`, puis une erreur de lancement, que le superviseur montre déjà (`failed(.launch)`).
+  - La fin du gardien est suivie par une source `DispatchSource` sur son PID, qui marche sur un processus qui n'est pas
+    notre enfant. Course fermée : si le gardien est sorti avant que la source soit armée, `kill(pid, 0)` échoue avec `ESRCH`
+    et la sortie est traitée aussitôt. Un gardien déjà sorti avant le premier sondage (go2rtc manquant, code 127) est
+    signalé comme une sortie ordinaire, juste après le retour du lancement.
+  - À la sortie, le code vient de `launchctl print` : `last exit code = N` donne la sortie N, `last terminating signal =
+    <nom>: N` donne un arrêt par le signal N, un code illisible donne un arrêt par signal inconnu (`-1`). Le code 127,
+    rendu quand go2rtc manque, reste reconnu. Puis `bootout` du travail et suppression de la plist, hors du fil principal,
+    avant que `onExit` revienne sur le MainActor.
+- **Conséquence probable pour l'accès à la caméra.** Le travail launchd n'a pas PTZBot pour processus responsable : chez un
+  nouvel utilisateur, la demande d'accès sera faite **au nom de ffmpeg**, comme avec un go2rtc lancé par un agent launchd.
+  Le § 12 l'avait déjà établi pour le ffmpeg de Homebrew : le § 3.4 (accès attribué à PTZBot) ne se vérifie pas non plus ici.
+  Le README et les notes 1.1.0 le disent (§ 13).
+- **À vérifier au banc.** Aucune notification « élément d'arrière-plan ajouté » n'apparaît quand go2rtc est allumé : la
+  plist est hors de `~/Library/LaunchAgents` et chargée par `launchctl bootstrap`, mais seul le banc le confirme. Et, bien
+  sûr, l'absence du bouton « Effets vidéo » avec le go2rtc de l'app.
