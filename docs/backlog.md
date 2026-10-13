@@ -58,3 +58,17 @@ L'essai du 12/10 a montré que macOS attribue l'accès à la caméra au programm
 ## Publication : profil de notarisation vérifié d'avance, et une seconde tentative (13/10/2026)
 
 Le 13/10 à 00:21, la répétition de la 1.1.0 a échoué à la notarisation : `notarytool` a répondu « No Keychain password item found for profile: djoko-notarisation » après dix minutes de tests et de compilation. Le profil n'avait pas été effacé : il est rangé dans le trousseau iCloud, sa lecture a échoué une fois (la synchronisation du trousseau iCloud était en activité à ce moment-là), et elle fonctionnait de nouveau une heure plus tard, sans que rien ait changé. **Cause trouvée** : l'économiseur d'écran démarre après 20 min d'inactivité, avec un verrouillage immédiat. Or le profil n'est lisible que session déverrouillée, et la répétition tournait depuis plus de 20 min sans que Majid touche au Mac. À faire : `publier.sh` lance la publication sous `caffeinate -d` (pas de mise en veille de l'écran, donc ni économiseur ni verrouillage) ; dans `outils/publication.py` : vérifier le profil dès le début (`notarytool history --keychain-profile …`), avant les tests et la compilation ; et si la soumission répond « No Keychain password item found », attendre quelques secondes et réessayer une fois avant d'échouer.
+
+## Test « Ports réels » instable (13/10/2026)
+
+Le test « Ports réels » de `Go2RTCPreparerTests` (PTZBotKit) échoue environ une fois sur dix dans la suite complète, déjà avant le lanceur launchd. Il ouvre de vrais ports : une course avec un autre test, ou un port éphémère repris entre deux étapes, est probable. À rendre déterministe.
+
+## Lanceur launchd de go2rtc : suites de la relecture du 13/10
+
+- **Attente de déchargement hors du MainActor** (I2 b) : quand un travail d'une session tuée vit encore, `LaunchdProcessLauncher` attend son déchargement sur le MainActor, 20 s au plus. Cas rare (le gardien sort dès que PTZBot meurt), mais l'interface se fige pendant ce temps. Correction : décharger pendant la préparation de go2rtc, hors du MainActor.
+- **ffmpeg qui ignore SIGTERM** : vérifier, avec un faux go2rtc dont l'enfant ignore SIGTERM, que launchd ne le tue pas à la sortie du gardien ni au `bootout` (`AbandonProcessGroup` vrai), et chercher « stray » dans le journal de launchd.
+
+## Onglet « SDK OBSBOT » : deux boutons pour les outils de développement (13/10/2026)
+
+Quand les outils de développement d'Apple manquent, l'onglet montre deux boutons qui les installent : celui de la ligne d'état (repris de l'ancienne ligne du panneau) et celui du contenu (repris de l'ancienne fenêtre « SDK OBSBOT »). En garder un seul.
+

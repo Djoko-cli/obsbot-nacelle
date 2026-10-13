@@ -366,6 +366,13 @@ que pendant que PTZBot est ouvert.
   nouvel utilisateur, la demande d'accès sera faite **au nom de ffmpeg**, comme avec un go2rtc lancé par un agent launchd.
   Le § 12 l'avait déjà établi pour le ffmpeg de Homebrew : le § 3.4 (accès attribué à PTZBot) ne se vérifie pas non plus ici.
   Le README et les notes 1.1.0 le disent (§ 13).
-- **À vérifier au banc.** Aucune notification « élément d'arrière-plan ajouté » n'apparaît quand go2rtc est allumé : la
-  plist est hors de `~/Library/LaunchAgents` et chargée par `launchctl bootstrap`, mais seul le banc le confirme. Et, bien
-  sûr, l'absence du bouton « Effets vidéo » avec le go2rtc de l'app.
+- **Résultat du banc (13/10, build 261).**
+  - Avec le go2rtc de l'app, aucun bouton « Effets vidéo » et aucune notification « élément d'arrière-plan ajouté ». HomeKit
+    et l'app iOS ont l'image et le son.
+  - « Quitter » : le gardien, go2rtc et les deux ffmpeg s'arrêtent en une seconde, et le travail launchd est retiré. La
+    relance crée un travail neuf, sans « port déjà utilisé ».
+  - PTZBot tué (`kill -9`), puis relancé 3 s plus tard : le gardien a tout arrêté en une seconde, et le travail resté chargé
+    a été remplacé sans attente.
+  - La demande d'accès à la caméra au nom de PTZBot, vue le 13/10 à l'allumage de go2rtc, vient de la recherche des
+    appareils de PTZBot lui-même (liste des caméras de l'onglet « Caméra »), pas de ffmpeg.
+  - L'essai d'un ffmpeg qui ignore SIGTERM sous `AbandonProcessGroup` n'a pas été fait : il est au backlog.
