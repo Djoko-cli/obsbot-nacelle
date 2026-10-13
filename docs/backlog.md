@@ -101,3 +101,11 @@ Constats mineurs de la relecture finale n° 2 de `feat/b3` et des relectures pr�
 - **Mot de passe RTSP retiré à chaque lancement tant que le yaml n'existe pas** (`mac/app/PTZBotKit/Sources/PTZBotKit/Go2RTCImport.swift`). Un nouvel utilisateur lit son mot de passe dans Réglages › Caméra, le recopie dans Homebridge et quitte sans allumer go2rtc : au lancement suivant, il a changé. Correctif : écrire le yaml, ou retenir le mot de passe, dès le premier tirage ; sinon, le dire dans l'onglet.
 - **Orphelins invisibles au détecteur de coreaudiod** (`mac/app/PTZBotKit/Sources/PTZBotKit/Go2RTCHealth.swift`). Le détecteur ne compte que les descendants du gardien. Correctif : compter aussi les ffmpeg avfoundation de PPID 1 dont la sortie est `rtsp://127.0.0.1:<port RTSP>/` (signature de go2rtc), comme l'ancien watchdog.
 - **`go2rtc.log` grandit sans limite** (niveau info, plus les lignes du gardien), comme `ptzd.log`. À surveiller au banc ; une rotation simple au lancement (au-delà de 10 Mo, renommer en `.1`) suffirait.
+
+## ffmpeg accrochés à une caméra débranchée, go2rtc vivant (13/10/2026)
+
+Relevé par la session go2rtc (banc de débranchement du 09/10) : quand la caméra USB disparaît, go2rtc 1.9.14 relance la capture mais laisse en vie les deux anciens ffmpeg, accrochés au périphérique disparu, leur socket 8554 en CLOSED. Ils ne sortent qu'après plus de 3 SIGTERM (« hard exiting » de ffmpeg). Le gardien ne les voit pas : il n'agit qu'après la sortie de go2rtc, et n'envoie alors qu'un SIGTERM. Pistes : un nettoyage périodique des ffmpeg du groupe de go2rtc sans socket 8554 établie (SIGTERM répétés, jamais SIGKILL), ou plusieurs SIGTERM espacés à l'arrêt. À vérifier au banc de débranchement (essai encore ouvert dans le plan B3).
+
+## Voix de PTZBot iOS vers talkd par le backchannel de go2rtc (13/10/2026)
+
+La spec haut-parleur (§ 5.6) prévoyait une source `exec` avec `#backchannel=1` dans le flux `obsbot`, qui relaie la voix vers `udp://127.0.0.1:1986`. Le yaml est maintenant généré par PTZBot, qui ne connaît pas cette option ; seule voie actuelle : le « fichier personnalisé », qui retire tout le reste à la génération. Proposé : une option de la génération (Réglages › Caméra), puisque talkd est déjà dans l'app. Évolution de la spec B3, à décider.
