@@ -32,6 +32,10 @@ final class FakeLaunchctl: Launchctl {
         var labels: [String] = []
         /// Pour chaque `bootstrap` : la plist existait-elle à ce moment ?
         var plistPresentAtBootstrap: [Bool] = []
+        /// Les réponses successives de `launchctl print` (une par appel de `printOutput`, la dernière se répète) ; `nil` :
+        /// le service n'est pas chargé. Vide : toujours `nil`.
+        var printResponses: [String?] = []
+        var printCalls = 0
     }
 
     let state = Mutex(State())
@@ -48,6 +52,14 @@ final class FakeLaunchctl: Launchctl {
                 state.pollsBeforeUnload -= 1
             }
             return true
+        }
+    }
+
+    func printOutput(label: String) -> String? {
+        state.withLock { state in
+            state.printCalls += 1
+            guard !state.printResponses.isEmpty else { return nil }
+            return state.printResponses[min(state.printCalls, state.printResponses.count) - 1]
         }
     }
 

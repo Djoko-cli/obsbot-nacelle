@@ -3026,6 +3026,57 @@
           }
         }
       }
+    },
+    "Le gardien de go2rtc d'une session précédente n'a pas pu être arrêté : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The go2rtc guardian from a previous session could not be stopped: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le gardien de go2rtc d'une session précédente n'a pas pu être arrêté : %@"
+          }
+        }
+      }
+    },
+    "Le gardien de go2rtc d'une session précédente ne s'est pas arrêté à temps.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The go2rtc guardian from a previous session did not stop in time."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le gardien de go2rtc d'une session précédente ne s'est pas arrêté à temps."
+          }
+        }
+      }
+    },
+    "launchd n'a pas lancé le gardien de go2rtc.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "launchd did not start the go2rtc guardian."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "launchd n'a pas lancé le gardien de go2rtc."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

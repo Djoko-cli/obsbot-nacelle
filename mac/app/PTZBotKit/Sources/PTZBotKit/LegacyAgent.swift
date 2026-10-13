@@ -4,6 +4,10 @@ import Foundation
 /// l'agent de talkd (`ClassicAgent`).
 public protocol Launchctl: Sendable {
     func isLoaded(label: String) -> Bool
+    /// `launchctl print gui/<uid>/<label>` : le texte que launchd donne du service (PID, dernier code de sortie), `nil` si
+    /// le service n'est pas chargé ou si `launchctl` n'a pas pu être lancé. Lu par `SystemLaunchctl.pid(fromPrint:)` et
+    /// `SystemLaunchctl.lastExit(fromPrint:)` (spec B3 § 14).
+    func printOutput(label: String) -> String?
     func bootout(label: String) throws
     /// `launchctl bootstrap gui/<uid> <plist>` : charge l'agent de cette plist. Échoue s'il est déjà chargé.
     func bootstrap(plist: URL) throws
@@ -42,7 +46,12 @@ public struct SystemLaunchctl: Launchctl {
         }
     }
 
-    public init() {}
+    /// Le programme lancé : `/bin/launchctl`. Les tests en passent un autre (jamais le vrai `launchctl`).
+    private let executableURL: URL
+
+    public init(executableURL: URL = URL(fileURLWithPath: "/bin/launchctl")) {
+        self.executableURL = executableURL
+    }
 
     /// Les arguments de `launchctl`, pour l'utilisateur `uid`. Séparés de l'exécution pour être testés sans lancer le
     /// vrai `launchctl`.
@@ -56,19 +65,39 @@ public struct SystemLaunchctl: Launchctl {
         }
     }
 
-    private func run(_ command: Command) -> Int32 {
+    /// Lance le programme (sortie standard vers `output`, erreurs jetées) ; `finished` est signalé à sa fin. L'attente passe
+    /// par ce sémaphore et non par `waitUntilExit`, qui fait tourner la boucle d'exécution : sur le fil principal (le
+    /// lancement de go2rtc), elle livrerait des événements au milieu d'une opération en cours.
+    private func start(_ command: Command, output: Any) -> (process: Process, finished: DispatchSemaphore)? {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.executableURL = executableURL
         process.arguments = Self.arguments(command, uid: getuid())
-        process.standardOutput = FileHandle.nullDevice
+        process.standardOutput = output
         process.standardError = FileHandle.nullDevice
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
         do {
             try process.run()
         } catch {
-            return -1
+            return nil
         }
-        process.waitUntilExit()
+        return (process, finished)
+    }
+
+    private func run(_ command: Command) -> Int32 {
+        guard let (process, finished) = start(command, output: FileHandle.nullDevice) else { return -1 }
+        finished.wait()
         return process.terminationStatus
+    }
+
+    /// Comme `run`, mais la sortie standard est lue : (code de sortie, texte). Lue jusqu'à la fin avant d'attendre le
+    /// processus, pour qu'une sortie plus grosse que le tampon du tube ne le bloque pas.
+    private func runCapturing(_ command: Command) -> (status: Int32, output: String)? {
+        let pipe = Pipe()
+        guard let (process, finished) = start(command, output: pipe) else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        finished.wait()
+        return (process.terminationStatus, String(decoding: data, as: UTF8.self))
     }
 
     private func check(_ command: Command) throws {
@@ -78,6 +107,11 @@ public struct SystemLaunchctl: Launchctl {
 
     public func isLoaded(label: String) -> Bool {
         run(.print(label)) == 0
+    }
+
+    public func printOutput(label: String) -> String? {
+        guard let result = runCapturing(.print(label)), result.status == 0 else { return nil }
+        return result.output
     }
 
     public func bootout(label: String) throws {
@@ -94,6 +128,49 @@ public struct SystemLaunchctl: Launchctl {
 
     public func kickstart(label: String) throws {
         try check(.kickstart(label))
+    }
+}
+
+/// La lecture de `launchctl print` (spec B3 § 14). Le service s'y décrit par des lignes à **une** tabulation de retrait
+/// (`\tpid = 4242`) ; les sous-blocs (`\t\tstate = active`, files d'attente, domaines) en ont deux ou plus et peuvent
+/// répéter les mêmes mots : seules les lignes à une tabulation comptent.
+extension SystemLaunchctl {
+    /// Les lignes du service, sans leur tabulation.
+    private static func serviceLines(_ text: String) -> [Substring] {
+        text.split(separator: "\n", omittingEmptySubsequences: true)
+            .filter { $0.hasPrefix("\t") && !$0.hasPrefix("\t\t") }
+            .map { $0.dropFirst() }
+    }
+
+    /// La valeur de la ligne `<clé> = <valeur>` du service, sans espaces autour.
+    private static func value(of key: String, in lines: [Substring]) -> String? {
+        let prefix = "\(key) = "
+        return lines.first { $0.hasPrefix(prefix) }.map { $0.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// Le PID de la ligne `pid = N`. Absente quand le processus ne tourne pas : `nil`.
+    public static func pid(fromPrint text: String) -> pid_t? {
+        guard let value = value(of: "pid", in: serviceLines(text)), let pid = pid_t(value), pid > 0 else { return nil }
+        return pid
+    }
+
+    /// La fin du dernier lancement :
+    /// - `last exit code = N` : sortie avec le code N ;
+    /// - `last terminating signal = Terminated: 15` : arrêt par le signal 15 ;
+    /// - `last exit code = (never exited)`, ou aucune des deux lignes : illisible, `nil`.
+    ///
+    /// Le code passe avant le signal quand les deux lignes sont là. Un travail lancé une seule fois (le cas de go2rtc :
+    /// un `bootout` après chaque sortie) n'en a jamais qu'une.
+    public static func lastExit(fromPrint text: String) -> ProcessExit? {
+        let lines = serviceLines(text)
+        if let code = value(of: "last exit code", in: lines), let status = Int32(code) {
+            return ProcessExit(status: status, signaled: false)
+        }
+        if let signal = value(of: "last terminating signal", in: lines),
+            let number = signal.split(separator: ":").last.flatMap({ Int32($0.trimmingCharacters(in: .whitespaces)) }) {
+            return ProcessExit(status: number, signaled: true)
+        }
+        return nil
     }
 }
 

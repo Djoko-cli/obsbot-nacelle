@@ -28,7 +28,8 @@ public protocol LaunchedProcess: AnyObject {
 @MainActor
 public protocol ProcessLauncher: AnyObject {
     /// `onExit` est appelé une fois, sur le MainActor, quand le processus se termine. `environment` : les variables
-    /// posées ou remplacées sur celles de l'app (vide : l'environnement de l'app, tel quel).
+    /// posées ou remplacées sur celles de l'app (vide : l'environnement de l'app, tel quel) ; pour
+    /// `LaunchdProcessLauncher`, sur celles que launchd donne aux travaux de l'utilisateur.
     func launch(
         executableURL: URL,
         arguments: [String],
