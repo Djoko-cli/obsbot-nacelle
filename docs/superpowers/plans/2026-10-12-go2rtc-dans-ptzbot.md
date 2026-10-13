@@ -7132,16 +7132,24 @@ MSG
 
 Rien de ce qui suit n'est fait par un agent d'exécution.
 
-1. **Relecture finale de la branche** (Opus), puis fusion dans `main` avec l'accord de Majid.
-2. **Banc** (spec § 10) : quitter et relancer PTZBot (go2rtc et ses ffmpeg s'arrêtent sans SIGKILL) ; `kill -9` de PTZBot (le gardien arrête go2rtc) ; débrancher puis rebrancher la caméra ; refuser puis accorder l'accès ; fichier personnalisé ; nouvelle demande d'accès après une mise à jour (il ne doit pas y en avoir : identité Developer ID stable) ; priorité de go2rtc (son et image sans saccade, sans `ProcessType: Interactive` : spec § 11).
-3. **Mise en service chez Majid** (spec § 7, rappelée ici ; « jamais deux go2rtc en même temps » à chaque étape) :
-   1. installer la 1.1.0 : go2rtc est éteint par défaut, l'ancien agent `com.majid.go2rtc` tourne toujours ;
-   2. dans **Réglages › Caméra**, importer `/opt/homebrew/etc/go2rtc.yaml`, vérifier ce qui est repris, puis **Appliquer** : rien n'est lancé tant que l'interrupteur est éteint ;
-   3. Majid, lui-même (réglage système) : `launchctl bootout gui/$(id -u)/com.majid.go2rtc`, puis la plist renommée en `.bak` ;
-   4. aussitôt, allumer go2rtc dans PTZBot et accepter les demandes d'accès à la caméra et au micro pour PTZBot ;
-   5. vérifier HomeKit (image et son), l'app iOS (vidéo WebRTC et son), l'absence de redémarrage en boucle des ffmpeg, un seul ffmpeg vidéo, coreaudiod sain ;
-   6. prévenir la session go2rtc : ses scripts de collecte cherchent go2rtc par le label launchd (`G2W_LABEL`) et devront chercher le processus `…/PTZBot.app/Contents/Helpers/go2rtc` ; le script `cam` devient obsolète.
-4. **Publication de la 1.1.0** (`outils/publier.sh 1.1.0`), avec l'accord de Majid à chaque geste public.
+- [x] **Relecture finale de la branche** (Opus), puis fusion dans `main` avec l'accord de Majid. Deux relectures finales (12/10, puis 13/10 après le banc) ; fusion c551e43 le 13/10.
+- **Banc** (spec § 10), le 13/10 (builds 248 à 261) :
+  - [x] quitter et relancer PTZBot : go2rtc et ses ffmpeg s'arrêtent sans SIGKILL, puis repartent sans « port déjà utilisé » ;
+  - [x] `kill -9` de PTZBot : le gardien arrête go2rtc et les ffmpeg, et la relance rapide passe ;
+  - [x] priorité de go2rtc : son et image sans saccade (HomeKit, app iOS) ;
+  - [x] bouton « Effets vidéo » absent, une fois le gardien lancé par launchd (spec § 14) ;
+  - [ ] débrancher puis rebrancher la caméra ;
+  - [ ] refuser puis accorder l'accès à la caméra ;
+  - [ ] fichier personnalisé ;
+  - [ ] pas de nouvelle demande d'accès après une mise à jour par Sparkle (build 261 vers 269).
+- [x] **Mise en service chez Majid**, le 13/10 (spec § 7, « jamais deux go2rtc en même temps » à chaque étape) :
+  1. installer la 1.1.0 : go2rtc est éteint par défaut, l'ancien agent `com.majid.go2rtc` tourne toujours ;
+  2. dans **Réglages › Caméra**, importer `/opt/homebrew/etc/go2rtc.yaml`, vérifier ce qui est repris, puis **Appliquer** : rien n'est lancé tant que l'interrupteur est éteint ;
+  3. Majid, lui-même (réglage système) : `launchctl bootout gui/$(id -u)/com.majid.go2rtc`, puis la plist renommée en `.bak` ;
+  4. aussitôt, allumer go2rtc dans PTZBot et accepter les demandes d'accès à la caméra et au micro ;
+  5. vérifier HomeKit (image et son), l'app iOS (vidéo WebRTC et son), l'absence de redémarrage en boucle des ffmpeg, un seul ffmpeg vidéo, coreaudiod sain ;
+  6. prévenir la session go2rtc : ses scripts de collecte cherchent go2rtc par le label launchd (`G2W_LABEL`) et devront chercher le processus `…/PTZBot.app/Contents/Helpers/go2rtc` ; le script `cam` devient obsolète.
+- [x] **Publication de la 1.1.0** (`outils/publier.sh 1.1.0`), le 13/10 : build 269, version `ptzbot-v1.1.0`, flux af4e90f.
 
 ## Questions ouvertes pour Majid
 
