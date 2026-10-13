@@ -337,10 +337,17 @@ que pendant que PTZBot est ouvert.
   - **Une plist de travail** (`go2rtc-launchd.plist`, en 0600) est écrite à côté du yaml, dans le dossier de support de
     l'app, **hors de `~/Library/LaunchAgents`**, puis chargée par `launchctl bootstrap gui/<uid>`. Label
     `io.github.djoko-cli.obsbot-nacelle.go2rtc` ; `RunAtLoad` ; `ProcessType` `Interactive` (comme talkd : Standard
-    dégradait le son des enfants de go2rtc, Background faisait saccader la vidéo) ; `ExitTimeOut` 20 ; le PATH qui mène à
-    ffmpeg en `EnvironmentVariables` ; la sortie du gardien ajoutée à `go2rtc.log`.
+    dégradait le son des enfants de go2rtc, Background faisait saccader la vidéo) ; `ExitTimeOut` 20 ;
+    `AbandonProcessGroup` vrai ; le PATH qui mène à ffmpeg en `EnvironmentVariables` ; la sortie du gardien ajoutée à
+    `go2rtc.log`.
+  - **launchd ne doit jamais signaler les processus restants.** Le gardien laisse volontairement en vie un ffmpeg qui
+    capture et ne répond pas à SIGTERM (jamais de SIGKILL, risque de bloquer CMIO) : `AbandonProcessGroup` le demande à
+    launchd, si bien que ces processus ne reçoivent que le SIGTERM du gardien, comme avant le passage à launchd. L'effet sur
+    un ffmpeg qui survit à la sortie du gardien et au `bootout` reste à confirmer au banc.
   - **Pas de `KeepAlive`** : le travail ne redémarre jamais tout seul, c'est le superviseur qui relance. Un travail resté
-    chargé (app tuée) est déchargé avant le lancement suivant, et au lancement de l'app quand go2rtc est éteint.
+    chargé (app tuée) est déchargé avant le lancement suivant (20 s d'attente au plus, même si le `bootout` rend une erreur
+    pendant que launchd démonte le travail), et au lancement de l'app quand go2rtc est éteint. Le `bootstrap` est précédé
+    d'un `launchctl enable` du label, au cas où l'utilisateur aurait coupé le travail dans « Ouverture ».
   - **L'exigence B est tenue par `--parent`** : si PTZBot disparaît, même par un plantage, le gardien arrête go2rtc et ses
     ffmpeg (§ 3.2, § 13), puis sort. launchd ne remplace pas ce lien ; il ne fait que changer de coalition.
 - **Réalisation.**

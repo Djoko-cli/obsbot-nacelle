@@ -155,7 +155,8 @@ extension SystemLaunchctl {
     }
 
     /// La fin du dernier lancement :
-    /// - `last exit code = N` : sortie avec le code N ;
+    /// - `last exit code = N` : sortie avec le code N. Les launchctl récents font suivre un code non nul d'un libellé
+    ///   (`127: Unknown error: 127`, `78: EX_CONFIG`) : seul l'entier en tête compte ;
     /// - `last terminating signal = Terminated: 15` : arrêt par le signal 15 ;
     /// - `last exit code = (never exited)`, ou aucune des deux lignes : illisible, `nil`.
     ///
@@ -163,7 +164,7 @@ extension SystemLaunchctl {
     /// un `bootout` après chaque sortie) n'en a jamais qu'une.
     public static func lastExit(fromPrint text: String) -> ProcessExit? {
         let lines = serviceLines(text)
-        if let code = value(of: "last exit code", in: lines), let status = Int32(code) {
+        if let code = value(of: "last exit code", in: lines), let status = Int32(code.prefix { $0 == "-" || ("0"..."9").contains($0) }) {
             return ProcessExit(status: status, signaled: false)
         }
         if let signal = value(of: "last terminating signal", in: lines),

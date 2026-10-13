@@ -24,13 +24,14 @@ enum LaunchdPrintFixtures {
         ])
     }
 
-    /// Le gardien est sorti avec ce code (plus de ligne `pid`).
-    static func exited(code: Int32) -> String {
+    /// Le gardien est sorti avec ce code (plus de ligne `pid`). `reason` : le libellé que les launchctl récents font suivre
+    /// d'un code non nul (`127: Unknown error: 127`, `78: EX_CONFIG`).
+    static func exited(code: Int32, reason: String? = nil) -> String {
         text([
             "\tstate = not running",
             "\tprogram = /Applications/PTZBot.app/Contents/Helpers/gardien",
             "\truns = 1",
-            "\tlast exit code = \(code)",
+            "\tlast exit code = \(code)" + (reason.map { ": \($0)" } ?? ""),
             "\t\tstate = active",
             "\tjob state = exited",
         ])
@@ -77,6 +78,18 @@ struct LaunchctlPrintParserTests {
         #expect(SystemLaunchctl.lastExit(fromPrint: LaunchdPrintFixtures.exited(code: 127)) == ProcessExit(status: 127, signaled: false))
     }
 
+    @Test("Fin : l'entier en tête du code, même suivi d'un libellé (127: …, 78: EX_CONFIG)")
+    func exitCodeWithLabel() {
+        #expect(SystemLaunchctl.lastExit(fromPrint: "\tlast exit code = 127: Unknown error: 127\n") == ProcessExit(status: 127, signaled: false))
+        #expect(SystemLaunchctl.lastExit(fromPrint: "\tlast exit code = 78: EX_CONFIG\n") == ProcessExit(status: 78, signaled: false))
+        #expect(SystemLaunchctl.lastExit(fromPrint: "\tlast exit code = 1: Operation not permitted\n") == ProcessExit(status: 1, signaled: false))
+        #expect(SystemLaunchctl.lastExit(fromPrint: LaunchdPrintFixtures.exited(code: 127, reason: "Unknown error: 127"))
+            == ProcessExit(status: 127, signaled: false))
+        #expect(SystemLaunchctl.lastExit(fromPrint: LaunchdPrintFixtures.exited(code: 78, reason: "EX_CONFIG")) == ProcessExit(status: 78, signaled: false))
+        // Le libellé est un texte libre : seul l'entier en tête compte.
+        #expect(SystemLaunchctl.lastExit(fromPrint: "\tlast exit code = 3:12\n") == ProcessExit(status: 3, signaled: false))
+    }
+
     @Test("Fin : le signal, nom et numéro")
     func terminatingSignal() {
         #expect(SystemLaunchctl.lastExit(fromPrint: "\tlast terminating signal = Terminated: 15\n") == ProcessExit(status: 15, signaled: true))
@@ -86,6 +99,8 @@ struct LaunchctlPrintParserTests {
     @Test("Fin : jamais sorti, absente ou dans un sous-bloc : illisible")
     func unreadable() {
         #expect(SystemLaunchctl.lastExit(fromPrint: "\tlast exit code = (never exited)\n") == nil)
+        #expect(SystemLaunchctl.lastExit(fromPrint: "\tlast exit code = : sans entier\n") == nil)
+        #expect(SystemLaunchctl.lastExit(fromPrint: "\tlast exit code = EX_CONFIG\n") == nil)
         #expect(SystemLaunchctl.lastExit(fromPrint: LaunchdPrintFixtures.running(4242)) == nil)
         #expect(SystemLaunchctl.lastExit(fromPrint: LaunchdPrintFixtures.waiting) == nil)
         #expect(SystemLaunchctl.lastExit(fromPrint: "") == nil)
@@ -280,6 +295,7 @@ final class LaunchdProcessLauncherTests {
             "RunAtLoad": true,
             "ProcessType": "Interactive",
             "ExitTimeOut": 20,
+            "AbandonProcessGroup": true,
         ]
         #expect(plist == expected)
         #expect(plist["KeepAlive"] == nil)
@@ -304,24 +320,25 @@ final class LaunchdProcessLauncherTests {
         let plist = try #require(PropertyListSerialization.propertyList(from: data, format: nil) as? NSDictionary)
         #expect(plist["EnvironmentVariables"] == nil)
         #expect(plist["KeepAlive"] == nil)
-        #expect(plist.count == 7)
+        #expect(plist.count == 8)
         await cleanUp()
     }
 
     // MARK: - L'ordre des appels
 
-    @Test("Label absent : bootstrap seul, la plist déjà écrite")
+    @Test("Label absent : enable puis bootstrap, la plist déjà écrite")
     func bootstrapOnly() async throws {
         let sleeper = try startSleeper()
         respond([LaunchdPrintFixtures.running(sleeper.pid), LaunchdPrintFixtures.signaled("Terminated", 15)])
         _ = try launch()
-        #expect(calls == ["bootstrap"])
+        #expect(calls == ["enable", "bootstrap"])
+        #expect(launchctl.state.withLock { $0.enabledLabels } == [LaunchdProcessLauncher.label])
         #expect(launchctl.state.withLock { $0.plistPresentAtBootstrap } == [true])
         #expect(launchctl.state.withLock { $0.labels }.isEmpty)
         await cleanUp()
     }
 
-    @Test("Label déjà chargé (travail d'une session précédente) : bootout, attente du déchargement, puis bootstrap")
+    @Test("Label déjà chargé (travail d'une session précédente) : bootout, attente du déchargement, enable, puis bootstrap")
     func bootoutThenBootstrap() async throws {
         launchctl.state.withLock {
             $0.loaded = true
@@ -330,7 +347,7 @@ final class LaunchdProcessLauncherTests {
         let sleeper = try startSleeper()
         respond([LaunchdPrintFixtures.running(sleeper.pid), LaunchdPrintFixtures.signaled("Terminated", 15)])
         _ = try launch()
-        #expect(calls == ["bootout", "bootstrap"])
+        #expect(calls == ["bootout", "enable", "bootstrap"])
         #expect(launchctl.state.withLock { $0.labels } == [LaunchdProcessLauncher.label])
         // Deux sondages de plus avant le déchargement : 2 × 0,25 s d'attente (simulée).
         #expect(clock.now == 0.5)
@@ -345,14 +362,15 @@ final class LaunchdProcessLauncherTests {
         }
         #expect(throws: LaunchdLaunchError.stillLoaded) { try launch() }
         #expect(calls == ["bootout"])
-        // 10 s d'attente simulée, jamais réelle.
+        // 20 s d'attente simulée (le `ExitTimeOut` de la plist), jamais réelle.
+        #expect(LaunchdProcessLauncher.stopTimeout == 20)
         #expect(clock.now >= LaunchdProcessLauncher.stopTimeout)
         drain()
         #expect(!plistExists)
         #expect(exits.isEmpty)
     }
 
-    @Test("bootout en échec, travail toujours chargé : erreur, pas de bootstrap")
+    @Test("bootout en échec, travail toujours chargé au bout des 20 s : erreur, pas de bootstrap")
     func bootoutFails() {
         launchctl.state.withLock {
             $0.loaded = true
@@ -360,15 +378,72 @@ final class LaunchdProcessLauncherTests {
         }
         #expect(throws: LaunchdLaunchError.bootoutFailed("code 5")) { try launch() }
         #expect(calls == ["bootout"])
+        // L'erreur ne part pas tout de suite : launchd peut démonter le travail malgré le code d'erreur.
+        #expect(clock.now >= LaunchdProcessLauncher.stopTimeout)
         drain()
         #expect(!plistExists)
+    }
+
+    @Test("bootout en échec (« Operation now in progress »), travail déchargé un peu plus tard : le lancement réussit")
+    func bootoutFailsThenUnloads() async throws {
+        launchctl.state.withLock {
+            $0.loaded = true
+            $0.bootoutFails = true
+            $0.unloadsDespiteFailure = true
+            $0.pollsBeforeUnload = 8
+        }
+        let sleeper = try startSleeper()
+        respond([LaunchdPrintFixtures.running(sleeper.pid), LaunchdPrintFixtures.signaled("Terminated", 15)])
+        let process = try launch()
+        #expect(process.pid == sleeper.pid)
+        #expect(calls == ["bootout", "enable", "bootstrap"])
+        // Huit sondages de plus avant le déchargement : 8 × 0,25 s d'attente (simulée), bien moins que le délai.
+        #expect(clock.now == 2)
+        await cleanUp()
+    }
+
+    @Test("bootout en échec, travail déjà déchargé : aucune attente, le lancement réussit")
+    func bootoutFailsAlreadyUnloaded() async throws {
+        launchctl.state.withLock {
+            $0.loaded = true
+            $0.bootoutFails = true
+            $0.unloadsDespiteFailure = true
+        }
+        let sleeper = try startSleeper()
+        respond([LaunchdPrintFixtures.running(sleeper.pid), LaunchdPrintFixtures.signaled("Terminated", 15)])
+        _ = try launch()
+        #expect(calls == ["bootout", "enable", "bootstrap"])
+        #expect(clock.now == 0)
+        await cleanUp()
+    }
+
+    @Test("Travail désactivé dans launchd (l'utilisateur l'a coupé dans Ouverture) : enable avant bootstrap, le lancement réussit")
+    func disabledJobIsEnabled() async throws {
+        launchctl.state.withLock { $0.disabled = true }
+        let sleeper = try startSleeper()
+        respond([LaunchdPrintFixtures.running(sleeper.pid), LaunchdPrintFixtures.signaled("Terminated", 15)])
+        _ = try launch()
+        #expect(calls == ["enable", "bootstrap"])
+        #expect(launchctl.state.withLock { $0.loaded && !$0.disabled })
+        await cleanUp()
+    }
+
+    @Test("enable en échec : sans effet sur le lancement, le bootstrap est tenté quand même")
+    func enableFailureIsIgnored() async throws {
+        launchctl.state.withLock { $0.enableFails = true }
+        let sleeper = try startSleeper()
+        respond([LaunchdPrintFixtures.running(sleeper.pid), LaunchdPrintFixtures.signaled("Terminated", 15)])
+        let process = try launch()
+        #expect(process.pid == sleeper.pid)
+        #expect(calls == ["enable", "bootstrap"])
+        await cleanUp()
     }
 
     @Test("bootstrap en échec : l'erreur est rendue, la plist retirée, aucune sortie signalée")
     func bootstrapFails() async {
         launchctl.state.withLock { $0.bootstrapFails = true }
         #expect(throws: FakeLaunchctl.Failure.self) { try launch() }
-        #expect(calls == ["bootstrap"])
+        #expect(calls == ["enable", "bootstrap"])
         drain()
         #expect(!plistExists)
         try? await Task.sleep(for: .milliseconds(50))
@@ -398,7 +473,7 @@ final class LaunchdProcessLauncherTests {
         #expect(process.pid == sleeper.pid)
         #expect(launchctl.state.withLock { $0.printCalls } == 4)
         #expect(abs(clock.now - 0.15) < 1e-9)
-        #expect(calls == ["bootstrap"])
+        #expect(calls == ["enable", "bootstrap"])
         await cleanUp()
     }
 
@@ -410,7 +485,7 @@ final class LaunchdProcessLauncherTests {
         #expect(clock.now >= LaunchdProcessLauncher.pidTimeout && clock.now < LaunchdProcessLauncher.pidTimeout + 0.1)
         #expect((40...42).contains(launchctl.state.withLock { $0.printCalls }))
         drain()
-        #expect(calls == ["bootstrap", "bootout"])
+        #expect(calls == ["enable", "bootstrap", "bootout"])
         #expect(!plistExists)
         try? await Task.sleep(for: .milliseconds(50))
         #expect(exits.isEmpty)
@@ -428,9 +503,19 @@ final class LaunchdProcessLauncherTests {
         #expect(await eventually { exits.count == 1 })
         #expect(exits == [ProcessExit(status: 127, signaled: false)])
         #expect(!plistExists)
-        #expect(calls == ["bootstrap", "bootout"])
+        #expect(calls == ["enable", "bootstrap", "bootout"])
         try? await Task.sleep(for: .milliseconds(50))
         #expect(exits.count == 1)
+    }
+
+    @Test("Gardien sorti avant le premier sondage, code suivi d'un libellé (127: …) : sortie 127, go2rtc manquant")
+    func exitedBeforeFirstProbeWithLabel() async throws {
+        respond([LaunchdPrintFixtures.exited(code: 127, reason: "Unknown error: 127")])
+        let process = try launch()
+        #expect(!process.isRunning)
+        #expect(await eventually { exits.count == 1 })
+        #expect(exits == [ProcessExit(status: Go2RTCSupervisor.missingBinaryStatus, signaled: false)])
+        drain()
     }
 
     // MARK: - La sortie
@@ -448,7 +533,7 @@ final class LaunchdProcessLauncherTests {
         #expect(!process.isRunning)
         // La plist est retirée et le travail déchargé avant que onExit soit appelé.
         #expect(!plistExists)
-        #expect(calls == ["bootstrap", "bootout"])
+        #expect(calls == ["enable", "bootstrap", "bootout"])
         // Après la sortie : ni signal ni seconde sortie.
         process.terminate()
         process.kill()
@@ -472,6 +557,17 @@ final class LaunchdProcessLauncherTests {
     func exitCodeIsReported() async throws {
         let sleeper = try startSleeper()
         respond([LaunchdPrintFixtures.running(sleeper.pid), LaunchdPrintFixtures.exited(code: 127)])
+        let process = try launch()
+        process.terminate()
+        #expect(await eventually { exits.count == 1 })
+        #expect(exits == [ProcessExit(status: Go2RTCSupervisor.missingBinaryStatus, signaled: false)])
+        drain()
+    }
+
+    @Test("Code de sortie suivi d'un libellé (127: …), gardien vu en marche : 127 reconnu, pas un arrêt par signal inconnu")
+    func exitCodeWithLabelIsReported() async throws {
+        let sleeper = try startSleeper()
+        respond([LaunchdPrintFixtures.running(sleeper.pid), LaunchdPrintFixtures.exited(code: 127, reason: "Unknown error: 127")])
         let process = try launch()
         process.terminate()
         #expect(await eventually { exits.count == 1 })
@@ -560,7 +656,7 @@ final class LaunchdProcessLauncherTests {
         let secondProcess = try launch()
         #expect(secondProcess.pid == second.pid)
         #expect(plistExists)
-        #expect(calls == ["bootstrap", "bootout", "bootstrap"])
+        #expect(calls == ["enable", "bootstrap", "bootout", "enable", "bootstrap"])
         secondProcess.terminate()
         #expect(await eventually { exits.count == 2 })
         #expect(!plistExists)

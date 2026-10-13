@@ -66,6 +66,16 @@ struct Go2RTCSupervisorTests {
         #expect(launcher.launched.count == 1)
     }
 
+    @Test("Gardien déjà sorti avant qu'on ait vu son PID (PID 0) : pas de PID de gardien, qui désignerait tous les processus")
+    func gardienPIDZero() async throws {
+        launcher.pidOverride = 0
+        let supervisor = makeSupervisor()
+        await started(supervisor)
+        #expect(supervisor.state == .running)
+        #expect(supervisor.gardienPID == nil)
+        supervisor.stop {}
+    }
+
     @Test("Préparation bloquée (ffmpeg introuvable, caméra absente) : échec avec la raison, sans lancement ni relance")
     func blocked() async {
         for block in [Go2RTCBlock.ffmpegMissing, .cameraMissing] {

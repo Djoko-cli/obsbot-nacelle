@@ -15,7 +15,7 @@ final class FakeLaunchctl: Launchctl {
         var unloading = false
         var pollsBeforeUnload = 0
         var bootoutFails = false
-        /// bootout échoue, mais l'agent s'arrête quand même.
+        /// bootout échoue, mais l'agent s'arrête quand même : tout de suite, ou après `pollsBeforeUnload` vérifications.
         var unloadsDespiteFailure = false
         var bootouts = 0
         var bootstrapFails = false
@@ -69,7 +69,11 @@ final class FakeLaunchctl: Launchctl {
             state.labels.append(label)
             if state.bootoutFails {
                 if state.unloadsDespiteFailure {
-                    state.loaded = false
+                    if state.pollsBeforeUnload == 0 {
+                        state.loaded = false
+                    } else {
+                        state.unloading = true
+                    }
                 }
                 throw Failure()
             }

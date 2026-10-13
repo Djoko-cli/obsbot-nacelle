@@ -282,7 +282,9 @@ public final class Go2RTCSupervisor {
             return
         }
         process = launched
-        gardienPID = launched.pid
+        // PID 0 : le gardien était déjà sorti avant qu'on ait vu son PID. Le prendre pour racine ferait compter tous les
+        // ffmpeg vidéo du Mac (le PID 0 est l'ancêtre de tout) le temps que sa sortie soit livrée.
+        gardienPID = launched.pid > 0 ? launched.pid : nil
         usesCustomFile = launch.custom
         launchCount += 1
         launchedAt = scheduler.now

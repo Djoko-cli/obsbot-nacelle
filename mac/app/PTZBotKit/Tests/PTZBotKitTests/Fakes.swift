@@ -374,6 +374,8 @@ final class FakeLauncher: ProcessLauncher {
     /// Les variables données à chaque lancement (vide : l'environnement de l'app).
     private(set) var environments: [[String: String]] = []
     var failure: (any Error)?
+    /// Le PID donné aux processus lancés (par défaut 1000, 1001…). 0 : le gardien était déjà sorti avant qu'on ait vu son PID.
+    var pidOverride: pid_t?
 
     var last: FakeProcess? {
         launched.last
@@ -391,7 +393,7 @@ final class FakeLauncher: ProcessLauncher {
         }
         executables.append(executableURL)
         environments.append(environment)
-        let process = FakeProcess(pid: pid_t(1000 + launched.count), arguments: arguments, outputURL: outputURL, onExit: onExit)
+        let process = FakeProcess(pid: pidOverride ?? pid_t(1000 + launched.count), arguments: arguments, outputURL: outputURL, onExit: onExit)
         launched.append(process)
         return process
     }

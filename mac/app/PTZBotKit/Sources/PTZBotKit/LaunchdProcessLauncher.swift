@@ -4,7 +4,7 @@ import Foundation
 public enum LaunchdLaunchError: LocalizedError, Equatable, Sendable {
     /// Le travail d'une session précédente n'a pas pu être déchargé.
     case bootoutFailed(String)
-    /// Le travail d'une session précédente est encore chargé 10 s après le `bootout`.
+    /// Le travail d'une session précédente est encore chargé 20 s après le `bootout`.
     case stillLoaded
     /// launchd n'a donné aucun PID au gardien dans les 2 s qui suivent le `bootstrap`.
     case noPID
@@ -30,17 +30,21 @@ public enum LaunchdLaunchError: LocalizedError, Equatable, Sendable {
 ///
 /// Fils d'exécution : `ProcessLauncher` est `@MainActor` et synchrone. `launch` attend donc le PID du gardien sur le
 /// MainActor, 2 s au plus, et seulement au démarrage de go2rtc (le plus souvent, un ou deux sondages). Si un travail d'une
-/// session précédente est encore chargé, son déchargement attend de même, 10 s au plus. La fin du processus, elle, est
-/// suivie et traitée hors du MainActor (`launchctl print`, `bootout`, suppression de la plist), puis `onExit` revient sur le
-/// MainActor.
+/// session précédente est encore chargé (relance rapide après une app tuée : le vieux gardien finit d'arrêter go2rtc), son
+/// déchargement attend de même, 20 s au plus. Cette attente reste sur le MainActor : la sortir de là demanderait de
+/// décharger le travail pendant la préparation de go2rtc, hors du MainActor, ce qui n'est pas fait (cas rare, au pire
+/// l'interface attend 20 s). La fin du processus, elle, est suivie et traitée hors du MainActor (`launchctl print`,
+/// `bootout`, suppression de la plist), puis `onExit` revient sur le MainActor.
 @MainActor
 public final class LaunchdProcessLauncher: ProcessLauncher {
     /// Le label du travail launchd de go2rtc.
     public nonisolated static let label = "io.github.djoko-cli.obsbot-nacelle.go2rtc"
     /// La plist de travail, dans le dossier de support de l'app.
     public nonisolated static let plistFileName = "go2rtc-launchd.plist"
-    /// Un travail resté d'une session précédente : attente de son déchargement (comme `ClassicAgent`).
-    public nonisolated static let stopTimeout: TimeInterval = LegacyAgent.stopTimeout
+    /// Un travail resté d'une session précédente : attente de son déchargement (comme `ClassicAgent`). Au moins le
+    /// `ExitTimeOut` de la plist : `bootout` attend la sortie du vieux gardien jusque-là, et le gardien lui-même peut
+    /// prendre 15 s (go2rtc 10 s, puis les ffmpeg qui restent 5 s).
+    public nonisolated static let stopTimeout: TimeInterval = TimeInterval(exitTimeOut)
     public nonisolated static let stopPollInterval: TimeInterval = LegacyAgent.pollInterval
     /// Le PID du gardien : un sondage toutes les 50 ms, 2 s au plus.
     public nonisolated static let pidTimeout: TimeInterval = 2
@@ -109,6 +113,10 @@ public final class LaunchdProcessLauncher: ProcessLauncher {
             "RunAtLoad": true,
             "ProcessType": "Interactive",
             "ExitTimeOut": exitTimeOut,
+            // launchd ne doit jamais signaler les processus restés dans le groupe du travail, en particulier un ffmpeg qui
+            // capture : le gardien leur a déjà envoyé SIGTERM, jamais SIGKILL (risque de bloquer CMIO), comme avant le
+            // passage à launchd.
+            "AbandonProcessGroup": true,
         ]
         if !environment.isEmpty {
             contents["EnvironmentVariables"] = environment
@@ -131,20 +139,25 @@ public final class LaunchdProcessLauncher: ProcessLauncher {
     }
 
     /// Décharge un travail resté chargé (d'une session précédente, ou d'une app tuée) et attend que launchd ait fini
-    /// (10 s au plus) : un `bootstrap` échoue sur un label chargé. Un `bootout` en échec ne compte pas si le travail est
-    /// bien parti (déjà en cours d'arrêt) : seul compte qu'il ne soit plus chargé (comme `ClassicAgent`).
+    /// (20 s au plus) : un `bootstrap` échoue sur un label chargé. Un `bootout` en échec ne lève rien : launchd peut
+    /// encore démonter le travail (« Operation now in progress »). Seul compte qu'il ne soit plus chargé, et l'erreur
+    /// n'est levée que s'il l'est toujours au bout du délai (comme `ClassicAgent`).
     private func unloadLeftover() throws {
         guard launchctl.isLoaded(label: Self.label) else { return }
+        var bootoutError: (any Error)?
         do {
             try launchctl.bootout(label: Self.label)
         } catch {
-            guard !launchctl.isLoaded(label: Self.label) else {
-                throw LaunchdLaunchError.bootoutFailed(error.localizedDescription)
-            }
+            bootoutError = error
         }
         var waited: TimeInterval = 0
         while launchctl.isLoaded(label: Self.label) {
-            guard waited < Self.stopTimeout else { throw LaunchdLaunchError.stillLoaded }
+            guard waited < Self.stopTimeout else {
+                if let bootoutError {
+                    throw LaunchdLaunchError.bootoutFailed(bootoutError.localizedDescription)
+                }
+                throw LaunchdLaunchError.stillLoaded
+            }
             sleep(Self.stopPollInterval)
             waited += Self.stopPollInterval
         }
@@ -194,6 +207,9 @@ public final class LaunchdProcessLauncher: ProcessLauncher {
         try writePlist(Self.plistContents(executableURL: executableURL, arguments: arguments, environment: environment, outputURL: outputURL))
         do {
             try unloadLeftover()
+            // Un travail que l'utilisateur a coupé dans « Ouverture » (ou un `launchctl disable`) ferait échouer chaque
+            // `bootstrap` : on le réactive d'abord, comme `ClassicAgent`. Un échec ici n'empêche rien, le `bootstrap` le dira.
+            try? launchctl.enable(label: Self.label)
             try launchctl.bootstrap(plist: plistURL)
         } catch {
             // Rien de chargé par nous : seule la plist est à retirer.
