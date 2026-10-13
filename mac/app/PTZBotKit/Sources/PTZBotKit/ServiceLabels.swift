@@ -170,6 +170,13 @@ extension Labels {
         !legacy && status?.aiUsable != true
     }
 
+    /// Le lien « Installer le SDK… » sous « Suivi IA » : le suivi attend le SDK et l'onglet « SDK OBSBOT » a quelque
+    /// chose à proposer. Pas avant la lecture de l'état (nil) ni pendant la recompilation, où le SDK est déjà là, ni
+    /// quand la source d'obsbot-ai manque (rien à installer : c'est PTZBot qu'il faut réinstaller) : `sdkAction` y est nil.
+    public static func aiSDKLink(_ status: SDKStatus?, toolsAvailable: Bool = true, legacy: Bool) -> Bool {
+        aiNeedsSDK(status, legacy: legacy) && sdkAction(status, toolsAvailable: toolsAvailable) != nil
+    }
+
     public static var sdkRequired: String { Localization.text("SDK OBSBOT requis") }
     public static var tailscaleMissing: String { Localization.text("Tailscale introuvable : accès depuis l'extérieur indisponible") }
     public static var localNetworkDenied: String { Localization.text("PTZBot n'a pas accès au réseau local : les iPhone ne le trouveront qu'avec Tailscale") }

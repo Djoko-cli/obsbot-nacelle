@@ -37,6 +37,11 @@ struct PanelView: View {
         Labels.aiNeedsSDK(app.sdkStatus, legacy: legacy)
     }
 
+    /// Le lien vers l'onglet « SDK OBSBOT » : pas quand l'état n'est pas encore lu, ni pendant la recompilation.
+    private var aiSDKLink: Bool {
+        Labels.aiSDKLink(app.sdkStatus, toolsAvailable: app.toolsAvailable ?? true, legacy: legacy)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
@@ -244,7 +249,7 @@ struct PanelView: View {
                 if let note = Labels.aiNote(model.state?.aiTracking, needsSDK: aiNeedsSDK) {
                     PanelNote(note)
                 }
-                if aiNeedsSDK {
+                if aiSDKLink {
                     // L'installation du SDK est dans l'onglet « SDK OBSBOT » des Réglages (banc du 13/10).
                     Button(AppText.text("Installer le SDK…")) {
                         settingsWindow.show(tab: .sdk)

@@ -695,6 +695,29 @@ struct ServiceLabelsTests {
         #expect(Labels.aiNeedsSDK(.recompiling, legacy: false))
     }
 
+    @Test("Lien « Installer le SDK… » du panneau : seulement si le suivi IA attend le SDK et que l'onglet a une action à proposer")
+    func aiSDKLink() {
+        // Le SDK est à installer, à compléter ou à réinstaller : le lien mène à l'onglet.
+        for status in [SDKStatus.absent, .quarantined, .incompatible, .unloadable, .incomplete, .toolsRequired(fallback: false),
+                       .compileFailed(fallback: false)] {
+            #expect(Labels.aiSDKLink(status, legacy: false), "\(status)")
+        }
+        // L'état n'est pas encore lu, ou obsbot-ai est en cours de recompilation, ou sa source manque : pas de lien.
+        #expect(!Labels.aiSDKLink(nil, legacy: false))
+        #expect(!Labels.aiSDKLink(.recompiling, legacy: false))
+        #expect(!Labels.aiSDKLink(.sourceMissing, legacy: false))
+        // Le suivi IA est disponible (SDK prêt, ou ancien obsbot-ai en service) : pas de lien.
+        #expect(!Labels.aiSDKLink(.ready, legacy: false))
+        #expect(!Labels.aiSDKLink(.toolsRequired(fallback: true), legacy: false))
+        #expect(!Labels.aiSDKLink(.compileFailed(fallback: true), legacy: false))
+        // Ancienne installation : le SDK n'est pas nécessaire.
+        #expect(!Labels.aiSDKLink(.absent, legacy: true))
+        // Outils d'Apple absents : le lien reste, l'onglet propose de les installer d'abord.
+        #expect(Labels.aiSDKLink(.absent, toolsAvailable: false, legacy: false))
+        #expect(!Labels.aiSDKLink(.recompiling, toolsAvailable: false, legacy: false))
+        #expect(!Labels.aiSDKLink(nil, toolsAvailable: false, legacy: false))
+    }
+
     @Test("Sections du panneau : Service, Caméra avec son état, iPhone connectés, note du suivi IA")
     func sections() {
         #expect(Labels.serviceSection == "Service")
