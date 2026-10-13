@@ -27,13 +27,28 @@ public protocol LaunchedProcess: AnyObject {
 /// Lance un processus, sa sortie et ses erreurs ajoutées à un fichier ; derrière un protocole pour les tests.
 @MainActor
 public protocol ProcessLauncher: AnyObject {
-    /// `onExit` est appelé une fois, sur le MainActor, quand le processus se termine.
+    /// `onExit` est appelé une fois, sur le MainActor, quand le processus se termine. `environment` : les variables
+    /// posées ou remplacées sur celles de l'app (vide : l'environnement de l'app, tel quel) ; pour
+    /// `LaunchdProcessLauncher`, sur celles que launchd donne aux travaux de l'utilisateur.
     func launch(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String],
+        outputURL: URL,
+        onExit: @escaping @MainActor (ProcessExit) -> Void
+    ) throws -> any LaunchedProcess
+}
+
+extension ProcessLauncher {
+    /// Sans variable de plus : l'environnement de l'app (ptzd).
+    public func launch(
         executableURL: URL,
         arguments: [String],
         outputURL: URL,
         onExit: @escaping @MainActor (ProcessExit) -> Void
-    ) throws -> any LaunchedProcess
+    ) throws -> any LaunchedProcess {
+        try launch(executableURL: executableURL, arguments: arguments, environment: [:], outputURL: outputURL, onExit: onExit)
+    }
 }
 
 /// Implémentation réelle, sur `Process`.
@@ -44,12 +59,16 @@ public final class FoundationProcessLauncher: ProcessLauncher {
     public func launch(
         executableURL: URL,
         arguments: [String],
+        environment: [String: String],
         outputURL: URL,
         onExit: @escaping @MainActor (ProcessExit) -> Void
     ) throws -> any LaunchedProcess {
         let process = Process()
         process.executableURL = executableURL
         process.arguments = arguments
+        if !environment.isEmpty {
+            process.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
+        }
         let output = try Self.appendingHandle(outputURL)
         // Le processus ne lit jamais l'entrée standard de l'app.
         process.standardInput = FileHandle.nullDevice

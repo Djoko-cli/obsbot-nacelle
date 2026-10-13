@@ -2465,6 +2465,618 @@
           }
         }
       }
+    },
+    "Le nom « %@ » contient un caractère que go2rtc ne sait pas lire.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The name “%@” contains a character go2rtc cannot read."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le nom « %@ » contient un caractère que go2rtc ne sait pas lire."
+          }
+        }
+      }
+    },
+    "L'identifiant et le mot de passe RTSP sont obligatoires.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The RTSP user name and password are required."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'identifiant et le mot de passe RTSP sont obligatoires."
+          }
+        }
+      }
+    },
+    "L'identifiant ou le mot de passe contient un caractère interdit (saut de ligne, tabulation…).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The user name or password contains a forbidden character (line break, tab…)."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'identifiant ou le mot de passe contient un caractère interdit (saut de ligne, tabulation…)."
+          }
+        }
+      }
+    },
+    "Port %@ invalide : choisissez un port entre 1024 et 65535.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid port %@: choose a port between 1024 and 65535."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port %@ invalide : choisissez un port entre 1024 et 65535."
+          }
+        }
+      }
+    },
+    "Les ports RTSP, WebRTC et 1984 doivent être différents.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The RTSP, WebRTC and 1984 ports must be different."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les ports RTSP, WebRTC et 1984 doivent être différents."
+          }
+        }
+      }
+    },
+    "Ce fichier n'a pas pu être lu : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This file could not be read: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce fichier n'a pas pu être lu : %@"
+          }
+        }
+      }
+    },
+    "Rien de reconnu dans ce fichier : est-ce une configuration go2rtc ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing recognized in this file: is it a go2rtc configuration?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien de reconnu dans ce fichier : est-ce une configuration go2rtc ?"
+          }
+        }
+      }
+    },
+    "ffmpeg introuvable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ffmpeg not found"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ffmpeg introuvable"
+          }
+        }
+      }
+    },
+    "Caméra OBSBOT absente": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OBSBOT camera not found"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caméra OBSBOT absente"
+          }
+        }
+      }
+    },
+    "Micro OBSBOT absent": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OBSBOT microphone not found"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Micro OBSBOT absent"
+          }
+        }
+      }
+    },
+    "Port %@ déjà utilisé : un autre go2rtc tourne-t-il ?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port %@ already in use: is another go2rtc running?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port %@ déjà utilisé : un autre go2rtc tourne-t-il ?"
+          }
+        }
+      }
+    },
+    "Fichier de configuration personnalisé introuvable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom configuration file not found"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fichier de configuration personnalisé introuvable"
+          }
+        }
+      }
+    },
+    "go2rtc.yaml n'a pas pu être écrit : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc.yaml could not be written: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc.yaml n'a pas pu être écrit : %@"
+          }
+        }
+      }
+    },
+    "go2rtc s'arrête sans cesse : ouvrez le journal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc keeps stopping: open the log"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc s'arrête sans cesse : ouvrez le journal"
+          }
+        }
+      }
+    },
+    "go2rtc n'a pas pu être lancé : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc could not be started: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc n'a pas pu être lancé : %@"
+          }
+        }
+      }
+    },
+    "go2rtc manque dans PTZBot : réinstallez PTZBot": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc is missing from PTZBot: reinstall PTZBot"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc manque dans PTZBot : réinstallez PTZBot"
+          }
+        }
+      }
+    },
+    "go2rtc ne s'arrête pas : ouvrez le journal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc does not stop: open the log"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "go2rtc ne s'arrête pas : ouvrez le journal"
+          }
+        }
+      }
+    },
+    "Aucun client": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No clients"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun client"
+          }
+        }
+      }
+    },
+    "1 client · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 client · %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 client · %@"
+          }
+        }
+      }
+    },
+    "%lld clients · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld clients · %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld clients · %@"
+          }
+        }
+      }
+    },
+    "autre": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "other"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "autre"
+          }
+        }
+      }
+    },
+    "coreaudiod ne répond pas : la caméra est bloquée": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "coreaudiod is not responding: the camera is stuck"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "coreaudiod ne répond pas : la caméra est bloquée"
+          }
+        }
+      }
+    },
+    "Accès à la caméra refusé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera access denied"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accès à la caméra refusé"
+          }
+        }
+      }
+    },
+    "Fichier de configuration personnalisé": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom configuration file"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fichier de configuration personnalisé"
+          }
+        }
+      }
+    },
+    "Quitter PTZBot arrête aussi la caméra HomeKit.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitting PTZBot also stops the HomeKit camera."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitter PTZBot arrête aussi la caméra HomeKit."
+          }
+        }
+      }
+    },
+    "Identifiant : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "User name: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Identifiant : %@"
+          }
+        }
+      }
+    },
+    "Mot de passe : repris": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password: imported"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mot de passe : repris"
+          }
+        }
+      }
+    },
+    "Port RTSP : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RTSP port: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port RTSP : %@"
+          }
+        }
+      }
+    },
+    "Port WebRTC : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebRTC port: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port WebRTC : %@"
+          }
+        }
+      }
+    },
+    "Caméra : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caméra : %@"
+          }
+        }
+      }
+    },
+    "Micro : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Micro : %@"
+          }
+        }
+      }
+    },
+    "ffmpeg : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ffmpeg: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ffmpeg : %@"
+          }
+        }
+      }
+    },
+    "Le flux HomeKit sera coupé quelques secondes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The HomeKit stream will stop for a few seconds."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le flux HomeKit sera coupé quelques secondes."
+          }
+        }
+      }
+    },
+    "Le gardien de go2rtc d'une session précédente n'a pas pu être arrêté : %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The go2rtc guardian from a previous session could not be stopped: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le gardien de go2rtc d'une session précédente n'a pas pu être arrêté : %@"
+          }
+        }
+      }
+    },
+    "Le gardien de go2rtc d'une session précédente ne s'est pas arrêté à temps.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The go2rtc guardian from a previous session did not stop in time."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le gardien de go2rtc d'une session précédente ne s'est pas arrêté à temps."
+          }
+        }
+      }
+    },
+    "launchd n'a pas lancé le gardien de go2rtc.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "launchd did not start the go2rtc guardian."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "launchd n'a pas lancé le gardien de go2rtc."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

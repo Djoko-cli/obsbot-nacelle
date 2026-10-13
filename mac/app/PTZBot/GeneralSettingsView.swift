@@ -1,8 +1,9 @@
 import PTZBotKit
 import SwiftUI
 
-/// La fenêtre « Réglages » (spec distribution § 8) : les mises à jour, l'ouverture à la connexion et la version.
-struct SettingsView: View {
+/// L'onglet « Général » des Réglages (spec distribution § 8) : les mises à jour, l'ouverture à la connexion, la langue et
+/// la version. La fenêtre et ses onglets sont dans `SettingsWindowController`.
+struct GeneralSettingsView: View {
     let model: SettingsModel
     let language: AppLanguageModel
 
@@ -49,7 +50,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             loginItem.refresh()

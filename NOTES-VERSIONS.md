@@ -6,6 +6,55 @@ release and to the update window.
 PTZBot pour Mac. Chaque section a un bloc **English**, puis un bloc **Français** ; les mêmes notes servent à la
 version GitHub et à la fenêtre de mise à jour.
 
+## 1.1.0
+
+**English**
+
+- go2rtc is now part of PTZBot: turn on **go2rtc** in the panel (off by default) and PTZBot streams the camera to
+  HomeKit and to the iPhone app while it is open. Its settings are in the new **Settings › Camera** tab, where an
+  existing go2rtc configuration can be imported.
+- go2rtc needs ffmpeg, which PTZBot does not include: install it with Homebrew (`brew install ffmpeg`).
+- The first time, macOS may ask for camera access in the name of PTZBot (when PTZBot looks for the cameras listed in
+  **Settings › Camera**), then for camera and microphone access in the name of "ffmpeg" (when go2rtc films): choose
+  "Allow" every time, both are needed. The request in the name of "ffmpeg" comes back after Homebrew updates ffmpeg.
+- When go2rtc is on, quitting PTZBot also stops the HomeKit camera; PTZBot asks for confirmation first.
+- In the panel, each service shows a green dot when everything is normal; a status line appears only when something
+  needs attention.
+- Settings is now a window with tabs in its toolbar, with icons, like the settings of macOS: **General**, **Camera** and
+  **OBSBOT SDK**. The window title follows the tab, its height adjusts smoothly, and the last tab you used is remembered.
+- The OBSBOT SDK moves into **Settings › OBSBOT SDK**, which shows its state and holds everything the former **OBSBOT
+  SDK** window did (choosing the archive, checks, authorization). The SDK line in the panel and the separate window are
+  gone; when AI tracking is waiting for the SDK, an **Install SDK…** link under its switch opens that tab.
+- go2rtc is now started by macOS (launchd) instead of as part of PTZBot: macOS no longer shows the green **Video
+  Effects** button (portrait, backgrounds) in the menu bar while go2rtc is filming, and these effects cannot alter the
+  HomeKit stream. go2rtc still stops with PTZBot, even if PTZBot crashes, and nothing is added to Login Items or to
+  `~/Library/LaunchAgents`.
+
+**Français**
+
+- go2rtc fait désormais partie de PTZBot : allumez **go2rtc** dans le panneau (éteint par défaut), et PTZBot diffuse
+  la caméra vers HomeKit et vers l'app iPhone tant qu'il est ouvert. Ses réglages sont dans le nouvel onglet
+  **Réglages › Caméra**, où une configuration go2rtc existante peut être importée.
+- go2rtc a besoin de ffmpeg, que PTZBot ne fournit pas : installez-le avec Homebrew (`brew install ffmpeg`).
+- La première fois, macOS peut demander l'accès à la caméra au nom de PTZBot (quand PTZBot cherche les caméras listées
+  dans **Réglages › Caméra**), puis l'accès à la caméra et au micro au nom de « ffmpeg » (quand go2rtc filme) :
+  choisissez « Autoriser » à chaque fois, les deux sont nécessaires. La demande au nom de « ffmpeg » revient après une
+  mise à jour de ffmpeg par Homebrew.
+- Quand go2rtc est allumé, quitter PTZBot arrête aussi la caméra HomeKit ; PTZBot demande d'abord confirmation.
+- Dans le panneau, chaque service montre une pastille verte quand tout est normal ; une ligne d'état n'apparaît que
+  quand il faut y prêter attention.
+- Les Réglages sont désormais une fenêtre à onglets dans sa barre d'outils, avec des icônes, comme les réglages de
+  macOS : **Général**, **Caméra** et **SDK OBSBOT**. Le titre de la fenêtre suit l'onglet, sa hauteur s'ajuste en
+  douceur, et le dernier onglet utilisé est retenu.
+- Le SDK OBSBOT passe dans **Réglages › SDK OBSBOT**, qui montre son état et reprend tout ce que faisait l'ancienne
+  fenêtre **SDK OBSBOT** (choix de l'archive, vérifications, autorisation). La ligne SDK du panneau et la fenêtre
+  séparée disparaissent ; quand le suivi IA attend le SDK, un lien **Installer le SDK…** sous son interrupteur ouvre cet
+  onglet.
+- go2rtc est désormais lancé par macOS (launchd) et non plus comme une partie de PTZBot : macOS n'affiche plus le bouton
+  vert « Effets vidéo » (portrait, arrière-plans) dans la barre des menus quand go2rtc filme, et ces effets ne peuvent
+  pas altérer le flux HomeKit. go2rtc s'arrête toujours avec PTZBot, même si PTZBot plante, et rien n'est ajouté à
+  « Ouverture » ni à `~/Library/LaunchAgents`.
+
 ## 1.0.7
 
 **English**

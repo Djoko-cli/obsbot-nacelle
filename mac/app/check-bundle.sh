@@ -1,5 +1,7 @@
 #!/bin/bash
-# Vérifie le paquet Release de PTZBot (spec distribution § 5.1 et § 10) : ptzd et talkd dans Contents/Helpers, la plist
+# Vérifie le paquet Release de PTZBot (spec distribution § 5.1 et § 10, spec B3 § 8) : ptzd, talkd, le gardien et
+# go2rtc (le binaire officiel, à l'octet près) dans Contents/Helpers, sa licence dans Contents/Resources, les droits
+# caméra et micro de l'app et ses textes d'autorisation, la plist
 # embarquée de l'ancien agent de talkd dans Contents/Library/LaunchAgents (spec haut-parleur § 7 et § 15 : elle ne sert
 # plus qu'à désinscrire l'agent de la 1.0.4), la source d'obsbot-ai dans
 # Contents/Resources, Sparkle dans Contents/Frameworks ; ni le SDK OBSBOT (libdev*.dylib), ni ses
@@ -25,6 +27,9 @@ require() {
 }
 require -x Contents/Helpers/ptzd
 require -x Contents/Helpers/talkd
+require -x Contents/Helpers/gardien
+require -x Contents/Helpers/go2rtc
+require -f Contents/Resources/go2rtc-LICENSE.txt
 require -f Contents/Library/LaunchAgents/io.github.djoko-cli.obsbot-nacelle.talkd.plist
 require -f Contents/Resources/obsbot-ai.cpp
 require -d Contents/Frameworks/Sparkle.framework
@@ -48,6 +53,37 @@ if [ -f "$AGENT" ]; then
         fi
     fi
 fi
+
+# go2rtc : le binaire officiel de la version 1.9.14, à l'octet près (mac/app/go2rtc.sha256), pour Apple Silicon.
+EMPREINTES="$(cd "$(dirname "$0")" && pwd)/go2rtc.sha256"
+if [ -x "$APP/Contents/Helpers/go2rtc" ]; then
+    ATTENDUE="$(/usr/bin/awk '$2 == "go2rtc" { print $1 }' "$EMPREINTES")"
+    if [ -z "$ATTENDUE" ] || [ "$(/usr/bin/shasum -a 256 "$APP/Contents/Helpers/go2rtc" | /usr/bin/awk '{ print $1 }')" != "$ATTENDUE" ]; then
+        echo "go2rtc n'est pas le binaire officiel attendu ($EMPREINTES)" >&2
+        STATUS=1
+    else
+        echo "ok : go2rtc officiel (empreinte de $EMPREINTES)"
+    fi
+fi
+
+# Les droits caméra et micro de l'app (spec B3 § 3.4) ; ceux des utilitaires sont contrôlés à la publication.
+DROITS="$(/usr/bin/codesign -d --entitlements - --xml "$APP" 2>/dev/null | /usr/bin/plutil -convert json -o - - 2>/dev/null || true)"
+for DROIT in com.apple.security.device.camera com.apple.security.device.audio-input; do
+    if printf '%s' "$DROITS" | grep -q "\"$DROIT\":true"; then
+        echo "ok : droit $DROIT"
+    else
+        echo "droit manquant sur l'app : $DROIT" >&2
+        STATUS=1
+    fi
+done
+for CLE in NSCameraUsageDescription NSMicrophoneUsageDescription; do
+    if [ -n "$(/usr/bin/plutil -extract "$CLE" raw "$APP/Contents/Info.plist" 2>/dev/null)" ]; then
+        echo "ok : $CLE"
+    else
+        echo "Info.plist : $CLE manque" >&2
+        STATUS=1
+    fi
+done
 
 refuse() {
     local FOUND

@@ -274,3 +274,105 @@ Aucun label personnel n'entre dans le code public : la migration est un geste de
 - **Fait.** Le ffmpeg de capture avait bien l'app pour processus responsable, mais **macOS a attribué l'accès à la caméra au programme qui l'ouvre, ffmpeg**, et non à l'app (essai de la tâche 0 du plan). Le § 3.4 ne se vérifie donc pas : la demande porte le nom « ffmpeg », et l'autorisation suit le binaire de Homebrew. Elle est redemandée après chaque `brew upgrade ffmpeg`.
 - **Décision de Majid : B3 tel quel.** Les droits caméra et micro de l'app et ses textes d'explication restent : ils préparent l'évolution suivante.
 - **Évolution au backlog : un utilitaire de capture signé de PTZBot** (AVFoundation, VideoToolbox et AudioToolbox, flux vers go2rtc par `exec:`). Il remplacerait ffmpeg pour la capture, pour que l'accès soit attribué à PTZBot et survive aux mises à jour. ffmpeg ne servirait plus qu'à l'Opus.
+
+## 13. Précisions du plan (12/10/2026)
+
+Le [plan](../plans/2026-10-12-go2rtc-dans-ptzbot.md) précise la spec sur ces points, sans en changer les choix.
+
+- **Délais d'arrêt (§ 3.3).** Le gardien reçoit `--arret 10` : il laisse 10 s à go2rtc entre SIGTERM et SIGKILL. Le
+  superviseur n'envoie SIGKILL au gardien lui-même qu'à 15 s, et « Quitter » attend 16 s au plus (6 s sans go2rtc).
+  Le gardien rend la fin de go2rtc : son code de sortie, ou le même signal.
+- **Ffmpeg à la sortie de go2rtc (§ 3.2, § 3.3).** Rien ne garantit que go2rtc arrête ses ffmpeg en sortant : le gardien lance
+  go2rtc dans son propre groupe de processus ; une fois go2rtc sorti, le groupe et les enfants que go2rtc avait juste avant
+  son premier signal d'arrêt (relevés par libproc, reconnus par leur heure de démarrage) reçoivent SIGTERM, jamais SIGKILL,
+  et le gardien les attend 5 s au plus avant de rendre le code de go2rtc.
+- **Noms des appareils (§ 3.6).** go2rtc découpe la commande d'ffmpeg sans échappement (`shell.QuoteSplit`) et coupe
+  la source au premier `#`. Un nom est donc écrit entre guillemets doubles, ou simples s'il contient un guillemet
+  double ; un nom avec les deux sortes de guillemets, un `#` ou un caractère de contrôle est refusé, avec un message.
+  Le choix par défaut préfère une OBSBOT réelle à une caméra virtuelle (l'extension d'OBSBOT Center porte aussi le
+  nom « OBSBOT »).
+- **Réglages (§ 4 et § 6.2).** Un seul réglage de débit : le plafond vaut 1,5 fois le débit, le tampon la moitié
+  (4 Mb/s donne 6 et 2, comme le pipeline en service). Résolutions proposées : 1920 × 1080 et 1280 × 720 ; cadences :
+  30, 25 et 15 i/s. Sans yaml, PTZBot tire un mot de passe RTSP de 20 caractères ; un identifiant ou un mot de passe
+  vide est refusé (le flux serait ouvert à tout le réseau local). Les ports vont de 1024 à 65535, tous différents.
+- **Modèle (§ 4).** `#timeout=30s` est gardé tel quel, comme dans le pipeline en service, bien que go2rtc 1.9.14 lise
+  `starttimeout` (30 s par défaut) : aucun changement de comportement.
+- **Pannes (§ 5).** Les ports vérifiés : RTSP en TCP, WebRTC en TCP et en UDP, l'API sur 127.0.0.1:1984. La sonde ouvre ses
+  sockets avec `SO_REUSEADDR` (comme go2rtc : les connexions en TIME_WAIT, 30 s après sa sortie, ne comptent pas) et essaie
+  aussi 127.0.0.1 ; un port vu pris au lancement est réessayé toutes les secondes pendant 5 s avant l'échec « port déjà
+  utilisé ». Le refus
+  d'accès est repéré dans `go2rtc.log` (lignes d'erreur de go2rtc qui citent avfoundation ou exec avec « not
+  authorized », « denied » ou « Failed to create AV capture input device ») ; l'essai de la tâche 0 n'a produit aucun
+  refus réel (§ 12), donc aucune ligne réelle : elle se relève au banc, et sans ligne reconnaissable l'état retombe sur
+  « Caméra OBSBOT absente ». Le journal est relu toutes les 10 s tant que go2rtc tourne, l'API et les processus seulement panneau
+  ouvert. Talkback « En lecture » compte comme état normal (pastille verte).
+- **Publication (§ 8).** `outils/publication.py` gagne `--droit-requis` (les droits caméra et micro sont exigés sur
+  l'app, et, sans bac à sable, aucun autre n'est admis) et `--empreintes-go2rtc` : `Contents/Helpers/go2rtc` doit
+  être le binaire officiel, vérifié par son empreinte avant toute signature ; seul ce binaire peut porter des adresses
+  au contrôle de fuite du .dmg. `mac/app/go2rtc.sha256` donne l'empreinte de l'archive et celle du binaire.
+- **Autorisations (§ 3.4, § 12).** La demande d'accès à la caméra et au micro porte le nom « ffmpeg » et non PTZBot, et
+  elle revient après chaque mise à jour de ffmpeg par Homebrew. Le README et les notes 1.1.0 le disent. Les droits
+  caméra et micro de l'app et ses textes d'explication restent : ils préparent l'utilitaire de capture signé du
+  backlog.
+
+## 14. Le gardien est lancé par launchd (13/10/2026)
+
+Ce paragraphe précise le § 2 (cycle de vie) et le § 3.4 (autorisations), sans changer le résultat attendu : go2rtc ne tourne
+que pendant que PTZBot est ouvert.
+
+- **Le défaut constaté au banc.** Quand go2rtc, et donc ses ffmpeg, descendent de PTZBot, macOS affiche dans la barre des
+  menus le bouton vert « Effets vidéo » (portrait, arrière-plans), au nom de PTZBot. Cause : les ffmpeg que go2rtc lance
+  filment dans la **coalition de l'app**.
+- **Les quatre essais du 13/10**, tous avec un ffmpeg qui filme la caméra :
+  - lancé par une app : le bouton apparaît ;
+  - lancé par une app avec `responsibility_spawnattrs_setdisclaim` : le bouton apparaît toujours ;
+  - lancé par launchd (`launchctl bootstrap gui/<uid>` d'une plist rangée hors de `~/Library/LaunchAgents`) : pas de bouton ;
+  - lancé par launchd, par le vrai `gardien --parent <PID de PTZBot>`, qui lance ffmpeg : pas de bouton, pas de demande
+    d'accès, 331 images en 15 s.
+
+  Un travail launchd forme sa propre coalition : c'est la seule voie qui fait disparaître le bouton.
+- **Décision (Majid).** PTZBot lance le **gardien** par launchd, et non plus comme son enfant. Un nouveau lanceur,
+  `LaunchdProcessLauncher`, remplace `FoundationProcessLauncher` pour go2rtc seulement ; ptzd ne change pas, et le superviseur
+  non plus (relances, sonde des ports, SIGTERM puis SIGKILL du gardien après 15 s).
+  - **Une plist de travail** (`go2rtc-launchd.plist`, en 0600) est écrite à côté du yaml, dans le dossier de support de
+    l'app, **hors de `~/Library/LaunchAgents`**, puis chargée par `launchctl bootstrap gui/<uid>`. Label
+    `io.github.djoko-cli.obsbot-nacelle.go2rtc` ; `RunAtLoad` ; `ProcessType` `Interactive` (comme talkd : Standard
+    dégradait le son des enfants de go2rtc, Background faisait saccader la vidéo) ; `ExitTimeOut` 20 ;
+    `AbandonProcessGroup` vrai ; le PATH qui mène à ffmpeg en `EnvironmentVariables` ; la sortie du gardien ajoutée à
+    `go2rtc.log`.
+  - **launchd ne doit jamais signaler les processus restants.** Le gardien laisse volontairement en vie un ffmpeg qui
+    capture et ne répond pas à SIGTERM (jamais de SIGKILL, risque de bloquer CMIO) : `AbandonProcessGroup` le demande à
+    launchd, si bien que ces processus ne reçoivent que le SIGTERM du gardien, comme avant le passage à launchd. L'effet sur
+    un ffmpeg qui survit à la sortie du gardien et au `bootout` reste à confirmer au banc.
+  - **Pas de `KeepAlive`** : le travail ne redémarre jamais tout seul, c'est le superviseur qui relance. Un travail resté
+    chargé (app tuée) est déchargé avant le lancement suivant (20 s d'attente au plus, même si le `bootout` rend une erreur
+    pendant que launchd démonte le travail), et au lancement de l'app quand go2rtc est éteint. Le `bootstrap` est précédé
+    d'un `launchctl enable` du label, au cas où l'utilisateur aurait coupé le travail dans « Ouverture ».
+  - **L'exigence B est tenue par `--parent`** : si PTZBot disparaît, même par un plantage, le gardien arrête go2rtc et ses
+    ffmpeg (§ 3.2, § 13), puis sort. launchd ne remplace pas ce lien ; il ne fait que changer de coalition.
+- **Réalisation.**
+  - Le PID du gardien est lu dans `launchctl print gui/<uid>/<label>` (ligne `pid = N` du service, à une tabulation de
+    retrait) : un sondage toutes les 50 ms, 2 s au plus, sur le MainActor et seulement au démarrage de go2rtc. Sans PID dans
+    ce délai : `bootout`, puis une erreur de lancement, que le superviseur montre déjà (`failed(.launch)`).
+  - La fin du gardien est suivie par une source `DispatchSource` sur son PID, qui marche sur un processus qui n'est pas
+    notre enfant. Course fermée : si le gardien est sorti avant que la source soit armée, `kill(pid, 0)` échoue avec `ESRCH`
+    et la sortie est traitée aussitôt. Un gardien déjà sorti avant le premier sondage (go2rtc manquant, code 127) est
+    signalé comme une sortie ordinaire, juste après le retour du lancement.
+  - À la sortie, le code vient de `launchctl print` : `last exit code = N` donne la sortie N, `last terminating signal =
+    <nom>: N` donne un arrêt par le signal N, un code illisible donne un arrêt par signal inconnu (`-1`). Le code 127,
+    rendu quand go2rtc manque, reste reconnu. Puis `bootout` du travail et suppression de la plist, hors du fil principal,
+    avant que `onExit` revienne sur le MainActor.
+- **Conséquence probable pour l'accès à la caméra.** Le travail launchd n'a pas PTZBot pour processus responsable : chez un
+  nouvel utilisateur, la demande d'accès sera faite **au nom de ffmpeg**, comme avec un go2rtc lancé par un agent launchd.
+  Le § 12 l'avait déjà établi pour le ffmpeg de Homebrew : le § 3.4 (accès attribué à PTZBot) ne se vérifie pas non plus ici.
+  Le README et les notes 1.1.0 le disent (§ 13).
+- **Résultat du banc (13/10, build 261).**
+  - Avec le go2rtc de l'app, aucun bouton « Effets vidéo » et aucune notification « élément d'arrière-plan ajouté ». HomeKit
+    et l'app iOS ont l'image et le son.
+  - « Quitter » : le gardien, go2rtc et les deux ffmpeg s'arrêtent en une seconde, et le travail launchd est retiré. La
+    relance crée un travail neuf, sans « port déjà utilisé ».
+  - PTZBot tué (`kill -9`), puis relancé 3 s plus tard : le gardien a tout arrêté en une seconde, et le travail resté chargé
+    a été remplacé sans attente.
+  - La demande d'accès à la caméra au nom de PTZBot, vue le 13/10 à l'allumage de go2rtc, vient de la recherche des
+    appareils de PTZBot lui-même (liste des caméras de l'onglet « Caméra »), pas de ffmpeg.
+  - L'essai d'un ffmpeg qui ignore SIGTERM sous `AbandonProcessGroup` n'a pas été fait : il est au backlog.

@@ -70,6 +70,31 @@ public struct AppPaths: Equatable, Sendable {
     public var service: ServiceSupervisor.Paths {
         ServiceSupervisor.Paths(ptzd: ptzd, ai: obsbotAI, sdkDirectory: sdkDirectory, log: ptzdLog)
     }
+
+    /// go2rtc 1.9.14, le binaire officiel (spec B3 § 3.1).
+    public var go2rtc: URL {
+        helpers.appending(path: "go2rtc")
+    }
+
+    /// Le gardien qui lance go2rtc et l'arrête si PTZBot disparaît (spec B3 § 3.2).
+    public var gardien: URL {
+        helpers.appending(path: "gardien")
+    }
+
+    /// Le yaml que PTZBot écrit pour go2rtc (mode 600 : il porte le mot de passe RTSP).
+    public var go2rtcConfig: URL {
+        support.appending(path: Go2RTCConfig.fileName)
+    }
+
+    /// Le journal de go2rtc et de son gardien, à côté de `ptzd.log`.
+    public var go2rtcLog: URL {
+        logs.appending(path: "go2rtc.log")
+    }
+
+    /// Ce que le superviseur de go2rtc lance.
+    public var go2rtcService: Go2RTCSupervisor.Paths {
+        Go2RTCSupervisor.Paths(gardien: gardien, go2rtc: go2rtc, log: go2rtcLog)
+    }
 }
 
 extension SDKInstaller {

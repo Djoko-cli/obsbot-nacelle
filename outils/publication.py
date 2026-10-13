@@ -10,6 +10,11 @@ facons seulement, plus le controle de fuite et les parametres :
     depot (adresses hors liste autorisee, noms Tailscale, chemins personnels et temporaires), sur le contenu du
     .dmg, les notes et le flux ;
   - --notes : le fichier des notes, quand il n'est pas dans le dossier de l'app (ici a la racine du depot).
+Puis, pour go2rtc dans PTZBot (spec B3, section 8) : --droit-requis exige un droit sur l'app et, avec
+--sans-bac-a-sable, aucun autre que ceux-la (et la levee de la validation des bibliotheques) n'est accepte ;
+--empreintes-go2rtc exige que Contents/Helpers/go2rtc soit le binaire officiel (son empreinte SHA-256, avant toute
+signature), et seul ce binaire, ainsi verifie, peut porter des adresses au controle de fuite du .dmg (celles de son
+code : multidiffusion, DNS publics...) ; les chemins personnels et les noms Tailscale y restent refuses.
 Et, apres la relecture du prototype : l'app compilee doit porter SUVerifyUpdateBeforeExtraction (signature Ed25519
 toujours exigee) ; chaque utilitaire signe est relu (aucun droit, runtime renforce) ; aucun binaire Mach-O du .dmg ne
 depend de libdev (otool -L) ; sign_update et generate_keys pris dans le paquet resolu exigent la revision de Sparkle
@@ -104,6 +109,7 @@ nulle part ailleurs (ni depot, ni commits, ni notes, ni flux, ni journaux affich
 """
 import argparse
 import datetime
+import hashlib
 import html
 import json
 import os
@@ -1016,7 +1022,31 @@ def droits_pour_signer(o, app, sortie, levee):
     return chemin
 
 
-def verifier_droits(o, app, identifiant, sans_bac_a_sable=False, levee=True):
+def empreinte_attendue(fichier, nom):
+    """L'empreinte SHA-256 de `nom` dans un fichier d'empreintes (une ligne « <64 chiffres hexadecimaux>  <nom> » par
+    fichier, comme shasum). Leve Refus."""
+    for ligne in lire(fichier).splitlines():
+        champs = ligne.split()
+        if len(champs) == 2 and champs[1] == nom and re.fullmatch(r'[0-9a-f]{64}', champs[0]):
+            return champs[0]
+    raise Refus("%s : pas d'empreinte pour %s" % (fichier, nom))
+
+
+def verifier_go2rtc(app, empreintes):
+    """Contents/Helpers/go2rtc est le binaire officiel de go2rtc, a l'octet pres (spec B3, section 3.1) : son
+    empreinte est celle du fichier `empreintes` (mac/app/go2rtc.sha256). A verifier avant toute signature. Leve
+    Refus."""
+    chemin = os.path.join(app, 'Contents', 'Helpers', 'go2rtc')
+    if not os.path.isfile(chemin):
+        raise Refus('Contents/Helpers/go2rtc manque')
+    with open(chemin, 'rb') as f:
+        empreinte = hashlib.sha256(f.read()).hexdigest()
+    if empreinte != empreinte_attendue(empreintes, 'go2rtc'):
+        raise Refus("Contents/Helpers/go2rtc n'est pas le binaire officiel de go2rtc (empreinte differente de %s)"
+                    % empreintes)
+
+
+def verifier_droits(o, app, identifiant, sans_bac_a_sable=False, levee=True, requis=()):
     """Les droits de l'app signee, relus : le bac a sable, en mach-lookup les seuls services de Sparkle
     (<identifiant>-spks et <identifiant>-spki, ni plus ni moins) ; avec sans_bac_a_sable, ni bac a sable ni aucun
     service en mach-lookup (une app sans bac a sable n'en a pas besoin) ; jamais get-task-allow (un debogueur pourrait
@@ -1048,6 +1078,15 @@ def verifier_droits(o, app, identifiant, sans_bac_a_sable=False, levee=True):
     elif droits.get(VALIDATION_BIBLIOTHEQUES) is not True:
         raise Refus("droits de l'app signee : %s manque (sans equipe, l'app ne chargerait pas ses cadres)"
                     % VALIDATION_BIBLIOTHEQUES)
+    for droit in requis:
+        if droits.get(droit) is not True:
+            raise Refus("droits de l'app signee : %s manque" % droit)
+    if sans_bac_a_sable:
+        # Sans bac a sable, les seuls droits admis : la levee de la validation des bibliotheques et les droits requis
+        # (pour PTZBot : la camera et le micro, spec B3, section 3.4).
+        autres = sorted(k for k in droits if k != VALIDATION_BIBLIOTHEQUES and k not in requis)
+        if autres:
+            raise Refus("droits de l'app signee : droit inattendu %s" % ', '.join(autres))
 
 
 def jeton(contenu, debut, fin, caracteres):
@@ -1060,31 +1099,36 @@ def jeton(contenu, debut, fin, caracteres):
     return contenu[debut:fin].strip(b'.')
 
 
-def trouvaille_admise(contenu, m, debuts):
+def trouvaille_admise(contenu, m, debuts, adresses_libres=False):
     """Une trouvaille de FUITE est admise si son jeton entier est dans AUTORISES ou commence par un des `debuts` ;
-    un chemin personnel ou temporaire ne l'est jamais."""
+    un chemin personnel ou temporaire ne l'est jamais. Avec `adresses_libres` (le binaire officiel de go2rtc, verifie
+    par son empreinte), toute adresse est admise ; un chemin ou un nom Tailscale reste juge."""
     texte = m.group(0)
     if texte.startswith(b'/'):
         return False
     if texte.endswith(b'net'):  # le domaine Tailscale (ts point net)
         t = jeton(contenu, m.start(), m.end(), CARACTERES_DE_NOM)
         return t in AUTORISES
+    if adresses_libres:
+        return True
     t = jeton(contenu, m.start(), m.end(), CHIFFRES_ET_POINTS)
     return t in AUTORISES or t.startswith(debuts)
 
 
-def fuites(fichiers, dmg=False):
+def fuites(fichiers, dmg=False, adresses_libres=()):
     """Le controle de fuite sur des fichiers, binaires compris : chaque trouvaille de FUITE non admise
-    (trouvaille_admise ; dans le .dmg, les OID de Sparkle en plus). Rend [(fichier, numero de ligne)], une fois par
-    ligne ; n'imprime que le nombre de fichiers et de lignes, jamais ce qui est trouve."""
+    (trouvaille_admise ; dans le .dmg, les OID de Sparkle en plus ; dans les fichiers de `adresses_libres`, toute
+    adresse). Rend [(fichier, numero de ligne)], une fois par ligne ; n'imprime que le nombre de fichiers et de lignes,
+    jamais ce qui est trouve."""
     debuts = DEBUTS_AUTORISES_DMG if dmg else DEBUTS_AUTORISES
     trouvees = []
     for f in fichiers:
         with open(f, 'rb') as e:
             contenu = e.read()
         lignes = set()
+        libres = f in adresses_libres
         for m in FUITE.finditer(contenu):
-            if not trouvaille_admise(contenu, m, debuts):
+            if not trouvaille_admise(contenu, m, debuts, libres):
                 lignes.add(contenu.count(b'\n', 0, m.start()) + 1)
         trouvees += [(f, n) for n in sorted(lignes)]
     dire('controle de fuite (%d fichiers) : %d ligne(s) trouvee(s)' % (len(fichiers), len(trouvees)))
@@ -1206,6 +1250,8 @@ def publier(a, o=None, maintenant=None):
     for cle, valeur in attendu.items():
         if info.get(cle) != valeur:
             raise Refus('Info.plist de l\'app compilee : %s = %r, attendu %r' % (cle, info.get(cle), valeur))
+    if a.empreintes_go2rtc:
+        verifier_go2rtc(app, a.empreintes_go2rtc)
     levee = validation_levee(a.identite)
     notarise = notariser(a.identite)
     fichier_droits = droits_pour_signer(o, app, sortie, levee)
@@ -1216,7 +1262,7 @@ def publier(a, o=None, maintenant=None):
     verifier_utilitaires(o, app)
     if not info.get('CFBundleIdentifier'):
         raise Refus("Info.plist de l'app compilee : CFBundleIdentifier manque")
-    verifier_droits(o, app, info['CFBundleIdentifier'], a.sans_bac_a_sable, levee)
+    verifier_droits(o, app, info['CFBundleIdentifier'], a.sans_bac_a_sable, levee, a.droit_requis)
     # Le certificat feuille de la signature, tel qu'il sera publie.
     prefixe = os.path.join(sortie, 'certificat-')
     for n in os.listdir(sortie):
@@ -1265,7 +1311,9 @@ def publier(a, o=None, maintenant=None):
         liste = os.path.join(sortie, 'contenu-dmg.txt')
         ecrire(liste, liste_du_contenu(scene))
         controles = fichiers_ordinaires(copie) + [liste, fichier_droits]
-        trouvees = fuites(controles, dmg=True)
+        # Le binaire officiel de go2rtc, verifie par son empreinte avant la signature : ses adresses sont admises.
+        libres = {os.path.join(copie, a.nom_app + '.app', 'Contents', 'Helpers', 'go2rtc')} if a.empreintes_go2rtc else set()
+        trouvees = fuites(controles, dmg=True, adresses_libres=libres)
         if trouvees:
             raise Refus("le controle de fuite a trouve des donnees locales dans le contenu du .dmg (%d) : %s ; rien "
                         "n'est publie" % (len(trouvees), ' ; '.join('%s:%d' % (os.path.relpath(f, sortie), n)
@@ -1398,6 +1446,10 @@ def arguments(argv):
     q.add_argument('--cle-privee')
     q.add_argument('--cle-publique')
     q.add_argument('--sans-tests', action='store_true')
+    q.add_argument('--droit-requis', action='append', default=[],
+                   help="droit exige sur l'app signee (et, sans bac a sable, seul admis avec la levee)")
+    q.add_argument('--empreintes-go2rtc',
+                   help='fichier des empreintes de go2rtc : Contents/Helpers/go2rtc doit etre le binaire officiel')
     a = p.parse_args(argv)
     if a.repetition and not a.url_base:
         p.error('--repetition demande --url-base')

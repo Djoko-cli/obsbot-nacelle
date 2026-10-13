@@ -1,16 +1,19 @@
 import PTZBotKit
 import SwiftUI
 
-/// PTZBot pour Mac (spec app Mac, spec ptzd dans l'app, spec distribution) : une icône dans la barre des menus,
-/// un panneau, quatre fenêtres, ptzd lancé comme processus enfant, Talkback (l'agent talkd, indépendant de l'app) et les
-/// mises à jour par Sparkle.
+/// PTZBot pour Mac (spec app Mac, spec ptzd dans l'app, spec distribution, spec B3) : une icône dans la barre des menus,
+/// un panneau, trois fenêtres (deux scènes SwiftUI, et les Réglages en AppKit : `SettingsWindowController`), ptzd lancé
+/// comme processus enfant, go2rtc lancé par launchd (son gardien suit l'app), Talkback (l'agent talkd, indépendant de
+/// l'app) et les mises à jour par Sparkle.
 @main
 struct PTZBotApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
         MenuBarExtra {
-            PanelView(model: delegate.panel, talkback: delegate.talkback, settings: delegate.settings, app: delegate.controller, network: delegate.network)
+            PanelView(model: delegate.panel, talkback: delegate.talkback, settings: delegate.settings, app: delegate.controller,
+                      network: delegate.network, go2rtc: delegate.go2rtc, go2rtcMonitor: delegate.go2rtcMonitor,
+                      settingsWindow: delegate.settingsWindow)
                 .followsLanguage(delegate.language)
         } label: {
             Image(nsImage: MenuBarIcon.image())
@@ -32,24 +35,10 @@ struct PTZBotApp: App {
         }
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
-
-        Window("SDK OBSBOT", id: WindowID.sdk) {
-            SDKView(model: delegate.sdkWindow)
-                .followsLanguage(delegate.language, title: "SDK OBSBOT")
-        }
-        .windowResizability(.contentSize)
-        .defaultLaunchBehavior(.suppressed)
-
-        Window("Réglages", id: WindowID.settings) {
-            SettingsView(model: delegate.settings, language: delegate.language)
-                .followsLanguage(delegate.language, title: "Réglages")
-        }
-        .windowResizability(.contentSize)
-        .defaultLaunchBehavior(.suppressed)
     }
 }
 
-/// Les modèles de l'app, créés une fois ; « Quitter » (et toute fin de l'app) attend l'arrêt de ptzd.
+/// Les modèles de l'app, créés une fois ; « Quitter » (et toute fin de l'app) attend l'arrêt de ptzd et de go2rtc.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// La langue choisie dans les Réglages, appliquée avant tout autre texte.
@@ -60,7 +49,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings: SettingsModel
     let controller: AppController
     let sdkWindow: SDKWindowModel
+    /// La fenêtre « Réglages », ouverte par le panneau.
+    let settingsWindow: SettingsWindowController
     let network: LocalNetworkState
+    /// go2rtc, lancé par launchd et supervisé par l'app (spec B3, § 14), sa surveillance et l'onglet « Caméra » des Réglages.
+    let go2rtc: Go2RTCSupervisor
+    let go2rtcMonitor: Go2RTCMonitor
+    let cameraSettings: Go2RTCSettingsModel
     private var started = false
 
     override init() {
@@ -76,8 +71,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fileObserver: DispatchFileChangeObserver(url: paths.talkbackState)
         )
         let installer = SDKInstaller.system(paths: paths)
+        let preparer = Go2RTCPreparer.system(paths: paths)
+        go2rtc = .system(paths: paths, preparer: preparer, scheduler: scheduler)
+        go2rtcMonitor = .system(supervisor: go2rtc, paths: paths, scheduler: scheduler)
+        cameraSettings = .system(supervisor: go2rtc, preparer: preparer)
         controller = AppController(
             supervisor: .system(paths: paths.service, scheduler: scheduler),
+            go2rtc: go2rtc,
             legacyAgent: .system(supportDirectory: paths.support),
             configURL: paths.config,
             interfaces: SystemInterfaceAddresses(),
@@ -99,6 +99,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             shortVersion: info?["CFBundleShortVersionString"] as? String,
             bundleVersion: bundleVersion
         )
+        settingsWindow = SettingsWindowController(settings: settings, language: language, camera: cameraSettings,
+                                                  app: controller, sdk: sdkWindow)
         super.init()
         controller.onConfigReady = { [panel] in
             panel.reloadConfig(.load(from: paths.config))
@@ -120,18 +122,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             talkback.refresh()
         }
         network.check()
+        // Un travail launchd resté d'une session précédente (app tuée) ne reste pas chargé quand go2rtc est éteint ; allumé,
+        // le lancement s'en charge lui-même (spec B3 § 14).
+        if !go2rtc.isEnabled {
+            LaunchdProcessLauncher.removeLeftoverInBackground(supportDirectory: AppPaths.system().support)
+        }
+        go2rtcMonitor.start()
         Task { await controller.launch() }
     }
 
-    /// Attend l'arrêt de ptzd (6 s au plus), puis répond. C'est aussi le chemin d'une mise à jour : Sparkle demande
+    /// Attend l'arrêt de ptzd et de go2rtc (6 s au plus, 16 s avec go2rtc), puis répond. C'est aussi le chemin d'une mise à jour : Sparkle demande
     /// à l'app de quitter (événement Apple « quitter ») avant de la remplacer (voir `SparkleUpdater`).
     ///
     /// Ne jamais appeler `NSApp.terminate` depuis un bloc de la file principale (`DispatchQueue.main.async`,
     /// `asyncAfter`, `Task` sur le MainActor) : `.terminateLater` fait tourner la boucle d'exécution à l'intérieur
     /// de ce bloc, et la file principale, qui n'est pas réentrante, ne livre plus rien. Or la fin de ptzd
-    /// (`FoundationProcessLauncher`) et le délai de sécurité (`MainScheduler`) passent par elle : l'app
-    /// attendrait sans fin. « Quitter » passe donc par la boucle d'exécution (`perform(_:with:afterDelay:inModes:)`),
-    /// et la réponse aussi.
+    /// (`FoundationProcessLauncher`), celle du gardien de go2rtc (`LaunchdProcessLauncher`) et le délai de sécurité
+    /// (`MainScheduler`) passent par elle : l'app attendrait sans fin. « Quitter » passe donc par la boucle d'exécution
+    /// (`perform(_:with:afterDelay:inModes:)`), et la réponse aussi.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         controller.quit {
             RunLoop.main.perform(inModes: [.common, .modalPanel]) {
@@ -182,11 +190,22 @@ enum MigrationAlert {
     }
 }
 
+/// La confirmation de « Quitter » quand go2rtc est allumé (spec B3 § 3.3).
+enum QuitConfirmation {
+    @MainActor
+    static func ask() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = Labels.quitStopsCamera
+        alert.addButton(withTitle: Labels.quit)
+        alert.addButton(withTitle: AppText.text("Annuler"))
+        NSApp.activate()
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+}
+
 enum WindowID {
     static let pairing = "pairing"
     static let devices = "devices"
-    static let sdk = "sdk"
-    static let settings = "settings"
 }
 
 extension OpenWindowAction {

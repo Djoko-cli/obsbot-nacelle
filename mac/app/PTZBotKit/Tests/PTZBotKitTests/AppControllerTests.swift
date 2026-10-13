@@ -13,6 +13,9 @@ struct AppControllerTests {
     let launchctl = FakeLaunchctl()
     let toolchain = FakeToolchain()
     let supervisor: ServiceSupervisor
+    /// go2rtc a son propre lanceur : les lancements de ptzd restent seuls dans `launcher`.
+    let go2rtcLauncher = FakeLauncher()
+    let go2rtcSettings = FakeSettings()
 
     init() throws {
         root = try FakeSDK.directory()
@@ -37,10 +40,12 @@ struct AppControllerTests {
         sdkLoads: Bool = true,
         confirm: Bool = true,
         asked: Counter = Counter(),
-        answers: Answers? = nil
+        answers: Answers? = nil,
+        go2rtc: Go2RTCSupervisor? = nil
     ) -> AppController {
         AppController(
             supervisor: supervisor,
+            go2rtc: go2rtc,
             legacyAgent: LegacyAgent(
                 launchAgentsDirectory: root.appending(path: "LaunchAgents"),
                 supportDirectory: paths.support,
@@ -370,6 +375,77 @@ struct AppControllerTests {
     }
 }
 
+/// go2rtc dans l'app (spec B3 § 3.3) : lancé au démarrage s'il est allumé, attendu par « Quitter ».
+extension AppControllerTests {
+    private func go2rtc(enabled: Bool) -> Go2RTCSupervisor {
+        go2rtcSettings.values[Go2RTCSupervisor.enabledKey] = enabled
+        return Go2RTCSupervisor(paths: paths.go2rtcService, launcher: go2rtcLauncher, preparer: FakePreparer(), settings: go2rtcSettings,
+                                scheduler: scheduler, parentPID: 4242, configuration: Go2RTCFixtures.settings())
+    }
+
+    @Test("Au lancement : go2rtc allumé démarre, avec ptzd ; éteint, il ne démarre pas")
+    func go2rtcAtLaunch() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let on = go2rtc(enabled: true)
+        let app = controller(go2rtc: on)
+        await app.launch()
+        await on.waitForPreparation()
+        #expect(on.state == .running)
+        #expect(go2rtcLauncher.executables == [paths.gardien])
+        #expect(launcher.executables == [paths.ptzd])
+        #expect(app.quitStopsCamera)
+        let off = go2rtc(enabled: false)
+        let other = controller(go2rtc: off)
+        await other.launch()
+        await off.waitForPreparation()
+        #expect(off.state == .stopped)
+        #expect(!other.quitStopsCamera)
+    }
+
+    @Test("« Quitter » : ptzd et go2rtc arrêtés ; completion quand les deux sont sortis, une seule fois")
+    func quitWaitsForGo2RTC() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let camera = go2rtc(enabled: true)
+        let app = controller(go2rtc: camera)
+        await app.launch()
+        await camera.waitForPreparation()
+        let gardien = try #require(go2rtcLauncher.last)
+        gardien.ignoresTerminate = true
+        var done = 0
+        app.quit { done += 1 }
+        #expect(try #require(launcher.last).terminations == 1)
+        #expect(gardien.terminations == 1)
+        #expect(done == 0, "ptzd est sorti, go2rtc pas encore")
+        scheduler.advance(by: Go2RTCSupervisor.stopDelay)
+        #expect(done == 0)
+        gardien.exit(ProcessExit(status: SIGTERM, signaled: true))
+        #expect(done == 1)
+        scheduler.advance(by: AppController.go2rtcQuitTimeout)
+        #expect(done == 1)
+        #expect(go2rtcLauncher.launched.count == 1)
+    }
+
+    @Test("« Quitter » avec un gardien qui ne sort pas : completion au délai de sécurité de go2rtc (16 s)")
+    func quitGo2RTCTimeout() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let camera = go2rtc(enabled: true)
+        let app = controller(go2rtc: camera)
+        await app.launch()
+        await camera.waitForPreparation()
+        let gardien = try #require(go2rtcLauncher.last)
+        gardien.ignoresTerminate = true
+        gardien.ignoresKill = true
+        var done = 0
+        app.quit { done += 1 }
+        #expect(app.quitDelay == AppController.go2rtcQuitTimeout)
+        scheduler.advance(by: AppController.go2rtcQuitTimeout - 0.1)
+        #expect(gardien.kills == 1)
+        #expect(done == 0)
+        scheduler.advance(by: 0.1)
+        #expect(done == 1)
+    }
+}
+
 /// Réponses successives à l'alerte de migration.
 @MainActor
 final class Answers {
@@ -617,6 +693,29 @@ struct ServiceLabelsTests {
         #expect(Labels.aiNeedsSDK(.toolsRequired(fallback: false), legacy: false))
         #expect(Labels.aiNeedsSDK(.incomplete, legacy: false))
         #expect(Labels.aiNeedsSDK(.recompiling, legacy: false))
+    }
+
+    @Test("Lien « Installer le SDK… » du panneau : seulement si le suivi IA attend le SDK et que l'onglet a une action à proposer")
+    func aiSDKLink() {
+        // Le SDK est à installer, à compléter ou à réinstaller : le lien mène à l'onglet.
+        for status in [SDKStatus.absent, .quarantined, .incompatible, .unloadable, .incomplete, .toolsRequired(fallback: false),
+                       .compileFailed(fallback: false)] {
+            #expect(Labels.aiSDKLink(status, legacy: false), "\(status)")
+        }
+        // L'état n'est pas encore lu, ou obsbot-ai est en cours de recompilation, ou sa source manque : pas de lien.
+        #expect(!Labels.aiSDKLink(nil, legacy: false))
+        #expect(!Labels.aiSDKLink(.recompiling, legacy: false))
+        #expect(!Labels.aiSDKLink(.sourceMissing, legacy: false))
+        // Le suivi IA est disponible (SDK prêt, ou ancien obsbot-ai en service) : pas de lien.
+        #expect(!Labels.aiSDKLink(.ready, legacy: false))
+        #expect(!Labels.aiSDKLink(.toolsRequired(fallback: true), legacy: false))
+        #expect(!Labels.aiSDKLink(.compileFailed(fallback: true), legacy: false))
+        // Ancienne installation : le SDK n'est pas nécessaire.
+        #expect(!Labels.aiSDKLink(.absent, legacy: true))
+        // Outils d'Apple absents : le lien reste, l'onglet propose de les installer d'abord.
+        #expect(Labels.aiSDKLink(.absent, toolsAvailable: false, legacy: false))
+        #expect(!Labels.aiSDKLink(.recompiling, toolsAvailable: false, legacy: false))
+        #expect(!Labels.aiSDKLink(nil, toolsAvailable: false, legacy: false))
     }
 
     @Test("Sections du panneau : Service, Caméra avec son état, iPhone connectés, note du suivi IA")

@@ -120,7 +120,7 @@ extension Labels {
         }
     }
 
-    /// Le bouton de la ligne SDK lance `xcode-select --install` plutôt que d'ouvrir la fenêtre « SDK OBSBOT » :
+    /// Le bouton de la ligne SDK lance `xcode-select --install` plutôt que d'ouvrir l'onglet « SDK OBSBOT » des Réglages :
     /// les outils manquent et le SDK est à installer (ou obsbot-ai à compiler). Sur le clic de l'utilisateur seulement.
     public static func sdkActionInstallsTools(_ status: SDKStatus?, toolsAvailable: Bool = true) -> Bool {
         switch status {
@@ -168,6 +168,13 @@ extension Labels {
     /// dans `lib/`.
     public static func aiNeedsSDK(_ status: SDKStatus?, legacy: Bool) -> Bool {
         !legacy && status?.aiUsable != true
+    }
+
+    /// Le lien « Installer le SDK… » sous « Suivi IA » : le suivi attend le SDK et l'onglet « SDK OBSBOT » a quelque
+    /// chose à proposer. Pas avant la lecture de l'état (nil) ni pendant la recompilation, où le SDK est déjà là, ni
+    /// quand la source d'obsbot-ai manque (rien à installer : c'est PTZBot qu'il faut réinstaller) : `sdkAction` y est nil.
+    public static func aiSDKLink(_ status: SDKStatus?, toolsAvailable: Bool = true, legacy: Bool) -> Bool {
+        aiNeedsSDK(status, legacy: legacy) && sdkAction(status, toolsAvailable: toolsAvailable) != nil
     }
 
     public static var sdkRequired: String { Localization.text("SDK OBSBOT requis") }
