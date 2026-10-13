@@ -19,6 +19,15 @@ version GitHub et à la fenêtre de mise à jour.
 - When go2rtc is on, quitting PTZBot also stops the HomeKit camera; PTZBot asks for confirmation first.
 - In the panel, each service shows a green dot when everything is normal; a status line appears only when something
   needs attention.
+- Settings is now a window with tabs in its toolbar, with icons, like the settings of macOS: **General**, **Camera** and
+  **OBSBOT SDK**. The window title follows the tab, its height adjusts smoothly, and the last tab you used is remembered.
+- The OBSBOT SDK moves into **Settings › OBSBOT SDK**, which shows its state and holds everything the former **OBSBOT
+  SDK** window did (choosing the archive, checks, authorization). The SDK line in the panel and the separate window are
+  gone; when AI tracking is waiting for the SDK, an **Install SDK…** link under its switch opens that tab.
+- go2rtc is now started by macOS (launchd) instead of as part of PTZBot: macOS no longer shows the green **Video
+  Effects** button (portrait, backgrounds) in the menu bar while go2rtc is filming, and these effects cannot alter the
+  HomeKit stream. go2rtc still stops with PTZBot, even if PTZBot crashes, and nothing is added to Login Items or to
+  `~/Library/LaunchAgents`.
 
 **Français**
 
@@ -31,6 +40,17 @@ version GitHub et à la fenêtre de mise à jour.
 - Quand go2rtc est allumé, quitter PTZBot arrête aussi la caméra HomeKit ; PTZBot demande d'abord confirmation.
 - Dans le panneau, chaque service montre une pastille verte quand tout est normal ; une ligne d'état n'apparaît que
   quand il faut y prêter attention.
+- Les Réglages sont désormais une fenêtre à onglets dans sa barre d'outils, avec des icônes, comme les réglages de
+  macOS : **Général**, **Caméra** et **SDK OBSBOT**. Le titre de la fenêtre suit l'onglet, sa hauteur s'ajuste en
+  douceur, et le dernier onglet utilisé est retenu.
+- Le SDK OBSBOT passe dans **Réglages › SDK OBSBOT**, qui montre son état et reprend tout ce que faisait l'ancienne
+  fenêtre **SDK OBSBOT** (choix de l'archive, vérifications, autorisation). La ligne SDK du panneau et la fenêtre
+  séparée disparaissent ; quand le suivi IA attend le SDK, un lien **Installer le SDK…** sous son interrupteur ouvre cet
+  onglet.
+- go2rtc est désormais lancé par macOS (launchd) et non plus comme une partie de PTZBot : macOS n'affiche plus le bouton
+  vert « Effets vidéo » (portrait, arrière-plans) dans la barre des menus quand go2rtc filme, et ces effets ne peuvent
+  pas altérer le flux HomeKit. go2rtc s'arrête toujours avec PTZBot, même si PTZBot plante, et rien n'est ajouté à
+  « Ouverture » ni à `~/Library/LaunchAgents`.
 
 ## 1.0.7
 
