@@ -71,7 +71,7 @@ if [ -z "$(attendue "$GO2RTC_ARCHIVE")" ] || [ -z "$(attendue go2rtc)" ]; then
 fi
 mkdir -p "$CACHE"
 if [ ! -f "$CACHE/$GO2RTC_ARCHIVE" ] || [ "$(empreinte "$CACHE/$GO2RTC_ARCHIVE")" != "$(attendue "$GO2RTC_ARCHIVE")" ]; then
-    echo "Téléchargement de go2rtc $GO2RTC_VERSION…"
+    echo "Téléchargement de go2rtc ${GO2RTC_VERSION}…"
     rm -f "$CACHE/$GO2RTC_ARCHIVE" "$CACHE/$GO2RTC_ARCHIVE.part"
     /usr/bin/curl -fsSL --retry 2 -o "$CACHE/$GO2RTC_ARCHIVE.part" "$GO2RTC_URL"
     if [ "$(empreinte "$CACHE/$GO2RTC_ARCHIVE.part")" != "$(attendue "$GO2RTC_ARCHIVE")" ]; then
