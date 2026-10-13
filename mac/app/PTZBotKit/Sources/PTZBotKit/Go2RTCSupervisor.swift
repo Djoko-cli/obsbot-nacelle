@@ -15,7 +15,7 @@ public enum Go2RTCFailure: Equatable, Sendable {
     case unkillable
 }
 
-/// Lance go2rtc, processus enfant de l'app par le gardien (spec B3 § 3.2 et § 3.3), le relance s'il s'arrête et
+/// Lance go2rtc par le gardien (spec B3 § 3.2 et § 3.3 ; lancé par launchd, § 14), le relance s'il s'arrête et
 /// l'arrête en douceur. Sur le modèle de `ServiceSupervisor` (ptzd), avec une préparation avant chaque lancement.
 /// Éteint par défaut : il ne doit pas prendre la caméra de quelqu'un qui a déjà son go2rtc.
 @MainActor
@@ -120,12 +120,14 @@ public final class Go2RTCSupervisor {
         isEnabled = settings.bool(forKey: Self.enabledKey) ?? false
     }
 
-    /// Le superviseur de l'app : vrai lanceur, préférences de l'utilisateur, PID de l'app, réglages retenus.
+    /// Le superviseur de l'app : le gardien est lancé par launchd (`LaunchdProcessLauncher`, spec B3 § 14) et non comme
+    /// enfant de l'app, pour que la caméra ne soit pas filmée dans la coalition de PTZBot ; préférences de l'utilisateur,
+    /// PID de l'app, réglages retenus.
     public static func system(paths: AppPaths, preparer: any Go2RTCPreparing, scheduler: any Scheduler) -> Go2RTCSupervisor {
         let store = UserDefaultsSettingsStore(defaults: .standard)
         return Go2RTCSupervisor(
             paths: paths.go2rtcService,
-            launcher: FoundationProcessLauncher(),
+            launcher: LaunchdProcessLauncher.system(supportDirectory: paths.support),
             preparer: preparer,
             settings: store,
             scheduler: scheduler,

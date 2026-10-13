@@ -2,8 +2,8 @@ import PTZBotKit
 import SwiftUI
 
 /// PTZBot pour Mac (spec app Mac, spec ptzd dans l'app, spec distribution, spec B3) : une icône dans la barre des menus,
-/// un panneau, trois fenêtres, ptzd et go2rtc lancés comme processus enfants, Talkback (l'agent talkd, indépendant de
-/// l'app) et les mises à jour par Sparkle.
+/// un panneau, trois fenêtres, ptzd lancé comme processus enfant, go2rtc lancé par launchd (son gardien suit l'app),
+/// Talkback (l'agent talkd, indépendant de l'app) et les mises à jour par Sparkle.
 @main
 struct PTZBotApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -59,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// L'onglet choisi des Réglages, partagé avec le panneau.
     let settingsTab = SettingsTabModel()
     let network: LocalNetworkState
-    /// go2rtc, processus enfant de l'app (spec B3), sa surveillance et l'onglet « Caméra » des Réglages.
+    /// go2rtc, lancé par launchd et supervisé par l'app (spec B3, § 14), sa surveillance et l'onglet « Caméra » des Réglages.
     let go2rtc: Go2RTCSupervisor
     let go2rtcMonitor: Go2RTCMonitor
     let cameraSettings: Go2RTCSettingsModel
@@ -127,6 +127,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             talkback.refresh()
         }
         network.check()
+        // Un travail launchd resté d'une session précédente (app tuée) ne reste pas chargé quand go2rtc est éteint ; allumé,
+        // le lancement s'en charge lui-même (spec B3 § 14).
+        if !go2rtc.isEnabled {
+            LaunchdProcessLauncher.removeLeftoverInBackground(supportDirectory: AppPaths.system().support)
+        }
         go2rtcMonitor.start()
         Task { await controller.launch() }
     }
@@ -137,9 +142,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Ne jamais appeler `NSApp.terminate` depuis un bloc de la file principale (`DispatchQueue.main.async`,
     /// `asyncAfter`, `Task` sur le MainActor) : `.terminateLater` fait tourner la boucle d'exécution à l'intérieur
     /// de ce bloc, et la file principale, qui n'est pas réentrante, ne livre plus rien. Or la fin de ptzd
-    /// (`FoundationProcessLauncher`) et le délai de sécurité (`MainScheduler`) passent par elle : l'app
-    /// attendrait sans fin. « Quitter » passe donc par la boucle d'exécution (`perform(_:with:afterDelay:inModes:)`),
-    /// et la réponse aussi.
+    /// (`FoundationProcessLauncher`), celle du gardien de go2rtc (`LaunchdProcessLauncher`) et le délai de sécurité
+    /// (`MainScheduler`) passent par elle : l'app attendrait sans fin. « Quitter » passe donc par la boucle d'exécution
+    /// (`perform(_:with:afterDelay:inModes:)`), et la réponse aussi.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         controller.quit {
             RunLoop.main.perform(inModes: [.common, .modalPanel]) {
