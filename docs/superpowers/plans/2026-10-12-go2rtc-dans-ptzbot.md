@@ -7141,7 +7141,7 @@ Rien de ce qui suit n'est fait par un agent d'exécution.
   - [ ] débrancher puis rebrancher la caméra ;
   - [ ] refuser puis accorder l'accès à la caméra ;
   - [ ] fichier personnalisé ;
-  - [ ] pas de nouvelle demande d'accès après une mise à jour par Sparkle (build 261 vers 269).
+  - [x] pas de nouvelle demande d'accès après une mise à jour par Sparkle : 1.0.7 de GitHub vers 1.1.0 (build 269), le 13/10. go2rtc repart, sans demande d'accès ni bouton « Effets vidéo ».
 - [x] **Mise en service chez Majid**, le 13/10 (spec § 7, « jamais deux go2rtc en même temps » à chaque étape) :
   1. installer la 1.1.0 : go2rtc est éteint par défaut, l'ancien agent `com.majid.go2rtc` tourne toujours ;
   2. dans **Réglages › Caméra**, importer `/opt/homebrew/etc/go2rtc.yaml`, vérifier ce qui est repris, puis **Appliquer** : rien n'est lancé tant que l'interrupteur est éteint ;
