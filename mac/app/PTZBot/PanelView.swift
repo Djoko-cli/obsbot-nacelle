@@ -11,8 +11,8 @@ struct PanelView: View {
     let network: LocalNetworkState
     let go2rtc: Go2RTCSupervisor
     let go2rtcMonitor: Go2RTCMonitor
-    /// L'onglet des Réglages : le lien « Installer le SDK… » les ouvre sur « SDK OBSBOT ».
-    let settingsTab: SettingsTabModel
+    /// La fenêtre des Réglages : le lien « Installer le SDK… » l'ouvre sur « SDK OBSBOT ».
+    let settingsWindow: SettingsWindowController
     @Environment(\.openWindow) private var openWindow
 
     private var supervisor: ServiceSupervisor {
@@ -247,8 +247,7 @@ struct PanelView: View {
                 if aiNeedsSDK {
                     // L'installation du SDK est dans l'onglet « SDK OBSBOT » des Réglages (banc du 13/10).
                     Button(AppText.text("Installer le SDK…")) {
-                        settingsTab.select(.sdk)
-                        openWindow.front(WindowID.settings)
+                        settingsWindow.show(tab: .sdk)
                     }
                     .buttonStyle(.link)
                     .font(.caption)
@@ -315,7 +314,7 @@ struct PanelView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 12) {
                 Button(Labels.settings) {
-                    openWindow.front(WindowID.settings)
+                    settingsWindow.show()
                 }
                 Spacer()
                 Button(Labels.quit) {

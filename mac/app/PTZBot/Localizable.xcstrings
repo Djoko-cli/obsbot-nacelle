@@ -528,23 +528,6 @@
         }
       }
     },
-    "Réglages": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Settings"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Réglages"
-          }
-        }
-      }
-    },
     "SDK OBSBOT": {
       "extractionState": "manual",
       "localizations": {

@@ -2,8 +2,9 @@ import PTZBotKit
 import SwiftUI
 
 /// PTZBot pour Mac (spec app Mac, spec ptzd dans l'app, spec distribution, spec B3) : une icône dans la barre des menus,
-/// un panneau, trois fenêtres, ptzd lancé comme processus enfant, go2rtc lancé par launchd (son gardien suit l'app),
-/// Talkback (l'agent talkd, indépendant de l'app) et les mises à jour par Sparkle.
+/// un panneau, trois fenêtres (deux scènes SwiftUI, et les Réglages en AppKit : `SettingsWindowController`), ptzd lancé
+/// comme processus enfant, go2rtc lancé par launchd (son gardien suit l'app), Talkback (l'agent talkd, indépendant de
+/// l'app) et les mises à jour par Sparkle.
 @main
 struct PTZBotApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -12,7 +13,7 @@ struct PTZBotApp: App {
         MenuBarExtra {
             PanelView(model: delegate.panel, talkback: delegate.talkback, settings: delegate.settings, app: delegate.controller,
                       network: delegate.network, go2rtc: delegate.go2rtc, go2rtcMonitor: delegate.go2rtcMonitor,
-                      settingsTab: delegate.settingsTab)
+                      settingsWindow: delegate.settingsWindow)
                 .followsLanguage(delegate.language)
         } label: {
             Image(nsImage: MenuBarIcon.image())
@@ -34,14 +35,6 @@ struct PTZBotApp: App {
         }
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
-
-        Window("Réglages", id: WindowID.settings) {
-            SettingsView(model: delegate.settings, language: delegate.language, camera: delegate.cameraSettings,
-                         app: delegate.controller, sdk: delegate.sdkWindow, tabs: delegate.settingsTab)
-                .followsLanguage(delegate.language, title: "Réglages")
-        }
-        .windowResizability(.contentSize)
-        .defaultLaunchBehavior(.suppressed)
     }
 }
 
@@ -56,8 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings: SettingsModel
     let controller: AppController
     let sdkWindow: SDKWindowModel
-    /// L'onglet choisi des Réglages, partagé avec le panneau.
-    let settingsTab = SettingsTabModel()
+    /// La fenêtre « Réglages », ouverte par le panneau.
+    let settingsWindow: SettingsWindowController
     let network: LocalNetworkState
     /// go2rtc, lancé par launchd et supervisé par l'app (spec B3, § 14), sa surveillance et l'onglet « Caméra » des Réglages.
     let go2rtc: Go2RTCSupervisor
@@ -106,6 +99,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             shortVersion: info?["CFBundleShortVersionString"] as? String,
             bundleVersion: bundleVersion
         )
+        settingsWindow = SettingsWindowController(settings: settings, language: language, camera: cameraSettings,
+                                                  app: controller, sdk: sdkWindow)
         super.init()
         controller.onConfigReady = { [panel] in
             panel.reloadConfig(.load(from: paths.config))
@@ -211,7 +206,6 @@ enum QuitConfirmation {
 enum WindowID {
     static let pairing = "pairing"
     static let devices = "devices"
-    static let settings = "settings"
 }
 
 extension OpenWindowAction {
